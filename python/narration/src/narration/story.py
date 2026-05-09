@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
@@ -44,11 +45,15 @@ def generate_narration(
     Call chat completions (OpenAI-compatible SDK) with text + inline PNG images.
 
     Provider comes from ``provider_slug`` or ``settings.narration_provider`` (must match
-    ``api_keys`` / ``api_base_urls`` / ``provider_models`` slugs in movieteller_config).
+    ``api_keys`` / ``api_base_urls`` / ``provider_models`` / ``provider_model_catalog`` slugs in movieteller_config).
     """
     slug = _resolve_provider_slug(settings, provider_slug)
     api_key = settings.require_api_key(slug)
     base_url = _resolve_base_url(settings, slug)
+    print(
+        f"[narration] slug={slug!r} model={model!r} base_url={base_url!r}",
+        file=sys.stderr,
+    )
     factory = client_factory or _openai_sdk_client_factory
     client = factory(api_key, base_url)
 

@@ -34,3 +34,5 @@ htmlcov/
 # Local config overrides (merged by movieteller_config loader)
 config/local.yaml
 
+#videocaptioner
+VideoCaptioner/

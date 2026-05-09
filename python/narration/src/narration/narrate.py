@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any, Callable
 
 from movieteller_config import load_settings
@@ -28,11 +29,15 @@ def narrate_segment_with_duration(
     settings: "Settings | None" = None,
     subprocess_run: Callable[..., Any] | None = None,
     client_factory: Callable[..., Any] | None = None,
+    timings_out: dict[str, Any] | None = None,
 ) -> tuple[str, float]:
     """
     Produce narration text and the segment duration (seconds) used for prompts and ffmpeg.
 
     If ``start_sec`` and ``end_sec`` are both ``None``, duration is from ffprobe on the full file.
+
+    If ``timings_out`` is a dict, it is filled with ``extract_sec``, ``api_sec``, ``total_sec``
+    (wall-clock seconds from :func:`time.perf_counter`), and ``frame_count`` (int).
     """
     cfg = settings if settings is not None else load_settings(require_narration=True)
     ffprobe = ffprobe_path_for(cfg.ffmpeg_path)
@@ -41,6 +46,7 @@ def narrate_segment_with_duration(
     )
 
     run = subprocess_run or __import__("subprocess").run
+    t_extract0 = time.perf_counter()
     frames = extract_frames_base64(
         video_path,
         start_sec=start_sec,
@@ -51,6 +57,7 @@ def narrate_segment_with_duration(
         max_edge_pixels=cfg.narration_frame_max_edge,
         subprocess_run=run,
     )
+    t_extract1 = time.perf_counter()
 
     slug = (provider_slug or cfg.narration_provider).strip().lower() or "openai"
     model = image_model or cfg.model_for_provider(slug)
@@ -61,6 +68,7 @@ def narrate_segment_with_duration(
         frame_count=len(frames),
     )
 
+    t_api0 = time.perf_counter()
     text = generate_narration(
         system_message=system_msg,
         user_text=user_txt,
@@ -70,6 +78,16 @@ def narrate_segment_with_duration(
         provider_slug=provider_slug,
         client_factory=client_factory,
     )
+    t_api1 = time.perf_counter()
+
+    if timings_out is not None:
+        extract_sec = t_extract1 - t_extract0
+        api_sec = t_api1 - t_api0
+        timings_out["extract_sec"] = extract_sec
+        timings_out["api_sec"] = api_sec
+        timings_out["total_sec"] = extract_sec + api_sec
+        timings_out["frame_count"] = len(frames)
+
     return text, duration
 
 
@@ -85,6 +103,7 @@ def narrate_segment(
     settings: "Settings | None" = None,
     subprocess_run: Callable[..., Any] | None = None,
     client_factory: Callable[..., Any] | None = None,
+    timings_out: dict[str, Any] | None = None,
 ) -> str:
     """Produce English narration using ffmpeg frames + an OpenAI-compatible multimodal API."""
 
@@ -99,5 +118,6 @@ def narrate_segment(
         settings=settings,
         subprocess_run=subprocess_run,
         client_factory=client_factory,
+        timings_out=timings_out,
     )
     return text

@@ -1,34 +1,41 @@
 # Copy this file to `local.yaml` in the same directory and fill in your values.
-# `local.yaml` is gitignored — never commit it.
+# `local.yaml` is gitignored — never commit secrets.
 #
-# Priority: environment variables > this file > packaged defaults.
+# Priority: environment variables > this file > packaged defaults (movieteller_config).
 
-# narration_image_model: gpt-4o-mini
-# max_frames_per_segment: 24
+# narration_provider is read from packaged default.yaml unless you set it here or NARRATION_PROVIDER.
+
+narration_model_index: 0
+
+api_keys:
+  modelscope: "$MODELSCOPE_API_KEY_FREE"
+  volcengine: "$VOLCENGINE_API_KEY"
+  glm: "$GLM_API_KEY"
+
+api_base_urls:
+  modelscope: "https://api-inference.modelscope.cn/v1"
+  volcengine: "https://ark.cn-beijing.volces.com/api/v3"
+  glm: "https://open.bigmodel.cn/api/paas/v4"
+
+provider_model_catalog:
+  volcengine:
+    - doubao-seed-2-0-mini-260428
+    - doubao-seed-1-6-flash-250615
+    - doubao-seed-1-6-vision-250815
+  glm:
+    - glm-4.6v-flash
+  modelscope:
+    - Qwen/Qwen3-VL-30B-A3B-Instruct
+
+# Optional: lock one model per slug (overrides catalog for that slug).
+# provider_models:
+#   glm: glm-4.6v-flash
 
 # -----------------------------------------------------------------------------
-# ModelScope（slug 一律用 ``modelscope``；密钥用占位符，真实值放在环境变量 MODELSCOPE_API_KEY_FREE）
+# Legacy commented snippets (ModelScope-only minimal layout):
 #
 # api_keys:
 #   modelscope: "$MODELSCOPE_API_KEY_FREE"
 # api_base_urls:
-#   modelscope: "https://api-inference.modelscope.cn/v1/chat/completions"
-# provider_models:
-#   modelscope: "qwen/Qwen-VL-Max"
-# narration_image_model: qwen/Qwen-VL-Max
-#
-# 若客户端自己会请求 ``.../v1/chat/completions``，可把 ``modelscope`` 的 URL 改为：
-# https://api-inference.modelscope.cn/v1
-
-# -----------------------------------------------------------------------------
-
-# api_keys:
-#   modelscope: "your-api-token"
-
-# api_base_urls:
-#   modelscope: https://api-inference.modelscope.cn/v1
-
-# provider_models:
-#   openai: gpt-4o
-#   modelscope: qwen/Qwen-VL-Max
-# 或用环境变量 PROVIDER_MODELS_JSON={"openai":"gpt-4o","modelscope":"qwen/..."}
+#   modelscope: "https://api-inference.modelscope.cn/v1"
+# Model switching without editing provider_models: NARRATION_MODEL=... or NARRATION_MODEL_INDEX=...

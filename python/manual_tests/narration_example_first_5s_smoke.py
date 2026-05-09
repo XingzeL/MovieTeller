@@ -21,7 +21,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
+from typing import Any
+
+
+def _log_timing(message: str) -> None:
+    """Timing lines go to stderr so ``--json`` stdout stays parseable."""
+    print(message, file=sys.stderr)
 
 
 def _repo_root() -> Path:
@@ -59,6 +66,12 @@ def main() -> int:
         action="store_true",
         help="输出 JSON（仅非 --narrate 时含 duration、frame_count、base64 总长度等）",
     )
+    ap.add_argument(
+        "--model",
+        default=None,
+        metavar="MODEL_ID",
+        help="覆盖本次请求的模型 id（等价 narrate_segment 的 image_model；可选）",
+    )
     args = ap.parse_args()
 
     root = _repo_root()
@@ -68,12 +81,56 @@ def main() -> int:
         return 1
 
     settings = load_settings(require_narration=args.narrate)
-    start, end = 0.0, 5.0
+    start, end = 1.0, 10.0
     ffprobe = ffprobe_path_for(settings.ffmpeg_path)
     duration = segment_duration_sec(
         str(video), start, end, ffprobe_bin=ffprobe
     )
 
+    if args.narrate:
+        from narration import narrate_segment_with_duration
+
+        timings: dict[str, Any] = {}
+        t0 = time.perf_counter()
+        text, duration = narrate_segment_with_duration(
+            str(video),
+            start,
+            end,
+            settings=settings,
+            image_model=args.model,
+            timings_out=timings,
+        )
+        wall_total = time.perf_counter() - t0
+        extract_sec = timings.get("extract_sec", 0.0)
+        api_sec = timings.get("api_sec", 0.0)
+        frame_count = int(timings.get("frame_count", 0))
+        _log_timing(
+            f"[timing] extract_frames_base64: {extract_sec:.3f}s | "
+            f"generate_narration (API): {api_sec:.3f}s | "
+            f"narrate_segment_with_duration (reported total): {timings.get('total_sec', 0.0):.3f}s | "
+            f"wall inclusive: {wall_total:.3f}s | frames={frame_count}"
+        )
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "text": text,
+                        "duration_sec": duration,
+                        "frame_count": frame_count,
+                        "timing_extract_sec": extract_sec,
+                        "timing_api_sec": api_sec,
+                        "timing_total_sec": timings.get("total_sec", 0.0),
+                        "timing_wall_sec": wall_total,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        else:
+            print(text)
+        return 0
+
+    # 抽帧，得到 base64 编码的 PNG，一共 max_frames_per_segment 帧
+    t_extract0 = time.perf_counter()
     frames = extract_frames_base64(
         str(video),
         start_sec=start,
@@ -83,26 +140,8 @@ def main() -> int:
         ffmpeg_bin=settings.ffmpeg_path,
         max_edge_pixels=settings.narration_frame_max_edge,
     )
-
-    if args.narrate:
-        from narration import narrate_segment
-
-        text = narrate_segment(
-            str(video),
-            start,
-            end,
-            settings=settings,
-        )
-        if args.json:
-            print(
-                json.dumps(
-                    {"text": text, "duration_sec": duration, "frame_count": len(frames)},
-                    ensure_ascii=False,
-                )
-            )
-        else:
-            print(text)
-        return 0
+    extract_sec = time.perf_counter() - t_extract0
+    _log_timing(f"[timing] extract_frames_base64: {extract_sec:.3f}s (frames={len(frames)})")
 
     out = {
         "video": str(video),
@@ -111,12 +150,13 @@ def main() -> int:
         "duration_sec": duration,
         "frame_count": len(frames),
         "base64_total_chars": sum(len(x) for x in frames),
+        "timing_extract_sec": extract_sec,
     }
     if args.json:
         print(json.dumps(out, ensure_ascii=False, indent=2))
     else:
         print(
-            f"OK: {video.name} 0s–5s, duration={duration:.3f}s, "
+            f"OK: {video.name} 5s–10s, duration={duration:.3f}s, "
             f"frames={len(frames)}, max_edge={settings.narration_frame_max_edge}"
         )
     return 0

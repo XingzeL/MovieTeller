@@ -4,7 +4,7 @@ import os
 import re
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 _ENV_REF_BRACE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
 _ENV_REF_DOLLAR = re.compile(r"^\$\$([A-Za-z_][A-Za-z0-9_]*)$")
@@ -52,7 +52,14 @@ class Settings:
     narration_provider: str
     api_keys: Mapping[str, str]
     api_base_urls: Mapping[str, str]
+    # Legacy single model per slug (PROVIDER_MODELS_JSON / provider_models).
     provider_models: Mapping[str, str]
+    # Slug -> multiple model ids (provider_model_catalog / PROVIDER_MODEL_CATALOG_JSON).
+    provider_model_catalog: Mapping[str, tuple[str, ...]]
+    # When set, overrides model for narration_provider only (NARRATION_MODEL).
+    narration_model: str | None
+    # Catalog index for narration_provider when narration_model unset (NARRATION_MODEL_INDEX).
+    narration_model_index: int
 
     def get_api_key(self, provider: str) -> str | None:
         """Return key for a provider slug (e.g. \"openai\", \"anthropic\", \"gemini\")."""
@@ -84,13 +91,31 @@ class Settings:
         return v.strip() if v else None
 
     def model_for_provider(self, provider: str) -> str:
-        """Model id when calling ``provider`` (vision/chat); falls back to ``narration_image_model``."""
+        """
+        Resolve model id for ``provider``.
+
+        Order: ``NARRATION_MODEL`` (only when ``provider`` equals ``narration_provider``),
+        ``provider_models`` slug entry, first catalog entry for slug (or indexed entry for
+        ``narration_provider`` via ``narration_model_index``), else ``narration_image_model``.
+        """
         k = provider.strip().lower()
+        np = self.narration_provider.strip().lower()
         if k:
+            if k == np:
+                if m := _none_if_empty(self.narration_model):
+                    return m
             if m := self.provider_models.get(k):
                 s = m.strip()
                 if s:
                     return s
+            cat = self.provider_model_catalog.get(k)
+            if cat:
+                idx = self.narration_model_index if k == np else 0
+                if idx < 0:
+                    idx = 0
+                if idx < len(cat):
+                    return cat[idx]
+                return cat[0]
         return self.narration_image_model
 
 
@@ -149,10 +174,44 @@ def _normalize_provider_models(data: dict[str, Any]) -> dict[str, str]:
     return raw
 
 
+def _normalize_provider_model_catalog(data: dict[str, Any]) -> dict[str, tuple[str, ...]]:
+    """Provider slug -> ordered model ids (OpenAI ``model`` field values)."""
+    raw: dict[str, tuple[str, ...]] = {}
+    nested = data.get("provider_model_catalog")
+    if isinstance(nested, dict):
+        for k, v in nested.items():
+            slug = str(k).strip().lower()
+            if not slug:
+                continue
+            seq: Sequence[Any]
+            if isinstance(v, list):
+                seq = v
+            elif isinstance(v, tuple):
+                seq = v
+            else:
+                continue
+            ids: list[str] = []
+            for item in seq:
+                if item is None:
+                    continue
+                expanded = expand_env_placeholder(str(item))
+                if expanded:
+                    ids.append(expanded)
+            if ids:
+                raw[slug] = tuple(ids)
+    return raw
+
+
 def settings_from_dict(data: dict[str, Any]) -> Settings:
     api_keys = _normalize_api_keys_dict(data)
     api_base_urls = _normalize_api_base_urls(data)
     provider_models = _normalize_provider_models(data)
+    catalog = _normalize_provider_model_catalog(data)
+    idx_raw = data.get("narration_model_index")
+    try:
+        narration_model_index = max(0, int(idx_raw)) if idx_raw is not None else 0
+    except (TypeError, ValueError):
+        narration_model_index = 0
     openai = api_keys.get("openai") or _expand_optional_env_str(data.get("openai_api_key"))
     return Settings(
         openai_api_key=openai,
@@ -169,4 +228,7 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
         api_keys=MappingProxyType(dict(api_keys)),
         api_base_urls=MappingProxyType(dict(api_base_urls)),
         provider_models=MappingProxyType(dict(provider_models)),
+        provider_model_catalog=MappingProxyType(dict(catalog)),
+        narration_model=_expand_optional_env_str(data.get("narration_model")),
+        narration_model_index=narration_model_index,
     )

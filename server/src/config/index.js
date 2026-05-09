@@ -10,6 +10,7 @@ import {
   mergeEnvApiKeys,
   normalizeApiBaseUrlsObject,
   normalizeApiKeysObject,
+  normalizeProviderModelCatalogObject,
   normalizeProviderModelsObject,
   toPublicConfig,
 } from "./schema.js";
@@ -122,6 +123,29 @@ function collectBaseUrlsFromEnv() {
   return urls;
 }
 
+function collectProviderModelCatalogFromEnv() {
+  const rawJson = process.env.PROVIDER_MODEL_CATALOG_JSON?.trim();
+  if (!rawJson) return {};
+  try {
+    const parsed = JSON.parse(rawJson);
+    if (!parsed || typeof parsed !== "object") return {};
+    const out = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      const slug = String(k).trim().toLowerCase();
+      if (!slug || !Array.isArray(v)) continue;
+      const ids = [];
+      for (const item of v) {
+        if (item == null || String(item).trim() === "") continue;
+        ids.push(String(item).trim());
+      }
+      if (ids.length) out[slug] = ids;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 function collectProviderModelsFromEnv() {
   const out = {};
   const rawJson = process.env.PROVIDER_MODELS_JSON?.trim();
@@ -158,6 +182,14 @@ function envOverrides() {
   if (process.env.NARRATION_API_URL) o.narration_api_url = process.env.NARRATION_API_URL;
   if (process.env.NARRATION_PROVIDER)
     o.narration_provider = String(process.env.NARRATION_PROVIDER).trim().toLowerCase();
+  if (process.env.NARRATION_MODEL?.trim()) {
+    o.narration_model = process.env.NARRATION_MODEL.trim();
+  }
+  const rawIdx = process.env.NARRATION_MODEL_INDEX;
+  if (rawIdx != null && String(rawIdx).trim() !== "") {
+    const n = parseInt(String(rawIdx).trim(), 10);
+    if (!Number.isNaN(n)) o.narration_model_index = Math.max(0, n);
+  }
 
   const envUrls = collectBaseUrlsFromEnv();
   if (Object.keys(envUrls).length > 0) o.api_base_urls = envUrls;
@@ -205,6 +237,10 @@ export function loadConfig(opts = {}) {
     ...normalizeProviderModelsObject(merged.provider_models ?? {}),
     ...collectProviderModelsFromEnv(),
   });
+  merged.provider_model_catalog = normalizeProviderModelCatalogObject({
+    ...normalizeProviderModelCatalogObject(merged.provider_model_catalog ?? {}),
+    ...normalizeProviderModelCatalogObject(collectProviderModelCatalogFromEnv()),
+  });
   if (merged.openai_api_key?.trim() && !merged.api_keys.openai) {
     merged.api_keys = {
       ...merged.api_keys,
@@ -226,13 +262,29 @@ export function getApiBaseUrl(config, provider) {
   return null;
 }
 
-/** Model id for a provider slug; falls back to narrationImageModel. */
+/** Model id for a provider slug (matches Python ``model_for_provider`` resolution). */
 export function getModelForProvider(config, provider) {
   const id = String(provider).trim().toLowerCase();
   const fallback = config.narrationImageModel ?? "gpt-4o-mini";
+  const np = String(config.narrationProvider ?? "openai").trim().toLowerCase();
   if (!id) return fallback;
-  const m = config.providerModels?.[id]?.trim();
-  return m || fallback;
+
+  if (id === np && config.narrationModel?.trim()) {
+    return config.narrationModel.trim();
+  }
+
+  const pm = config.providerModels?.[id]?.trim();
+  if (pm) return pm;
+
+  const catalog = config.providerModelCatalog?.[id];
+  if (catalog && catalog.length > 0) {
+    let idx = id === np ? Number(config.narrationModelIndex ?? 0) : 0;
+    if (!Number.isFinite(idx) || idx < 0) idx = 0;
+    if (idx < catalog.length) return catalog[idx];
+    return catalog[0];
+  }
+
+  return fallback;
 }
 
 /** Resolve API key by provider slug (e.g. openai, anthropic). */

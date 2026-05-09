@@ -139,6 +139,31 @@ def _collect_provider_models_from_env() -> dict[str, str]:
     return out
 
 
+def _collect_provider_model_catalog_from_env() -> dict[str, list[str]]:
+    """Env ``PROVIDER_MODEL_CATALOG_JSON``: slug -> list of model ids."""
+    out: dict[str, list[str]] = {}
+    raw_json = os.environ.get("PROVIDER_MODEL_CATALOG_JSON", "").strip()
+    if not raw_json:
+        return out
+    try:
+        parsed = json.loads(raw_json)
+        if isinstance(parsed, dict):
+            for k, v in parsed.items():
+                slug = str(k).strip().lower()
+                if not slug or not isinstance(v, list):
+                    continue
+                ids: list[str] = []
+                for item in v:
+                    if item is None or str(item).strip() == "":
+                        continue
+                    ids.append(str(item).strip())
+                if ids:
+                    out[slug] = ids
+    except json.JSONDecodeError:
+        pass
+    return out
+
+
 def _load_repo_dotenv() -> None:
     """Load repo-root ``.env`` when present (same convention as Node ``loadConfig``)."""
     path = find_dotenv(usecwd=True)
@@ -194,6 +219,13 @@ def _env_overrides() -> dict[str, Any]:
         out["narration_api_url"] = v
     if v := os.environ.get("NARRATION_PROVIDER"):
         out["narration_provider"] = str(v).strip().lower()
+    if v := os.environ.get("NARRATION_MODEL", "").strip():
+        out["narration_model"] = v
+    if (idx_raw := os.environ.get("NARRATION_MODEL_INDEX", "").strip()):
+        try:
+            out["narration_model_index"] = max(0, int(idx_raw))
+        except ValueError:
+            pass
 
     url_patch = _collect_base_urls_from_env()
     if url_patch:
@@ -219,6 +251,14 @@ def _env_overrides() -> dict[str, Any]:
             out["provider_models"] = {**existing_pm, **pm_patch}
         else:
             out["provider_models"] = pm_patch
+
+    cat_patch = _collect_provider_model_catalog_from_env()
+    if cat_patch:
+        existing_cat = out.get("provider_model_catalog")
+        if isinstance(existing_cat, dict):
+            out["provider_model_catalog"] = {**existing_cat, **cat_patch}
+        else:
+            out["provider_model_catalog"] = cat_patch
 
     return out
 

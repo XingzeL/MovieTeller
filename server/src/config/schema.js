@@ -13,6 +13,9 @@ export const DEFAULTS = {
   api_keys: {},
   api_base_urls: {},
   provider_models: {},
+  provider_model_catalog: {},
+  narration_model: null,
+  narration_model_index: 0,
 };
 
 /**
@@ -57,7 +60,35 @@ export function toPublicConfig(s) {
     apiKeys,
     apiBaseUrls,
     providerModels: normalizeProviderModelsObject(s.provider_models ?? {}),
+    narrationModel:
+      s.narration_model != null && String(s.narration_model).trim()
+        ? expandEnvPlaceholder(String(s.narration_model))
+        : null,
+    narrationModelIndex: (() => {
+      const n = Number(s.narration_model_index ?? 0);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    })(),
+    providerModelCatalog: normalizeProviderModelCatalogObject(s.provider_model_catalog ?? {}),
   };
+}
+
+/** Slug -> list of model ids (YAML ``provider_model_catalog`` / ``PROVIDER_MODEL_CATALOG_JSON``). */
+export function normalizeProviderModelCatalogObject(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [k, v] of Object.entries(raw)) {
+    const slug = String(k).trim().toLowerCase();
+    if (!slug) continue;
+    if (!Array.isArray(v)) continue;
+    const ids = [];
+    for (const item of v) {
+      if (item == null) continue;
+      const expanded = expandEnvPlaceholder(String(item));
+      if (expanded) ids.push(expanded);
+    }
+    if (ids.length > 0) out[slug] = ids;
+  }
+  return out;
 }
 
 export function normalizeProviderModelsObject(raw) {

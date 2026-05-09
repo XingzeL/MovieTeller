@@ -122,6 +122,68 @@ ffmpeg_path: /usr/bin/ffmpeg
         self.assertEqual(len(s.api_keys), 0)
         self.assertEqual(len(s.api_base_urls), 0)
         self.assertEqual(len(s.provider_models), 0)
+        self.assertEqual(len(s.provider_model_catalog), 0)
+
+    def test_provider_model_catalog_and_index(self):
+        s = settings_from_dict(
+            {
+                "narration_provider": "volcengine",
+                "narration_image_model": "fallback-m",
+                "provider_model_catalog": {
+                    "volcengine": ["ep-first", "ep-second"],
+                },
+            }
+        )
+        self.assertEqual(s.model_for_provider("volcengine"), "ep-first")
+        s2 = settings_from_dict(
+            {
+                "narration_provider": "volcengine",
+                "narration_image_model": "fallback-m",
+                "provider_model_catalog": {"volcengine": ["a", "b"]},
+                "narration_model_index": 1,
+            }
+        )
+        self.assertEqual(s2.model_for_provider("volcengine"), "b")
+
+    def test_narration_model_env_overrides_catalog(self):
+        with mock.patch("movieteller_config.loader._load_repo_dotenv", lambda: None):
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "NARRATION_PROVIDER": "volcengine",
+                    "NARRATION_MODEL": "ep-explicit",
+                    "PROVIDER_MODEL_CATALOG_JSON": '{"volcengine":["a","b"]}',
+                    "NARRATION_IMAGE_MODEL": "fallback-m",
+                },
+                clear=True,
+            ):
+                s = load_settings()
+                self.assertEqual(s.model_for_provider("volcengine"), "ep-explicit")
+
+    def test_provider_models_override_catalog(self):
+        s = settings_from_dict(
+            {
+                "narration_provider": "volcengine",
+                "provider_models": {"volcengine": "pinned-model"},
+                "provider_model_catalog": {"volcengine": ["a", "b"]},
+                "narration_image_model": "fallback-m",
+            }
+        )
+        self.assertEqual(s.model_for_provider("volcengine"), "pinned-model")
+
+    def test_other_slug_uses_catalog_index_zero(self):
+        s = settings_from_dict(
+            {
+                "narration_provider": "volcengine",
+                "provider_model_catalog": {
+                    "volcengine": ["v1", "v2"],
+                    "modelscope": ["m1", "m2"],
+                },
+                "narration_model_index": 1,
+                "narration_image_model": "fallback-m",
+            }
+        )
+        self.assertEqual(s.model_for_provider("modelscope"), "m1")
 
     def test_provider_models_per_slug_and_fallback(self):
         with mock.patch.dict(
