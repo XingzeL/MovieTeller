@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "narration"
+version = "0.1.0"
+description = "Segment-local ffmpeg frame extraction + multimodal narration for MovieTeller"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "openai>=1.30.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+narration = ["py.typed"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: real narration API (needs credentials; opt-in RUN_NARRATION_API_TEST=1)",
+]
+testpaths = ["tests"]

@@ -1,0 +1,3 @@
+# Narration package — install movieteller_config first:
+#   pip install -e ../movieteller_config
+openai>=1.30.0

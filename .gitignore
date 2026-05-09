@@ -10,7 +10,26 @@ dist/
 .env.*
 server/uploads/
 *.log
+# Local / sample video assets (not tracked)
+*.mp4
 .DS_Store
+
+# Python — bytecode, tooling caches, editable install metadata
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
 
 # Local config overrides (merged by movieteller_config loader)
 config/local.yaml

@@ -47,5 +47,6 @@ MovieTeller 使用统一的配置加载规则（Python **`movieteller_config`**�
 - **换供应商**：一般只需改 YAML / `API_KEYS_JSON` / `PREFIX_API_KEY` 与 `NARRATION_IMAGE_MODEL`，无需改 `movieteller_config` 或 `server/src/config` 代码（约定：`FOO_API_KEY`→`foo`，`API_KEYS_JSON` 覆盖单项 env）。
 - **模板**：复制根目录 [.env.example](.env.example) 为 `.env`（`.env` 勿提交）。
 - **详情**：见 [python/movieteller_config/README.md](python/movieteller_config/README.md) 与根目录 [.env.example](.env.example)。
+- **Python 旁白生成（ffmpeg 区间抽帧 + OpenAI 兼容 API，slug 由 ``NARRATION_PROVIDER`` 指定）**：见 [python/narration/README.md](python/narration/README.md)。
 
 后端启动时会加载 `.env` 并缓存配置（见 `server/src/index.js` 中对 `loadConfig()` 的调用）。

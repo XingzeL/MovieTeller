@@ -149,11 +149,15 @@ function envOverrides() {
   if (model) o.narration_image_model = model;
   if (process.env.MAX_FRAMES_PER_SEGMENT)
     o.max_frames_per_segment = parseInt(process.env.MAX_FRAMES_PER_SEGMENT, 10);
+  if (process.env.NARRATION_FRAME_MAX_EDGE)
+    o.narration_frame_max_edge = parseInt(process.env.NARRATION_FRAME_MAX_EDGE, 10);
   if (process.env.FFMPEG_PATH) o.ffmpeg_path = process.env.FFMPEG_PATH;
   if (process.env.DEFAULT_PROMPT_STYLE)
     o.default_prompt_style = process.env.DEFAULT_PROMPT_STYLE;
   if (process.env.VIDEOCAPTIONER_BIN) o.videocaptioner_bin = process.env.VIDEOCAPTIONER_BIN;
   if (process.env.NARRATION_API_URL) o.narration_api_url = process.env.NARRATION_API_URL;
+  if (process.env.NARRATION_PROVIDER)
+    o.narration_provider = String(process.env.NARRATION_PROVIDER).trim().toLowerCase();
 
   const envUrls = collectBaseUrlsFromEnv();
   if (Object.keys(envUrls).length > 0) o.api_base_urls = envUrls;

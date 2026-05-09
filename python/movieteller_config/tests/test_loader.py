@@ -16,6 +16,8 @@ class TestLoader(unittest.TestCase):
                 "OPENAI_API_KEY": "sk-test",
                 "NARRATION_IMAGE_MODEL": "gpt-4o",
                 "MAX_FRAMES_PER_SEGMENT": "8",
+                "NARRATION_FRAME_MAX_EDGE": "512",
+                "NARRATION_PROVIDER": "modelscope",
             },
             clear=False,
         ):
@@ -24,6 +26,8 @@ class TestLoader(unittest.TestCase):
             self.assertEqual(s.get_api_key("openai"), "sk-test")
             self.assertEqual(s.narration_image_model, "gpt-4o")
             self.assertEqual(s.max_frames_per_segment, 8)
+            self.assertEqual(s.narration_frame_max_edge, 512)
+            self.assertEqual(s.narration_provider, "modelscope")
 
     def test_api_keys_json_and_anthropic_env(self):
         with mock.patch.dict(
@@ -50,13 +54,24 @@ ffmpeg_path: /usr/bin/ffmpeg
         ) as f:
             f.write(content)
             path = f.name
+        saved_mf = os.environ.get("MAX_FRAMES_PER_SEGMENT")
         try:
-            with mock.patch.dict(os.environ, {"MOVIE_TELLER_CONFIG": path}, clear=False):
-                d = load_flat_dict()
-                self.assertEqual(d.get("narration_image_model"), "from-file")
-                self.assertEqual(d.get("max_frames_per_segment"), 3)
+            with mock.patch("movieteller_config.loader._load_repo_dotenv", lambda: None):
+                with mock.patch(
+                    "movieteller_config.loader._repo_root_config_paths",
+                    return_value=[],
+                ):
+                    with mock.patch.dict(
+                        os.environ, {"MOVIE_TELLER_CONFIG": path}, clear=False
+                    ):
+                        os.environ.pop("MAX_FRAMES_PER_SEGMENT", None)
+                        d = load_flat_dict()
+                        self.assertEqual(d.get("narration_image_model"), "from-file")
+                        self.assertEqual(d.get("max_frames_per_segment"), 3)
         finally:
             Path(path).unlink(missing_ok=True)
+            if saved_mf is not None:
+                os.environ["MAX_FRAMES_PER_SEGMENT"] = saved_mf
 
     def test_env_beats_yaml_file(self):
         content = "narration_image_model: from-yaml\n"
@@ -98,9 +113,12 @@ ffmpeg_path: /usr/bin/ffmpeg
                 "max_frames_per_segment": "12",
                 "ffmpeg_path": "ff",
                 "default_prompt_style": "how-to",
+                "narration_frame_max_edge": "640",
             }
         )
         self.assertEqual(s.max_frames_per_segment, 12)
+        self.assertEqual(s.narration_frame_max_edge, 640)
+        self.assertEqual(s.narration_provider, "openai")
         self.assertEqual(len(s.api_keys), 0)
         self.assertEqual(len(s.api_base_urls), 0)
         self.assertEqual(len(s.provider_models), 0)
@@ -132,19 +150,32 @@ ffmpeg_path: /usr/bin/ffmpeg
         self.assertEqual(s.model_for_provider("other"), "fallback-m")
 
     def test_modelscope_env(self):
-        with mock.patch.dict(
-            os.environ,
-            {
-                "MODELSCOPE_API_KEY_FREE": "ms-free-token",
-                "MODELSCOPE_BASE_URL": "https://api-inference.modelscope.cn/v1",
-                "NARRATION_IMAGE_MODEL": "qwen/Qwen-VL-Max",
-            },
-            clear=False,
-        ):
-            s = load_settings()
-            self.assertEqual(s.get_api_key("modelscope"), "ms-free-token")
-            self.assertEqual(s.get_api_base_url("modelscope"), "https://api-inference.modelscope.cn/v1")
-            self.assertEqual(s.narration_image_model, "qwen/Qwen-VL-Max")
+        saved_json = os.environ.pop("API_BASE_URLS_JSON", None)
+        try:
+            with mock.patch("movieteller_config.loader._load_repo_dotenv", lambda: None):
+                with mock.patch(
+                    "movieteller_config.loader._repo_root_config_paths",
+                    return_value=[],
+                ):
+                    with mock.patch.dict(
+                        os.environ,
+                        {
+                            "MODELSCOPE_API_KEY_FREE": "ms-free-token",
+                            "MODELSCOPE_BASE_URL": "https://api-inference.modelscope.cn/v1",
+                            "NARRATION_IMAGE_MODEL": "qwen/Qwen-VL-Max",
+                        },
+                        clear=False,
+                    ):
+                        s = load_settings()
+                        self.assertEqual(s.get_api_key("modelscope"), "ms-free-token")
+                        self.assertEqual(
+                            s.get_api_base_url("modelscope"),
+                            "https://api-inference.modelscope.cn/v1",
+                        )
+                        self.assertEqual(s.narration_image_model, "qwen/Qwen-VL-Max")
+        finally:
+            if saved_json is not None:
+                os.environ["API_BASE_URLS_JSON"] = saved_json
 
     def test_api_keys_json_placeholder_indirection(self):
         with mock.patch.dict(

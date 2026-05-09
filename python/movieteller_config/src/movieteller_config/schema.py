@@ -44,10 +44,12 @@ class Settings:
     openai_base_url: str | None
     narration_image_model: str
     max_frames_per_segment: int
+    narration_frame_max_edge: int
     ffmpeg_path: str
     default_prompt_style: str
     videocaptioner_bin: str | None
     narration_api_url: str | None
+    narration_provider: str
     api_keys: Mapping[str, str]
     api_base_urls: Mapping[str, str]
     provider_models: Mapping[str, str]
@@ -157,10 +159,13 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
         openai_base_url=_expand_optional_env_str(data.get("openai_base_url")),
         narration_image_model=str(data.get("narration_image_model") or "gpt-4o-mini"),
         max_frames_per_segment=_coerce_int(data.get("max_frames_per_segment"), 24),
+        narration_frame_max_edge=_coerce_int(data.get("narration_frame_max_edge"), 768),
         ffmpeg_path=str(data.get("ffmpeg_path") or "ffmpeg"),
         default_prompt_style=str(data.get("default_prompt_style") or "documentary"),
         videocaptioner_bin=_none_if_empty(data.get("videocaptioner_bin")),
         narration_api_url=_none_if_empty(data.get("narration_api_url")),
+        narration_provider=str(data.get("narration_provider") or "openai").strip().lower()
+        or "openai",
         api_keys=MappingProxyType(dict(api_keys)),
         api_base_urls=MappingProxyType(dict(api_base_urls)),
         provider_models=MappingProxyType(dict(provider_models)),

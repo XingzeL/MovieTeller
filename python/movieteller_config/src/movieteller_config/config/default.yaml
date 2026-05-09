@@ -5,10 +5,14 @@
 openai_base_url: null
 narration_image_model: gpt-4o-mini
 max_frames_per_segment: 24
+# Narration: longest side after ffmpeg scale (fits inside edge×edge box, any aspect ratio)
+narration_frame_max_edge: 768
 ffmpeg_path: ffmpeg
 default_prompt_style: documentary
 videocaptioner_bin: null
 narration_api_url: null
+# Which ``api_keys`` / ``api_base_urls`` / ``provider_models`` slug the narration module calls (OpenAI-compatible SDK).
+narration_provider: modelscope
 
 # Optional: multiple providers (env API_KEYS_JSON and *_API_KEY vars override / merge)
 # api_keys:

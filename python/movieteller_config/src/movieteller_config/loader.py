@@ -182,6 +182,8 @@ def _env_overrides() -> dict[str, Any]:
         out["narration_image_model"] = model
     if v := os.environ.get("MAX_FRAMES_PER_SEGMENT"):
         out["max_frames_per_segment"] = int(v)
+    if v := os.environ.get("NARRATION_FRAME_MAX_EDGE"):
+        out["narration_frame_max_edge"] = int(v)
     if v := os.environ.get("FFMPEG_PATH"):
         out["ffmpeg_path"] = v
     if v := os.environ.get("DEFAULT_PROMPT_STYLE"):
@@ -190,6 +192,8 @@ def _env_overrides() -> dict[str, Any]:
         out["videocaptioner_bin"] = v
     if v := os.environ.get("NARRATION_API_URL"):
         out["narration_api_url"] = v
+    if v := os.environ.get("NARRATION_PROVIDER"):
+        out["narration_provider"] = str(v).strip().lower()
 
     url_patch = _collect_base_urls_from_env()
     if url_patch:
@@ -219,14 +223,22 @@ def _env_overrides() -> dict[str, Any]:
     return out
 
 
-def load_settings(*, require_openai: bool = False) -> Settings:
+def load_settings(
+    *, require_openai: bool = False, require_narration: bool = False
+) -> Settings:
     """
-    Load merged Settings. If require_openai=True, raises when OpenAI key missing.
+    Load merged Settings.
+
+    - ``require_openai``: raises when the ``openai`` provider key is missing (legacy).
+    - ``require_narration``: raises when the key for ``narration_provider`` is missing
+      (any slug in ``api_keys``, e.g. ``openai``, ``modelscope``).
     """
     data = load_flat_dict()
     settings = settings_from_dict(data)
     if require_openai:
         settings.require_openai()
+    if require_narration:
+        settings.require_api_key(settings.narration_provider)
     return settings
 
 
