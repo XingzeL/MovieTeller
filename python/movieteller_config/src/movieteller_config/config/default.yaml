@@ -1,0 +1,22 @@
+# See movieteller_config README and repository root .env.example.
+# api_keys / api_base_urls: arbitrary provider slugs — no code whitelist required.
+# Env: PREFIX_API_KEY -> slug prefix (lowercase); PREFIX_BASE_URL -> same; plus API_KEYS_JSON / API_BASE_URLS_JSON.
+
+openai_base_url: null
+narration_image_model: gpt-4o-mini
+max_frames_per_segment: 24
+ffmpeg_path: ffmpeg
+default_prompt_style: documentary
+videocaptioner_bin: null
+narration_api_url: null
+
+# Optional: multiple providers (env API_KEYS_JSON and *_API_KEY vars override / merge)
+# api_keys:
+#   openai: sk-...
+#   modelscope: ms-...
+# api_base_urls:
+#   modelscope: https://api-inference.modelscope.cn/v1
+# provider_models:
+#   openai: gpt-4o
+#   modelscope: qwen/Qwen-VL-Max
+#   # 未列出的 slug 使用上面的 narration_image_model 作为回退
