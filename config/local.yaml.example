@@ -11,25 +11,45 @@ api_keys:
   modelscope: "$MODELSCOPE_API_KEY_FREE"
   volcengine: "$VOLCENGINE_API_KEY"
   glm: "$GLM_API_KEY"
+  # Alibaba DashScope (OpenAI-compatible); env DASHSCOPE_API_KEY is auto-mapped to slug dashscope too.
+  dashscope: "${DASHSCOPE_API_KEY}"
 
 api_base_urls:
   modelscope: "https://api-inference.modelscope.cn/v1"
   volcengine: "https://ark.cn-beijing.volces.com/api/v3"
   glm: "https://open.bigmodel.cn/api/paas/v4"
+  # Uncomment when narration_provider: dashscope (verify region/endpoint in DashScope docs).
+  # dashscope: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
-provider_model_catalog:
+narration_provider_model_catalog:
   volcengine:
-    - doubao-seed-2-0-mini-260428
-    - doubao-seed-1-6-flash-250615
     - doubao-seed-1-6-vision-250815
   glm:
     - glm-4.6v-flash
   modelscope:
     - Qwen/Qwen3-VL-30B-A3B-Instruct
 
-# Optional: lock one model per slug (overrides catalog for that slug).
-# provider_models:
+# Optional narration-only per-provider fixed model.
+# narration_provider_models:
 #   glm: glm-4.6v-flash
+
+# Optional narration post-process before TTS.
+# narration_polish_enabled: true
+# narration_polish_provider: glm
+# narration_polish_model_index: 0
+# narration_polish_model: null   # optional explicit override; higher priority than index
+# narration_polish_provider_model_catalog:
+#   glm:
+#     - glm-4.7-flash
+#   dashscope:
+#     - qwen-turbo
+#     - qwen2.5-7b-instruct
+# narration_polish_provider_models:
+#   dashscope: qwen-turbo
+# narration_polish_target_wpm: 150
+# narration_polish_cefr_level: B1
+# narration_polish_strength: medium
+# narration_polish_safety_margin_sec: 0.2
 
 # -----------------------------------------------------------------------------
 # Legacy commented snippets (ModelScope-only minimal layout):
@@ -38,4 +58,10 @@ provider_model_catalog:
 #   modelscope: "$MODELSCOPE_API_KEY_FREE"
 # api_base_urls:
 #   modelscope: "https://api-inference.modelscope.cn/v1"
-# Model switching without editing provider_models: NARRATION_MODEL=... or NARRATION_MODEL_INDEX=...
+# Model switching without editing narration_provider_model_catalog: NARRATION_MODEL=... or NARRATION_MODEL_INDEX=...
+
+# --- VideoCaptioner subtitle extraction (Python subprocess + optional HTTP /api/extract/subtitles) ---
+# videocaptioner_bin: null   # or absolute path to videocaptioner executable
+# videocaptioner_asr: bijian   # bijian | jianying | whisper-api | whisper-cpp
+# videocaptioner_language: auto
+# videocaptioner_transcribe_timeout_ms: null   # milliseconds; null = no timeout

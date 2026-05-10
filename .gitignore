@@ -12,12 +12,17 @@ server/uploads/
 *.log
 # Local / sample video assets (not tracked)
 *.mp4
+# Generated subtitle / narration artifacts
+*.extracted.srt
+*.narration.json
 .DS_Store
 
 # Python — bytecode, tooling caches, editable install metadata
 __pycache__/
 *.py[cod]
 *$py.class
+.venv/
+.venv-*/
 *.egg-info/
 .eggs/
 *.egg

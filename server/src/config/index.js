@@ -123,8 +123,27 @@ function collectBaseUrlsFromEnv() {
   return urls;
 }
 
-function collectProviderModelCatalogFromEnv() {
-  const rawJson = process.env.PROVIDER_MODEL_CATALOG_JSON?.trim();
+function collectModelMapFromEnv(envName) {
+  const out = {};
+  const rawJson = process.env[envName]?.trim();
+  if (rawJson) {
+    try {
+      const parsed = JSON.parse(rawJson);
+      if (parsed && typeof parsed === "object") {
+        for (const [k, v] of Object.entries(parsed)) {
+          if (v == null || String(v).trim() === "") continue;
+          out[String(k).trim().toLowerCase()] = String(v).trim();
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return out;
+}
+
+function collectModelCatalogFromEnv(envName) {
+  const rawJson = process.env[envName]?.trim();
   if (!rawJson) return {};
   try {
     const parsed = JSON.parse(rawJson);
@@ -146,25 +165,6 @@ function collectProviderModelCatalogFromEnv() {
   }
 }
 
-function collectProviderModelsFromEnv() {
-  const out = {};
-  const rawJson = process.env.PROVIDER_MODELS_JSON?.trim();
-  if (rawJson) {
-    try {
-      const parsed = JSON.parse(rawJson);
-      if (parsed && typeof parsed === "object") {
-        for (const [k, v] of Object.entries(parsed)) {
-          if (v == null || String(v).trim() === "") continue;
-          out[String(k).trim().toLowerCase()] = String(v).trim();
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  return out;
-}
-
 function envOverrides() {
   const o = {};
   if (process.env.OPENAI_API_KEY) o.openai_api_key = process.env.OPENAI_API_KEY;
@@ -179,6 +179,14 @@ function envOverrides() {
   if (process.env.DEFAULT_PROMPT_STYLE)
     o.default_prompt_style = process.env.DEFAULT_PROMPT_STYLE;
   if (process.env.VIDEOCAPTIONER_BIN) o.videocaptioner_bin = process.env.VIDEOCAPTIONER_BIN;
+  if (process.env.VIDEOCAPTIONER_ASR?.trim())
+    o.videocaptioner_asr = process.env.VIDEOCAPTIONER_ASR.trim().toLowerCase();
+  if (process.env.VIDEOCAPTIONER_LANGUAGE?.trim())
+    o.videocaptioner_language = process.env.VIDEOCAPTIONER_LANGUAGE.trim();
+  if (process.env.VIDEOCAPTIONER_TRANSCRIBE_TIMEOUT_MS?.trim()) {
+    const n = parseInt(process.env.VIDEOCAPTIONER_TRANSCRIBE_TIMEOUT_MS.trim(), 10);
+    if (!Number.isNaN(n)) o.videocaptioner_transcribe_timeout_ms = n;
+  }
   if (process.env.NARRATION_API_URL) o.narration_api_url = process.env.NARRATION_API_URL;
   if (process.env.NARRATION_PROVIDER)
     o.narration_provider = String(process.env.NARRATION_PROVIDER).trim().toLowerCase();
@@ -189,6 +197,55 @@ function envOverrides() {
   if (rawIdx != null && String(rawIdx).trim() !== "") {
     const n = parseInt(String(rawIdx).trim(), 10);
     if (!Number.isNaN(n)) o.narration_model_index = Math.max(0, n);
+  }
+  const narrationProviderModels = collectModelMapFromEnv("NARRATION_PROVIDER_MODELS_JSON");
+  if (Object.keys(narrationProviderModels).length > 0) {
+    o.narration_provider_models = narrationProviderModels;
+  }
+  const narrationProviderCatalog = collectModelCatalogFromEnv(
+    "NARRATION_PROVIDER_MODEL_CATALOG_JSON"
+  );
+  if (Object.keys(narrationProviderCatalog).length > 0) {
+    o.narration_provider_model_catalog = narrationProviderCatalog;
+  }
+  if (process.env.NARRATION_POLISH_ENABLED?.trim()) {
+    o.narration_polish_enabled = process.env.NARRATION_POLISH_ENABLED.trim();
+  }
+  if (process.env.NARRATION_POLISH_PROVIDER?.trim()) {
+    o.narration_polish_provider = process.env.NARRATION_POLISH_PROVIDER.trim().toLowerCase();
+  }
+  if (process.env.NARRATION_POLISH_MODEL?.trim()) {
+    o.narration_polish_model = process.env.NARRATION_POLISH_MODEL.trim();
+  }
+  if (process.env.NARRATION_POLISH_MODEL_INDEX?.trim()) {
+    const n = parseInt(process.env.NARRATION_POLISH_MODEL_INDEX.trim(), 10);
+    if (!Number.isNaN(n)) o.narration_polish_model_index = Math.max(0, n);
+  }
+  const polishProviderModels = collectModelMapFromEnv(
+    "NARRATION_POLISH_PROVIDER_MODELS_JSON"
+  );
+  if (Object.keys(polishProviderModels).length > 0) {
+    o.narration_polish_provider_models = polishProviderModels;
+  }
+  const polishProviderCatalog = collectModelCatalogFromEnv(
+    "NARRATION_POLISH_PROVIDER_MODEL_CATALOG_JSON"
+  );
+  if (Object.keys(polishProviderCatalog).length > 0) {
+    o.narration_polish_provider_model_catalog = polishProviderCatalog;
+  }
+  if (process.env.NARRATION_POLISH_TARGET_WPM?.trim()) {
+    const n = parseInt(process.env.NARRATION_POLISH_TARGET_WPM.trim(), 10);
+    if (!Number.isNaN(n)) o.narration_polish_target_wpm = n;
+  }
+  if (process.env.NARRATION_POLISH_CEFR_LEVEL?.trim()) {
+    o.narration_polish_cefr_level = process.env.NARRATION_POLISH_CEFR_LEVEL.trim().toUpperCase();
+  }
+  if (process.env.NARRATION_POLISH_STRENGTH?.trim()) {
+    o.narration_polish_strength = process.env.NARRATION_POLISH_STRENGTH.trim().toLowerCase();
+  }
+  if (process.env.NARRATION_POLISH_SAFETY_MARGIN_SEC?.trim()) {
+    const n = Number.parseFloat(process.env.NARRATION_POLISH_SAFETY_MARGIN_SEC.trim());
+    if (!Number.isNaN(n)) o.narration_polish_safety_margin_sec = n;
   }
 
   const envUrls = collectBaseUrlsFromEnv();
@@ -233,13 +290,27 @@ export function loadConfig(opts = {}) {
     ...normalizeApiBaseUrlsObject(merged.api_base_urls ?? {}),
     ...collectBaseUrlsFromEnv(),
   });
-  merged.provider_models = normalizeProviderModelsObject({
-    ...normalizeProviderModelsObject(merged.provider_models ?? {}),
-    ...collectProviderModelsFromEnv(),
+  merged.narration_provider_models = normalizeProviderModelsObject({
+    ...normalizeProviderModelsObject(merged.narration_provider_models ?? {}),
+    ...collectModelMapFromEnv("NARRATION_PROVIDER_MODELS_JSON"),
   });
-  merged.provider_model_catalog = normalizeProviderModelCatalogObject({
-    ...normalizeProviderModelCatalogObject(merged.provider_model_catalog ?? {}),
-    ...normalizeProviderModelCatalogObject(collectProviderModelCatalogFromEnv()),
+  merged.narration_provider_model_catalog = normalizeProviderModelCatalogObject({
+    ...normalizeProviderModelCatalogObject(merged.narration_provider_model_catalog ?? {}),
+    ...normalizeProviderModelCatalogObject(
+      collectModelCatalogFromEnv("NARRATION_PROVIDER_MODEL_CATALOG_JSON")
+    ),
+  });
+  merged.narration_polish_provider_models = normalizeProviderModelsObject({
+    ...normalizeProviderModelsObject(merged.narration_polish_provider_models ?? {}),
+    ...collectModelMapFromEnv("NARRATION_POLISH_PROVIDER_MODELS_JSON"),
+  });
+  merged.narration_polish_provider_model_catalog = normalizeProviderModelCatalogObject({
+    ...normalizeProviderModelCatalogObject(
+      merged.narration_polish_provider_model_catalog ?? {}
+    ),
+    ...normalizeProviderModelCatalogObject(
+      collectModelCatalogFromEnv("NARRATION_POLISH_PROVIDER_MODEL_CATALOG_JSON")
+    ),
   });
   if (merged.openai_api_key?.trim() && !merged.api_keys.openai) {
     merged.api_keys = {
@@ -273,15 +344,42 @@ export function getModelForProvider(config, provider) {
     return config.narrationModel.trim();
   }
 
-  const pm = config.providerModels?.[id]?.trim();
-  if (pm) return pm;
+  const scopedPm = config.narrationProviderModels?.[id]?.trim();
+  if (scopedPm) return scopedPm;
 
-  const catalog = config.providerModelCatalog?.[id];
-  if (catalog && catalog.length > 0) {
+  const scopedCatalog = config.narrationProviderModelCatalog?.[id];
+  if (scopedCatalog && scopedCatalog.length > 0) {
     let idx = id === np ? Number(config.narrationModelIndex ?? 0) : 0;
     if (!Number.isFinite(idx) || idx < 0) idx = 0;
-    if (idx < catalog.length) return catalog[idx];
-    return catalog[0];
+    if (idx < scopedCatalog.length) return scopedCatalog[idx];
+    return scopedCatalog[0];
+  }
+
+  return fallback;
+}
+
+/** Model id for narration-polish by provider slug. */
+export function getPolishModelForProvider(config, provider) {
+  const id = String(provider).trim().toLowerCase();
+  const fallback = getModelForProvider(config, id);
+  const pp = String(config.narrationPolishProvider || config.narrationProvider || "openai")
+    .trim()
+    .toLowerCase();
+  if (!id) return fallback;
+
+  if (id === pp && config.narrationPolishModel?.trim()) {
+    return config.narrationPolishModel.trim();
+  }
+
+  const scopedPm = config.narrationPolishProviderModels?.[id]?.trim();
+  if (scopedPm) return scopedPm;
+
+  const scopedCatalog = config.narrationPolishProviderModelCatalog?.[id];
+  if (scopedCatalog && scopedCatalog.length > 0) {
+    let idx = id === pp ? Number(config.narrationPolishModelIndex ?? 0) : 0;
+    if (!Number.isFinite(idx) || idx < 0) idx = 0;
+    if (idx < scopedCatalog.length) return scopedCatalog[idx];
+    return scopedCatalog[0];
   }
 
   return fallback;

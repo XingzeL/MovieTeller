@@ -45,7 +45,8 @@ def generate_narration(
     Call chat completions (OpenAI-compatible SDK) with text + inline PNG images.
 
     Provider comes from ``provider_slug`` or ``settings.narration_provider`` (must match
-    ``api_keys`` / ``api_base_urls`` / ``provider_models`` / ``provider_model_catalog`` slugs in movieteller_config).
+    ``api_keys`` / ``api_base_urls`` / ``narration_provider_models`` /
+    ``narration_provider_model_catalog`` slugs in movieteller_config).
     """
     slug = _resolve_provider_slug(settings, provider_slug)
     api_key = settings.require_api_key(slug)

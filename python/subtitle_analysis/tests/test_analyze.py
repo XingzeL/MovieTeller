@@ -1,0 +1,208 @@
+from pathlib import Path
+
+from subtitle_analysis import analyze_srt_text
+from subtitle_analysis.pipeline import analyze_and_narrate, narrate_analysis_candidates
+
+
+def test_analyze_srt_internal_gaps_without_video_duration():
+    raw = """1
+00:00:01,000 --> 00:00:03,000
+hello
+
+2
+00:00:06,000 --> 00:00:08,000
+world
+"""
+    result = analyze_srt_text(raw, min_gap_sec=1.0, subtitle_guard_sec=0.25)
+    assert len(result.subtitle_spans) == 2
+    assert len(result.raw_gaps) == 2
+    assert result.raw_gaps[0].start_sec == 0.0
+    assert result.raw_gaps[0].end_sec == 1.0
+    assert result.raw_gaps[1].start_sec == 3.0
+    assert result.raw_gaps[1].end_sec == 6.0
+    assert len(result.narration_candidates) == 1
+    seg = result.narration_candidates[0]
+    assert seg.start_sec == 3.25
+    assert seg.end_sec == 5.75
+    assert seg.prev_subtitle_text == "hello"
+    assert seg.next_subtitle_text == "world"
+
+
+def test_analyze_srt_with_trailing_gap_when_video_duration_known():
+    raw = """1
+00:00:00,000 --> 00:00:02,000
+a
+
+2
+00:00:05,000 --> 00:00:06,000
+b
+"""
+    result = analyze_srt_text(
+        raw,
+        video_duration_sec=10.0,
+        min_gap_sec=1.0,
+        subtitle_guard_sec=0.5,
+    )
+    assert len(result.raw_gaps) == 2
+    assert result.raw_gaps[0].start_sec == 2.0
+    assert result.raw_gaps[0].end_sec == 5.0
+    assert result.raw_gaps[1].start_sec == 6.0
+    assert result.raw_gaps[1].end_sec == 10.0
+    assert len(result.narration_candidates) == 2
+    assert result.narration_candidates[0].start_sec == 2.5
+    assert result.narration_candidates[0].end_sec == 4.5
+    assert result.narration_candidates[1].start_sec == 6.5
+    assert result.narration_candidates[1].end_sec == 10.0
+
+
+def test_overlapping_cues_are_merged_before_gap_analysis():
+    raw = """1
+00:00:00,000 --> 00:00:03,000
+a
+
+2
+00:00:02,500 --> 00:00:05,000
+b
+
+3
+00:00:08,000 --> 00:00:09,000
+c
+"""
+    result = analyze_srt_text(
+        raw,
+        video_duration_sec=10.0,
+        min_gap_sec=0.5,
+        subtitle_guard_sec=0.25,
+    )
+    assert len(result.subtitle_spans) == 2
+    assert result.subtitle_spans[0].start_sec == 0.0
+    assert result.subtitle_spans[0].end_sec == 5.0
+    assert len(result.raw_gaps) == 2
+    assert result.raw_gaps[0].start_sec == 5.0
+    assert result.raw_gaps[0].end_sec == 8.0
+
+
+def test_narrate_analysis_candidates_uses_selected_gaps():
+    raw = """1
+00:00:00,000 --> 00:00:01,000
+a
+
+2
+00:00:04,000 --> 00:00:05,000
+b
+"""
+    analysis = analyze_srt_text(
+        raw,
+        video_duration_sec=8.0,
+        min_gap_sec=1.0,
+        subtitle_guard_sec=0.25,
+    )
+
+    calls = []
+
+    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
+        calls.append((video_path, start_sec, end_sec, kwargs["prompt_style"]))
+        timings = kwargs["timings_out"]
+        timings["extract_sec"] = 0.1
+        timings["api_sec"] = 0.2
+        timings["total_sec"] = 0.3
+        timings["frame_count"] = 4
+        return (f"text-{start_sec:.2f}-{end_sec:.2f}", end_sec - start_sec)
+
+    segments = narrate_analysis_candidates(
+        analysis,
+        video_path="demo.mp4",
+        max_candidates=2,
+        prompt_style="documentary",
+        narrator=fake_narrator,
+        settings=object(),
+    )
+    assert len(segments) == 2
+    assert segments[0].narration_text.startswith("text-")
+    assert segments[0].frame_count == 4
+    assert calls[0][0] == "demo.mp4"
+
+
+def test_analyze_and_narrate_returns_timed_json_payload():
+    raw = """1
+00:00:01,000 --> 00:00:02,000
+x
+"""
+
+    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
+        return ("narration", end_sec - start_sec)
+
+    from tempfile import TemporaryDirectory
+
+    with TemporaryDirectory() as tmp:
+        srt = Path(tmp) / "demo.srt"
+        srt.write_text(raw, encoding="utf-8")
+        payload = analyze_and_narrate(
+            srt_path=str(srt),
+            video_path="demo.mp4",
+            video_duration_sec=4.0,
+            min_gap_sec=0.5,
+            subtitle_guard_sec=0.0,
+            max_candidates=1,
+            narrator=fake_narrator,
+            settings=object(),
+        )
+    assert "narratedSegments" in payload
+    assert len(payload["narratedSegments"]) == 1
+    assert payload["narratedSegments"][0]["text"] == "narration"
+    assert payload["narratedSegments"][0]["speechText"] == "narration"
+
+
+def test_analyze_and_narrate_can_polish_output():
+    raw = """1
+00:00:01,000 --> 00:00:02,000
+x
+"""
+
+    class FakePolishResult:
+        polished_text = "short line"
+        segment_duration_sec = 1.0
+        target_duration_sec = 0.8
+        safety_margin_sec = 0.2
+        speaking_rate_wpm = 150
+        target_word_count = 2
+        original_word_count = 6
+        polished_word_count = 2
+        estimated_original_duration_sec = 2.4
+        estimated_polished_duration_sec = 0.8
+        cefr_level = "A1"
+        strength = "strong"
+        provider = "openai"
+        model = "gpt-4.1-mini"
+        timing_api_sec = 0.12
+
+    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
+        return ("longer narration line here", end_sec - start_sec)
+
+    def fake_polisher(text, duration_sec, **kwargs):
+        assert text == "longer narration line here"
+        assert duration_sec == 1.0
+        return FakePolishResult()
+
+    from tempfile import TemporaryDirectory
+
+    with TemporaryDirectory() as tmp:
+        srt = Path(tmp) / "demo.srt"
+        srt.write_text(raw, encoding="utf-8")
+        payload = analyze_and_narrate(
+            srt_path=str(srt),
+            video_path="demo.mp4",
+            video_duration_sec=4.0,
+            min_gap_sec=0.5,
+            subtitle_guard_sec=0.0,
+            max_candidates=1,
+            narrator=fake_narrator,
+            polisher=fake_polisher,
+            polish=True,
+            settings=object(),
+        )
+    seg = payload["narratedSegments"][0]
+    assert seg["text"] == "longer narration line here"
+    assert seg["speechText"] == "short line"
+    assert seg["polish"]["fitsDuration"] is True
+    assert seg["polish"]["cefrLevel"] == "A1"

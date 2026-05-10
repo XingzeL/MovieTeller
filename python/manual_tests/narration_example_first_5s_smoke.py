@@ -7,13 +7,14 @@
 
 在仓库根目录执行（与 movieteller_config 加载方式一致，cwd 建议为根目录）::
 
-    pip install -e python/movieteller_config
+    source .venv/bin/activate
+    python -m pip install -e python/movieteller_config -e python/narration
     # 若尚未安装 narration 包，用 PYTHONPATH 即可
     PYTHONPATH=python/movieteller_config/src:python/narration/src \\
-        python3 python/manual_tests/narration_example_first_5s_smoke.py
+        python python/manual_tests/narration_example_first_5s_smoke.py
 
     PYTHONPATH=python/movieteller_config/src:python/narration/src \\
-        python3 python/manual_tests/narration_example_first_5s_smoke.py --narrate
+        python python/manual_tests/narration_example_first_5s_smoke.py --narrate
 """
 
 from __future__ import annotations

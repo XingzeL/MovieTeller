@@ -9,13 +9,26 @@ export const DEFAULTS = {
   default_prompt_style: "documentary",
   narration_provider: "openai",
   videocaptioner_bin: null,
+  videocaptioner_asr: "bijian",
+  videocaptioner_language: "auto",
+  videocaptioner_transcribe_timeout_ms: null,
   narration_api_url: null,
   api_keys: {},
   api_base_urls: {},
-  provider_models: {},
-  provider_model_catalog: {},
+  narration_provider_models: {},
+  narration_provider_model_catalog: {},
+  narration_polish_provider_models: {},
+  narration_polish_provider_model_catalog: {},
   narration_model: null,
   narration_model_index: 0,
+  narration_polish_enabled: false,
+  narration_polish_provider: null,
+  narration_polish_model: null,
+  narration_polish_model_index: 0,
+  narration_polish_target_wpm: 150,
+  narration_polish_cefr_level: "B1",
+  narration_polish_strength: "medium",
+  narration_polish_safety_margin_sec: 0.2,
 };
 
 /**
@@ -55,11 +68,17 @@ export function toPublicConfig(s) {
     ffmpegPath: s.ffmpeg_path ?? "ffmpeg",
     defaultPromptStyle: s.default_prompt_style ?? "documentary",
     videocaptionerBin: s.videocaptioner_bin ?? null,
+    videocaptionerAsr: String(s.videocaptioner_asr ?? "bijian").trim().toLowerCase() || "bijian",
+    videocaptionerLanguage: String(s.videocaptioner_language ?? "auto").trim() || "auto",
+    videocaptionerTranscribeTimeoutMs:
+      s.videocaptioner_transcribe_timeout_ms == null || s.videocaptioner_transcribe_timeout_ms === ""
+        ? null
+        : Number(s.videocaptioner_transcribe_timeout_ms),
     narrationApiUrl: s.narration_api_url ?? null,
     narrationProvider: String(s.narration_provider ?? "openai").trim().toLowerCase() || "openai",
     apiKeys,
     apiBaseUrls,
-    providerModels: normalizeProviderModelsObject(s.provider_models ?? {}),
+    narrationProviderModels: normalizeProviderModelsObject(s.narration_provider_models ?? {}),
     narrationModel:
       s.narration_model != null && String(s.narration_model).trim()
         ? expandEnvPlaceholder(String(s.narration_model))
@@ -68,11 +87,47 @@ export function toPublicConfig(s) {
       const n = Number(s.narration_model_index ?? 0);
       return Number.isFinite(n) && n >= 0 ? n : 0;
     })(),
-    providerModelCatalog: normalizeProviderModelCatalogObject(s.provider_model_catalog ?? {}),
+    narrationPolishEnabled: (() => {
+      const raw = String(s.narration_polish_enabled ?? "").trim().toLowerCase();
+      return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+    })(),
+    narrationPolishProvider:
+      s.narration_polish_provider != null && String(s.narration_polish_provider).trim()
+        ? String(s.narration_polish_provider).trim().toLowerCase()
+        : null,
+    narrationPolishModel:
+      s.narration_polish_model != null && String(s.narration_polish_model).trim()
+        ? expandEnvPlaceholder(String(s.narration_polish_model))
+        : null,
+    narrationPolishProviderModels: normalizeProviderModelsObject(
+      s.narration_polish_provider_models ?? {}
+    ),
+    narrationPolishModelIndex: (() => {
+      const n = Number(s.narration_polish_model_index ?? 0);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    })(),
+    narrationPolishTargetWpm: (() => {
+      const n = Number(s.narration_polish_target_wpm ?? 150);
+      return Number.isFinite(n) && n > 0 ? Math.floor(n) : 150;
+    })(),
+    narrationPolishCefrLevel:
+      String(s.narration_polish_cefr_level ?? "B1").trim().toUpperCase() || "B1",
+    narrationPolishStrength:
+      String(s.narration_polish_strength ?? "medium").trim().toLowerCase() || "medium",
+    narrationPolishSafetyMarginSec: (() => {
+      const n = Number(s.narration_polish_safety_margin_sec ?? 0.2);
+      return Number.isFinite(n) && n >= 0 ? n : 0.2;
+    })(),
+    narrationProviderModelCatalog: normalizeProviderModelCatalogObject(
+      s.narration_provider_model_catalog ?? {}
+    ),
+    narrationPolishProviderModelCatalog: normalizeProviderModelCatalogObject(
+      s.narration_polish_provider_model_catalog ?? {}
+    ),
   };
 }
 
-/** Slug -> list of model ids (YAML ``provider_model_catalog`` / ``PROVIDER_MODEL_CATALOG_JSON``). */
+/** Slug -> list of model ids. */
 export function normalizeProviderModelCatalogObject(raw) {
   const out = {};
   if (!raw || typeof raw !== "object") return out;

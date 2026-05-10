@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "narration_polish"
+version = "0.1.0"
+description = "Rewrite MovieTeller narration to fit TTS duration and language-level targets"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "openai>=1.30.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+narration_polish = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

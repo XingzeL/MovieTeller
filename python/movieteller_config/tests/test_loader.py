@@ -106,6 +106,92 @@ ffmpeg_path: /usr/bin/ffmpeg
         )
         self.assertEqual(s.require_api_key("gemini"), "g-key")
 
+    def test_videocaptioner_subtitle_defaults(self):
+        s = settings_from_dict({"narration_image_model": "gpt-4o-mini"})
+        self.assertEqual(s.videocaptioner_asr, "bijian")
+        self.assertEqual(s.videocaptioner_language, "auto")
+        self.assertIsNone(s.videocaptioner_transcribe_timeout_ms)
+        self.assertFalse(s.narration_polish_enabled)
+        self.assertEqual(s.narration_polish_model_index, 0)
+        self.assertEqual(s.narration_polish_target_wpm, 150)
+        self.assertEqual(s.narration_polish_cefr_level, "B1")
+        self.assertEqual(s.narration_polish_strength, "medium")
+        self.assertEqual(s.narration_polish_safety_margin_sec, 0.2)
+        self.assertEqual(len(s.narration_provider_models), 0)
+        self.assertEqual(len(s.narration_provider_model_catalog), 0)
+        self.assertEqual(len(s.narration_polish_provider_models), 0)
+        self.assertEqual(len(s.narration_polish_provider_model_catalog), 0)
+
+    def test_videocaptioner_subtitle_overrides(self):
+        s = settings_from_dict(
+            {
+                "narration_image_model": "gpt-4o-mini",
+                "videocaptioner_asr": "whisper-api",
+                "videocaptioner_language": "en",
+                "videocaptioner_transcribe_timeout_ms": 120000,
+            }
+        )
+        self.assertEqual(s.videocaptioner_asr, "whisper-api")
+        self.assertEqual(s.videocaptioner_language, "en")
+        self.assertEqual(s.videocaptioner_transcribe_timeout_ms, 120000)
+
+    def test_narration_polish_overrides(self):
+        s = settings_from_dict(
+            {
+                "narration_image_model": "gpt-4o-mini",
+                "narration_provider": "volcengine",
+                "narration_polish_provider_models": {"openai": "gpt-4.1-mini"},
+                "narration_polish_enabled": True,
+                "narration_polish_provider": "openai",
+                "narration_polish_model": "gpt-4.1-nano",
+                "narration_polish_target_wpm": 172,
+                "narration_polish_cefr_level": "c1",
+                "narration_polish_strength": "Strong",
+                "narration_polish_safety_margin_sec": "0.35",
+            }
+        )
+        self.assertTrue(s.narration_polish_enabled)
+        self.assertEqual(s.polish_provider(), "openai")
+        self.assertEqual(s.polish_model_for_provider(), "gpt-4.1-nano")
+        self.assertEqual(s.narration_polish_target_wpm, 172)
+        self.assertEqual(s.narration_polish_cefr_level, "C1")
+        self.assertEqual(s.narration_polish_strength, "strong")
+        self.assertEqual(s.narration_polish_safety_margin_sec, 0.35)
+
+    def test_narration_polish_provider_catalog_and_index(self):
+        s = settings_from_dict(
+            {
+                "narration_provider": "volcengine",
+                "narration_polish_provider": "glm",
+                "narration_provider_model_catalog": {
+                    "volcengine": ["vision-a", "vision-b"],
+                },
+                "narration_polish_provider_model_catalog": {
+                    "glm": ["text-a", "text-b", "text-c"],
+                },
+                "narration_polish_model_index": 2,
+                "narration_image_model": "fallback-m",
+            }
+        )
+        self.assertEqual(s.polish_provider(), "glm")
+        self.assertEqual(s.polish_model_for_provider(), "text-c")
+        self.assertEqual(s.model_for_provider("volcengine"), "vision-a")
+
+    def test_scoped_model_pools_override_shared_catalog(self):
+        s = settings_from_dict(
+            {
+                "narration_provider": "volcengine",
+                "narration_provider_model_catalog": {"volcengine": ["vision-only"]},
+                "narration_polish_provider": "volcengine",
+                "narration_polish_provider_model_catalog": {
+                    "volcengine": ["text-only", "text-backup"]
+                },
+                "narration_image_model": "fallback-m",
+            }
+        )
+        self.assertEqual(s.model_for_provider("volcengine"), "vision-only")
+        self.assertEqual(s.polish_model_for_provider(), "text-only")
+
     def test_settings_from_dict_coercion(self):
         s = settings_from_dict(
             {
@@ -121,15 +207,17 @@ ffmpeg_path: /usr/bin/ffmpeg
         self.assertEqual(s.narration_provider, "openai")
         self.assertEqual(len(s.api_keys), 0)
         self.assertEqual(len(s.api_base_urls), 0)
-        self.assertEqual(len(s.provider_models), 0)
-        self.assertEqual(len(s.provider_model_catalog), 0)
+        self.assertEqual(len(s.narration_provider_models), 0)
+        self.assertEqual(len(s.narration_provider_model_catalog), 0)
+        self.assertEqual(len(s.narration_polish_provider_models), 0)
+        self.assertEqual(len(s.narration_polish_provider_model_catalog), 0)
 
-    def test_provider_model_catalog_and_index(self):
+    def test_narration_provider_model_catalog_and_index(self):
         s = settings_from_dict(
             {
                 "narration_provider": "volcengine",
                 "narration_image_model": "fallback-m",
-                "provider_model_catalog": {
+                "narration_provider_model_catalog": {
                     "volcengine": ["ep-first", "ep-second"],
                 },
             }
@@ -139,7 +227,7 @@ ffmpeg_path: /usr/bin/ffmpeg
             {
                 "narration_provider": "volcengine",
                 "narration_image_model": "fallback-m",
-                "provider_model_catalog": {"volcengine": ["a", "b"]},
+                "narration_provider_model_catalog": {"volcengine": ["a", "b"]},
                 "narration_model_index": 1,
             }
         )
@@ -152,7 +240,7 @@ ffmpeg_path: /usr/bin/ffmpeg
                 {
                     "NARRATION_PROVIDER": "volcengine",
                     "NARRATION_MODEL": "ep-explicit",
-                    "PROVIDER_MODEL_CATALOG_JSON": '{"volcengine":["a","b"]}',
+                    "NARRATION_PROVIDER_MODEL_CATALOG_JSON": '{"volcengine":["a","b"]}',
                     "NARRATION_IMAGE_MODEL": "fallback-m",
                 },
                 clear=True,
@@ -160,12 +248,12 @@ ffmpeg_path: /usr/bin/ffmpeg
                 s = load_settings()
                 self.assertEqual(s.model_for_provider("volcengine"), "ep-explicit")
 
-    def test_provider_models_override_catalog(self):
+    def test_narration_provider_models_override_catalog(self):
         s = settings_from_dict(
             {
                 "narration_provider": "volcengine",
-                "provider_models": {"volcengine": "pinned-model"},
-                "provider_model_catalog": {"volcengine": ["a", "b"]},
+                "narration_provider_models": {"volcengine": "pinned-model"},
+                "narration_provider_model_catalog": {"volcengine": ["a", "b"]},
                 "narration_image_model": "fallback-m",
             }
         )
@@ -175,7 +263,7 @@ ffmpeg_path: /usr/bin/ffmpeg
         s = settings_from_dict(
             {
                 "narration_provider": "volcengine",
-                "provider_model_catalog": {
+                "narration_provider_model_catalog": {
                     "volcengine": ["v1", "v2"],
                     "modelscope": ["m1", "m2"],
                 },
@@ -191,7 +279,7 @@ ffmpeg_path: /usr/bin/ffmpeg
             {
                 "OPENAI_API_KEY": "sk-x",
                 "MODELSCOPE_API_KEY": "ms-x",
-                "PROVIDER_MODELS_JSON": '{"openai":"gpt-4o","modelscope":"qwen/Qwen-VL-Max"}',
+                "NARRATION_PROVIDER_MODELS_JSON": '{"openai":"gpt-4o","modelscope":"qwen/Qwen-VL-Max"}',
                 "NARRATION_IMAGE_MODEL": "gpt-4o-mini",
             },
             clear=False,
@@ -201,11 +289,14 @@ ffmpeg_path: /usr/bin/ffmpeg
             self.assertEqual(s.model_for_provider("modelscope"), "qwen/Qwen-VL-Max")
             self.assertEqual(s.model_for_provider("anthropic"), "gpt-4o-mini")
 
-    def test_settings_from_dict_provider_models(self):
+    def test_settings_from_dict_narration_provider_models(self):
         s = settings_from_dict(
             {
                 "narration_image_model": "fallback-m",
-                "provider_models": {"openai": "gpt-4o", "modelscope": "qwen/Qwen-VL-Max"},
+                "narration_provider_models": {
+                    "openai": "gpt-4o",
+                    "modelscope": "qwen/Qwen-VL-Max",
+                },
             }
         )
         self.assertEqual(s.model_for_provider("openai"), "gpt-4o")
@@ -269,6 +360,50 @@ ffmpeg_path: /usr/bin/ffmpeg
         ):
             s = load_settings()
             self.assertEqual(s.get_api_base_url("foo"), "https://right.example")
+
+    def test_narration_polish_env_overrides(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NARRATION_POLISH_ENABLED": "true",
+                "NARRATION_POLISH_PROVIDER": "OPENAI",
+                "NARRATION_POLISH_MODEL": "gpt-4.1-mini",
+                "NARRATION_POLISH_MODEL_INDEX": "2",
+                "NARRATION_POLISH_TARGET_WPM": "165",
+                "NARRATION_POLISH_CEFR_LEVEL": "a1",
+                "NARRATION_POLISH_STRENGTH": "LIGHT",
+                "NARRATION_POLISH_SAFETY_MARGIN_SEC": "0.5",
+            },
+            clear=False,
+        ):
+            s = load_settings()
+            self.assertTrue(s.narration_polish_enabled)
+            self.assertEqual(s.narration_polish_provider, "openai")
+            self.assertEqual(s.narration_polish_model, "gpt-4.1-mini")
+            self.assertEqual(s.narration_polish_model_index, 2)
+            self.assertEqual(s.narration_polish_target_wpm, 165)
+            self.assertEqual(s.narration_polish_cefr_level, "A1")
+            self.assertEqual(s.narration_polish_strength, "light")
+            self.assertEqual(s.narration_polish_safety_margin_sec, 0.5)
+
+    def test_scoped_model_catalog_env_overrides(self):
+        with mock.patch("movieteller_config.loader._load_repo_dotenv", lambda: None):
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "NARRATION_PROVIDER": "volcengine",
+                    "NARRATION_PROVIDER_MODEL_CATALOG_JSON": '{"volcengine":["vision-a","vision-b"]}',
+                    "NARRATION_POLISH_PROVIDER": "dashscope",
+                    "NARRATION_POLISH_PROVIDER_MODEL_CATALOG_JSON": '{"dashscope":["text-a","text-b"]}',
+                    "NARRATION_POLISH_MODEL_INDEX": "1",
+                    "NARRATION_IMAGE_MODEL": "fallback-m",
+                },
+                clear=True,
+            ):
+                s = load_settings()
+                self.assertEqual(s.model_for_provider("volcengine"), "vision-a")
+                self.assertEqual(s.polish_provider(), "dashscope")
+                self.assertEqual(s.polish_model_for_provider(), "text-b")
 
 
 if __name__ == "__main__":

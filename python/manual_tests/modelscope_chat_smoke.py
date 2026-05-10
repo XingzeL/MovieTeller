@@ -5,11 +5,12 @@
 
 运行前（仓库根目录）::
 
-    pip install -e python/movieteller_config
+    source .venv/bin/activate
+    python -m pip install -e python/movieteller_config
 
 执行::
 
-    PYTHONPATH=python/movieteller_config/src python3 python/manual_tests/modelscope_chat_smoke.py
+    PYTHONPATH=python/movieteller_config/src python python/manual_tests/modelscope_chat_smoke.py
 
 或在任意目录，只要 cwd 能命中仓库 ``config/local.yaml`` / 根目录 ``.env``（与正式代码一致）。
 """

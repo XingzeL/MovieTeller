@@ -123,9 +123,9 @@ def _collect_base_urls_from_env() -> dict[str, str]:
     return urls
 
 
-def _collect_provider_models_from_env() -> dict[str, str]:
+def _collect_model_map_from_env(env_name: str) -> dict[str, str]:
     out: dict[str, str] = {}
-    raw_json = os.environ.get("PROVIDER_MODELS_JSON", "").strip()
+    raw_json = os.environ.get(env_name, "").strip()
     if raw_json:
         try:
             parsed = json.loads(raw_json)
@@ -139,10 +139,10 @@ def _collect_provider_models_from_env() -> dict[str, str]:
     return out
 
 
-def _collect_provider_model_catalog_from_env() -> dict[str, list[str]]:
-    """Env ``PROVIDER_MODEL_CATALOG_JSON``: slug -> list of model ids."""
+def _collect_model_catalog_from_env(env_name: str) -> dict[str, list[str]]:
+    """Env JSON: slug -> list of model ids."""
     out: dict[str, list[str]] = {}
-    raw_json = os.environ.get("PROVIDER_MODEL_CATALOG_JSON", "").strip()
+    raw_json = os.environ.get(env_name, "").strip()
     if not raw_json:
         return out
     try:
@@ -162,8 +162,6 @@ def _collect_provider_model_catalog_from_env() -> dict[str, list[str]]:
     except json.JSONDecodeError:
         pass
     return out
-
-
 def _load_repo_dotenv() -> None:
     """Load repo-root ``.env`` when present (same convention as Node ``loadConfig``)."""
     path = find_dotenv(usecwd=True)
@@ -215,6 +213,15 @@ def _env_overrides() -> dict[str, Any]:
         out["default_prompt_style"] = v
     if v := os.environ.get("VIDEOCAPTIONER_BIN"):
         out["videocaptioner_bin"] = v
+    if v := os.environ.get("VIDEOCAPTIONER_ASR", "").strip():
+        out["videocaptioner_asr"] = v
+    if v := os.environ.get("VIDEOCAPTIONER_LANGUAGE", "").strip():
+        out["videocaptioner_language"] = v
+    if v := os.environ.get("VIDEOCAPTIONER_TRANSCRIBE_TIMEOUT_MS", "").strip():
+        try:
+            out["videocaptioner_transcribe_timeout_ms"] = int(v)
+        except ValueError:
+            pass
     if v := os.environ.get("NARRATION_API_URL"):
         out["narration_api_url"] = v
     if v := os.environ.get("NARRATION_PROVIDER"):
@@ -224,6 +231,47 @@ def _env_overrides() -> dict[str, Any]:
     if (idx_raw := os.environ.get("NARRATION_MODEL_INDEX", "").strip()):
         try:
             out["narration_model_index"] = max(0, int(idx_raw))
+        except ValueError:
+            pass
+    narration_pm = _collect_model_map_from_env("NARRATION_PROVIDER_MODELS_JSON")
+    if narration_pm:
+        out["narration_provider_models"] = narration_pm
+    narration_cat = _collect_model_catalog_from_env(
+        "NARRATION_PROVIDER_MODEL_CATALOG_JSON"
+    )
+    if narration_cat:
+        out["narration_provider_model_catalog"] = narration_cat
+    if v := os.environ.get("NARRATION_POLISH_ENABLED", "").strip():
+        out["narration_polish_enabled"] = v
+    if v := os.environ.get("NARRATION_POLISH_PROVIDER", "").strip():
+        out["narration_polish_provider"] = v.lower()
+    if v := os.environ.get("NARRATION_POLISH_MODEL", "").strip():
+        out["narration_polish_model"] = v
+    if (idx_raw := os.environ.get("NARRATION_POLISH_MODEL_INDEX", "").strip()):
+        try:
+            out["narration_polish_model_index"] = max(0, int(idx_raw))
+        except ValueError:
+            pass
+    polish_pm = _collect_model_map_from_env("NARRATION_POLISH_PROVIDER_MODELS_JSON")
+    if polish_pm:
+        out["narration_polish_provider_models"] = polish_pm
+    polish_cat = _collect_model_catalog_from_env(
+        "NARRATION_POLISH_PROVIDER_MODEL_CATALOG_JSON"
+    )
+    if polish_cat:
+        out["narration_polish_provider_model_catalog"] = polish_cat
+    if v := os.environ.get("NARRATION_POLISH_TARGET_WPM", "").strip():
+        try:
+            out["narration_polish_target_wpm"] = int(v)
+        except ValueError:
+            pass
+    if v := os.environ.get("NARRATION_POLISH_CEFR_LEVEL", "").strip():
+        out["narration_polish_cefr_level"] = v.upper()
+    if v := os.environ.get("NARRATION_POLISH_STRENGTH", "").strip():
+        out["narration_polish_strength"] = v.lower()
+    if v := os.environ.get("NARRATION_POLISH_SAFETY_MARGIN_SEC", "").strip():
+        try:
+            out["narration_polish_safety_margin_sec"] = float(v)
         except ValueError:
             pass
 
@@ -244,21 +292,49 @@ def _env_overrides() -> dict[str, Any]:
             merged_keys = dict(env_keys)
         out["api_keys"] = merged_keys
 
-    pm_patch = _collect_provider_models_from_env()
-    if pm_patch:
-        existing_pm = out.get("provider_models")
-        if isinstance(existing_pm, dict):
-            out["provider_models"] = {**existing_pm, **pm_patch}
+    narration_pm_patch = _collect_model_map_from_env("NARRATION_PROVIDER_MODELS_JSON")
+    if narration_pm_patch:
+        existing = out.get("narration_provider_models")
+        if isinstance(existing, dict):
+            out["narration_provider_models"] = {**existing, **narration_pm_patch}
         else:
-            out["provider_models"] = pm_patch
+            out["narration_provider_models"] = narration_pm_patch
 
-    cat_patch = _collect_provider_model_catalog_from_env()
-    if cat_patch:
-        existing_cat = out.get("provider_model_catalog")
-        if isinstance(existing_cat, dict):
-            out["provider_model_catalog"] = {**existing_cat, **cat_patch}
+    narration_cat_patch = _collect_model_catalog_from_env(
+        "NARRATION_PROVIDER_MODEL_CATALOG_JSON"
+    )
+    if narration_cat_patch:
+        existing = out.get("narration_provider_model_catalog")
+        if isinstance(existing, dict):
+            out["narration_provider_model_catalog"] = {
+                **existing,
+                **narration_cat_patch,
+            }
         else:
-            out["provider_model_catalog"] = cat_patch
+            out["narration_provider_model_catalog"] = narration_cat_patch
+
+    polish_pm_patch = _collect_model_map_from_env(
+        "NARRATION_POLISH_PROVIDER_MODELS_JSON"
+    )
+    if polish_pm_patch:
+        existing = out.get("narration_polish_provider_models")
+        if isinstance(existing, dict):
+            out["narration_polish_provider_models"] = {**existing, **polish_pm_patch}
+        else:
+            out["narration_polish_provider_models"] = polish_pm_patch
+
+    polish_cat_patch = _collect_model_catalog_from_env(
+        "NARRATION_POLISH_PROVIDER_MODEL_CATALOG_JSON"
+    )
+    if polish_cat_patch:
+        existing = out.get("narration_polish_provider_model_catalog")
+        if isinstance(existing, dict):
+            out["narration_polish_provider_model_catalog"] = {
+                **existing,
+                **polish_cat_patch,
+            }
+        else:
+            out["narration_polish_provider_model_catalog"] = polish_cat_patch
 
     return out
 

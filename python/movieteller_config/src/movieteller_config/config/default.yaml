@@ -10,6 +10,33 @@ narration_frame_max_edge: 768
 ffmpeg_path: ffmpeg
 default_prompt_style: documentary
 videocaptioner_bin: null
+# VideoCaptioner transcribe: ASR engine (CLI --asr choices).
+videocaptioner_asr: bijian
+# ISO 639-1 code or "auto"
+videocaptioner_language: auto
+# Milliseconds; omit or null for no subprocess timeout
+videocaptioner_transcribe_timeout_ms: null
 narration_api_url: null
-# Which ``api_keys`` / ``api_base_urls`` / ``provider_models`` / ``provider_model_catalog`` slug the narration module calls (OpenAI-compatible SDK).
+# Which provider slug the narration module calls (OpenAI-compatible SDK).
 narration_provider: glm
+# Narration-scoped model pools.
+narration_provider_models: {}
+narration_provider_model_catalog: {}
+# Optional narration post-process step before TTS.
+narration_polish_enabled: false
+# Optional dedicated provider/model for polishing. Omit to reuse narration provider/model.
+narration_polish_provider: null
+narration_polish_model: null
+# Catalog index for ``narration_polish_provider`` when ``narration_polish_model`` unset.
+narration_polish_model_index: 0
+# Polish-scoped model pools.
+narration_polish_provider_models: {}
+narration_polish_provider_model_catalog: {}
+# Speaking-rate target for downstream TTS fit checks.
+narration_polish_target_wpm: 150
+# Requested CEFR-like language level for rewritten narration (A1, B1, C1, ...).
+narration_polish_cefr_level: B1
+# How aggressively to rewrite: light / medium / strong.
+narration_polish_strength: medium
+# Reserve this many seconds inside the segment so TTS has a small buffer.
+narration_polish_safety_margin_sec: 0.2

@@ -3,9 +3,24 @@
 
 ## MVP：本地运行（AI English Scene Narrator · mock）
 
-前置条件：**Node.js 18+**（建议使用当前 LTS）。
+前置条件：**Node.js 18+**（建议使用当前 LTS）和 **Python 3.12**。
 
 本仓库为前后端分离的两套工程，开发时需要**同时**启动后端与前端。
+
+### 0. Python 虚拟环境
+
+建议所有 Python 相关能力都放在仓库根目录的 **`.venv`** 中运行：
+
+```bash
+cd /path/to/MovieTeller
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ./python/movieteller_config -e ./python/narration -e ./python/subtitle_extraction
+python -m pip install -e ./python/narration_polish -e ./python/subtitle_analysis
+python -m pip install videocaptioner pytest
+```
+
+后端的字幕提取链路现在会**优先使用仓库根目录 `.venv/bin/python3`**；手动 smoke 也应先激活 `.venv`，再运行 `python` / `python3`。
 
 ### 1. 后端（Express）
 
@@ -18,6 +33,8 @@ npm run dev
 默认监听 **http://localhost:3001**。健康检查：`GET http://localhost:3001/health`。
 
 Mock 生成接口：`POST http://localhost:3001/api/generate`（JSON 传 URL；`multipart/form-data` 传本地 MP4）。
+
+字幕提取（建议安装到项目 `.venv`：`python -m pip install videocaptioner`）：`POST http://localhost:3001/api/extract/subtitles`，`multipart/form-data` 字段 **`file`**。 Python 包见 [python/subtitle_extraction/README.md](python/subtitle_extraction/README.md)。
 
 ### 2. 前端（Vite + React）
 
@@ -48,5 +65,6 @@ MovieTeller 使用统一的配置加载规则（Python **`movieteller_config`**�
 - **模板**：复制根目录 [.env.example](.env.example) 为 `.env`（`.env` 勿提交）。
 - **详情**：见 [python/movieteller_config/README.md](python/movieteller_config/README.md) 与根目录 [.env.example](.env.example)。
 - **Python 旁白生成（ffmpeg 区间抽帧 + OpenAI 兼容 API，slug 由 ``NARRATION_PROVIDER`` 指定）**：见 [python/narration/README.md](python/narration/README.md)。
+- **Python 旁白润色（按 duration / 语速 / CEFR 级别改写，供后续 TTS 使用）**：见 [python/narration_polish/README.md](python/narration_polish/README.md)。
 
 后端启动时会加载 `.env` 并缓存配置（见 `server/src/index.js` 中对 `loadConfig()` 的调用）。
