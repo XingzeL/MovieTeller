@@ -17,6 +17,8 @@ cp config/local.yaml.example config/local.yaml
 - **旁白专用模型池**：`narration_provider_models` / `narration_provider_model_catalog` 专门给视频旁白用；再通过 **`NARRATION_MODEL`** / **`NARRATION_MODEL_INDEX`** 为当前 `narration_provider` 选择模型。这里建议只放多模态或视觉 narration 友好的模型。
 - **旁白润色专用模型池**：`narration_polish_provider_models` / `narration_polish_provider_model_catalog` 专门给文本润色用；再通过 `narration_polish_model` / `narration_polish_model_index` 选择模型。这里建议只放文本模型，避免索引到多模态模型。
 - **旁白润色配置**：`narration_polish_*` 控制 narration 之后、TTS 之前的文本重写，包括是否启用、使用哪个 provider、目标语速、CEFR 难度级别，以及为 TTS 预留的时长 buffer。若显式设置 `narration_polish_model`，它仍然高于 index。
+- **旁白语音配置**：`narration_speech_*` 控制 TTS 阶段；当前实现的 provider 是 `edge_tts`，可配置 voice、rate、volume、pitch、boundary。
+- **视频混流配置**：`narration_video_*` 控制把旁白音频混回源视频时的音量比例。
 - **环境变量约定**：任意 **`YOUR_VENDOR_API_KEY`** → slug `your_vendor`；任意 **`YOUR_VENDOR_BASE_URL`** → slug `your_vendor`。也可用 **`API_KEYS_JSON`** / **`API_BASE_URLS_JSON`** / **`NARRATION_PROVIDER_MODELS_JSON`** / **`NARRATION_PROVIDER_MODEL_CATALOG_JSON`** / **`NARRATION_POLISH_PROVIDER_MODELS_JSON`** / **`NARRATION_POLISH_PROVIDER_MODEL_CATALOG_JSON`** 集中写 JSON（优先级更高）；JSON 值支持整段 **`${VAR}`**、**`$$VAR`** 或 **`$VAR`**，从环境变量解析，便于不写死明文。
 
 示例 `config/local.yaml`：
@@ -45,6 +47,11 @@ narration_polish_target_wpm: 150
 narration_polish_cefr_level: B1
 narration_polish_strength: medium
 narration_polish_safety_margin_sec: 0.2
+narration_speech_enabled: true
+narration_speech_provider: edge_tts
+narration_speech_voice: en-US-EmmaMultilingualNeural
+narration_video_background_audio_volume: 0.35
+narration_video_speech_audio_volume: 1.0
 max_frames_per_segment: 16
 ```
 

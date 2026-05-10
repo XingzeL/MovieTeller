@@ -206,3 +206,127 @@ x
     assert seg["speechText"] == "short line"
     assert seg["polish"]["fitsDuration"] is True
     assert seg["polish"]["cefrLevel"] == "A1"
+
+
+def test_analyze_and_narrate_can_synthesize_speech():
+    raw = """1
+00:00:01,000 --> 00:00:02,000
+x
+"""
+
+    class FakeSpeechResult:
+        text = "short line"
+        audio_path = "/tmp/segment_001.mp3"
+        metadata_path = "/tmp/segment_001.mp3.jsonl"
+        segment_duration_sec = 1.0
+        target_duration_sec = 0.8
+        raw_duration_sec = 0.92
+        audio_duration_sec = 0.79
+        provider = "edge_tts"
+        voice = "en-US-EmmaMultilingualNeural"
+        rate = "+0%"
+        volume = "+0%"
+        pitch = "+0Hz"
+        boundary = "SentenceBoundary"
+        fit_applied = True
+        timing_tts_sec = 0.3
+        timing_fit_sec = 0.1
+
+    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
+        return ("short line", end_sec - start_sec)
+
+    def fake_synthesizer(text, duration_sec, **kwargs):
+        assert text == "short line"
+        assert duration_sec == 1.0
+        assert kwargs["target_duration_sec"] == 1.0
+        return FakeSpeechResult()
+
+    from tempfile import TemporaryDirectory
+
+    with TemporaryDirectory() as tmp:
+        srt = Path(tmp) / "demo.srt"
+        srt.write_text(raw, encoding="utf-8")
+        payload = analyze_and_narrate(
+            srt_path=str(srt),
+            video_path="demo.mp4",
+            video_duration_sec=4.0,
+            min_gap_sec=0.5,
+            subtitle_guard_sec=0.0,
+            max_candidates=1,
+            narrator=fake_narrator,
+            synthesizer=fake_synthesizer,
+            speech=True,
+            speech_output_dir=str(Path(tmp) / "speech"),
+            settings=object(),
+        )
+    seg = payload["narratedSegments"][0]
+    assert seg["speech"]["audioPath"].endswith(".mp3")
+    assert seg["speech"]["fitApplied"] is True
+    assert seg["speech"]["fitsDuration"] is True
+
+
+def test_analyze_and_narrate_can_render_video():
+    raw = """1
+00:00:01,000 --> 00:00:02,000
+x
+"""
+
+    class FakeSpeechResult:
+        text = "short line"
+        audio_path = "/tmp/segment_001.mp3"
+        metadata_path = "/tmp/segment_001.mp3.jsonl"
+        segment_duration_sec = 1.0
+        target_duration_sec = 1.0
+        raw_duration_sec = 0.9
+        audio_duration_sec = 0.9
+        provider = "edge_tts"
+        voice = "en-US-EmmaMultilingualNeural"
+        rate = "+0%"
+        volume = "+0%"
+        pitch = "+0Hz"
+        boundary = "SentenceBoundary"
+        fit_applied = False
+        timing_tts_sec = 0.3
+        timing_fit_sec = None
+
+    class FakeRenderResult:
+        video_path = "demo.mp4"
+        output_path = "demo.narrated.mp4"
+        segment_count = 1
+        video_duration_sec = 4.0
+        background_audio_volume = 0.35
+        speech_audio_volume = 1.0
+        timing_render_sec = 0.5
+
+    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
+        return ("short line", end_sec - start_sec)
+
+    def fake_synthesizer(text, duration_sec, **kwargs):
+        return FakeSpeechResult()
+
+    def fake_renderer(video_path, segments, **kwargs):
+        assert video_path == "demo.mp4"
+        assert len(segments) == 1
+        assert segments[0].audio_path.endswith(".mp3")
+        return FakeRenderResult()
+
+    from tempfile import TemporaryDirectory
+
+    with TemporaryDirectory() as tmp:
+        srt = Path(tmp) / "demo.srt"
+        srt.write_text(raw, encoding="utf-8")
+        payload = analyze_and_narrate(
+            srt_path=str(srt),
+            video_path="demo.mp4",
+            video_duration_sec=4.0,
+            min_gap_sec=0.5,
+            subtitle_guard_sec=0.0,
+            max_candidates=1,
+            narrator=fake_narrator,
+            synthesizer=fake_synthesizer,
+            video_renderer=fake_renderer,
+            embed_video=True,
+            speech_output_dir=str(Path(tmp) / "speech"),
+            settings=object(),
+        )
+    assert payload["renderedVideo"]["outputPath"] == "demo.narrated.mp4"

@@ -247,6 +247,35 @@ function envOverrides() {
     const n = Number.parseFloat(process.env.NARRATION_POLISH_SAFETY_MARGIN_SEC.trim());
     if (!Number.isNaN(n)) o.narration_polish_safety_margin_sec = n;
   }
+  if (process.env.NARRATION_SPEECH_ENABLED?.trim()) {
+    o.narration_speech_enabled = process.env.NARRATION_SPEECH_ENABLED.trim();
+  }
+  if (process.env.NARRATION_SPEECH_PROVIDER?.trim()) {
+    o.narration_speech_provider = process.env.NARRATION_SPEECH_PROVIDER.trim().toLowerCase();
+  }
+  if (process.env.NARRATION_SPEECH_VOICE?.trim()) {
+    o.narration_speech_voice = process.env.NARRATION_SPEECH_VOICE.trim();
+  }
+  if (process.env.NARRATION_SPEECH_RATE?.trim()) {
+    o.narration_speech_rate = process.env.NARRATION_SPEECH_RATE.trim();
+  }
+  if (process.env.NARRATION_SPEECH_VOLUME?.trim()) {
+    o.narration_speech_volume = process.env.NARRATION_SPEECH_VOLUME.trim();
+  }
+  if (process.env.NARRATION_SPEECH_PITCH?.trim()) {
+    o.narration_speech_pitch = process.env.NARRATION_SPEECH_PITCH.trim();
+  }
+  if (process.env.NARRATION_SPEECH_BOUNDARY?.trim()) {
+    o.narration_speech_boundary = process.env.NARRATION_SPEECH_BOUNDARY.trim();
+  }
+  if (process.env.NARRATION_VIDEO_BACKGROUND_AUDIO_VOLUME?.trim()) {
+    const n = Number.parseFloat(process.env.NARRATION_VIDEO_BACKGROUND_AUDIO_VOLUME.trim());
+    if (!Number.isNaN(n)) o.narration_video_background_audio_volume = n;
+  }
+  if (process.env.NARRATION_VIDEO_SPEECH_AUDIO_VOLUME?.trim()) {
+    const n = Number.parseFloat(process.env.NARRATION_VIDEO_SPEECH_AUDIO_VOLUME.trim());
+    if (!Number.isNaN(n)) o.narration_video_speech_audio_volume = n;
+  }
 
   const envUrls = collectBaseUrlsFromEnv();
   if (Object.keys(envUrls).length > 0) o.api_base_urls = envUrls;

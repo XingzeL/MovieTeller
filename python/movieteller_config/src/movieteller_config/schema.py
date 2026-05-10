@@ -77,6 +77,15 @@ class Settings:
     narration_polish_cefr_level: str
     narration_polish_strength: str
     narration_polish_safety_margin_sec: float
+    narration_speech_enabled: bool
+    narration_speech_provider: str
+    narration_speech_voice: str
+    narration_speech_rate: str
+    narration_speech_volume: str
+    narration_speech_pitch: str
+    narration_speech_boundary: str
+    narration_video_background_audio_volume: float
+    narration_video_speech_audio_volume: float
 
     def get_api_key(self, provider: str) -> str | None:
         """Return key for a provider slug (e.g. \"openai\", \"anthropic\", \"gemini\")."""
@@ -368,5 +377,40 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
         narration_polish_safety_margin_sec=max(
             0.0,
             _coerce_float(data.get("narration_polish_safety_margin_sec"), 0.2),
+        ),
+        narration_speech_enabled=_coerce_bool(
+            data.get("narration_speech_enabled"), False
+        ),
+        narration_speech_provider=(
+            str(data.get("narration_speech_provider") or "edge_tts").strip().lower()
+            or "edge_tts"
+        ),
+        narration_speech_voice=(
+            str(
+                data.get("narration_speech_voice")
+                or "en-US-EmmaMultilingualNeural"
+            ).strip()
+            or "en-US-EmmaMultilingualNeural"
+        ),
+        narration_speech_rate=(
+            str(data.get("narration_speech_rate") or "+0%").strip() or "+0%"
+        ),
+        narration_speech_volume=(
+            str(data.get("narration_speech_volume") or "+0%").strip() or "+0%"
+        ),
+        narration_speech_pitch=(
+            str(data.get("narration_speech_pitch") or "+0Hz").strip() or "+0Hz"
+        ),
+        narration_speech_boundary=(
+            str(data.get("narration_speech_boundary") or "SentenceBoundary").strip()
+            or "SentenceBoundary"
+        ),
+        narration_video_background_audio_volume=max(
+            0.0,
+            _coerce_float(data.get("narration_video_background_audio_volume"), 0.35),
+        ),
+        narration_video_speech_audio_volume=max(
+            0.0,
+            _coerce_float(data.get("narration_video_speech_audio_volume"), 1.0),
         ),
     )

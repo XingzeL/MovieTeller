@@ -34,6 +34,7 @@ class NarratedSegment:
     next_subtitle_text: str | None
     speech_text: str | None = None
     polish: "NarrationPolishDetails | None" = None
+    speech: "NarrationSpeechDetails | None" = None
     timing_extract_sec: float | None = None
     timing_api_sec: float | None = None
     timing_total_sec: float | None = None
@@ -69,6 +70,34 @@ class NarrationPolishDetails:
     @property
     def fits_duration(self) -> bool:
         return self.estimated_polished_duration_sec <= self.target_duration_sec
+
+
+@dataclass(frozen=True)
+class NarrationSpeechDetails:
+    text: str
+    audio_path: str
+    metadata_path: str | None
+    segment_duration_sec: float
+    target_duration_sec: float
+    raw_duration_sec: float
+    audio_duration_sec: float
+    provider: str
+    voice: str
+    rate: str
+    volume: str
+    pitch: str
+    boundary: str
+    fit_applied: bool
+    timing_tts_sec: float | None = None
+    timing_fit_sec: float | None = None
+
+    @property
+    def duration_delta_sec(self) -> float:
+        return self.audio_duration_sec - self.target_duration_sec
+
+    @property
+    def fits_duration(self) -> bool:
+        return self.audio_duration_sec <= (self.target_duration_sec + 0.05)
 
 
 @dataclass(frozen=True)

@@ -10,6 +10,7 @@ from subtitle_analysis.types import (
     NarratedSegment,
     NarrationCandidate,
     NarrationPolishDetails,
+    NarrationSpeechDetails,
     SubtitleAnalysisResult,
     TimeSpan,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "NarrationCandidate",
     "NarratedSegment",
     "NarrationPolishDetails",
+    "NarrationSpeechDetails",
     "SubtitleAnalysisResult",
     "probe_video_duration_sec",
     "analyze_subtitle_cues",

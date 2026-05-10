@@ -50,6 +50,15 @@ narration_provider_model_catalog:
 # narration_polish_cefr_level: B1
 # narration_polish_strength: medium
 # narration_polish_safety_margin_sec: 0.2
+# narration_speech_enabled: true
+# narration_speech_provider: edge_tts
+# narration_speech_voice: en-US-EmmaMultilingualNeural
+# narration_speech_rate: +0%
+# narration_speech_volume: +0%
+# narration_speech_pitch: +0Hz
+# narration_speech_boundary: SentenceBoundary
+# narration_video_background_audio_volume: 0.35
+# narration_video_speech_audio_volume: 1.0
 
 # -----------------------------------------------------------------------------
 # Legacy commented snippets (ModelScope-only minimal layout):

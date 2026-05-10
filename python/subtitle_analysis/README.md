@@ -30,6 +30,7 @@ If you also want the one-click narration pipeline, install `narration` in the sa
 
 ```bash
 python -m pip install -e python/movieteller_config -e python/narration -e python/narration_polish
+python -m pip install -e python/narration_speech -e python/narration_video
 ```
 
 ## CLI
@@ -62,6 +63,24 @@ python -m subtitle_analysis \
   --polish-target-wpm 150 \
   --polish-cefr-level B1 \
   --max-candidates 3 \
+  --json
+```
+
+Run the full pipeline all the way to speech audio and a rendered narrated video:
+
+```bash
+source .venv/bin/activate
+python -m subtitle_analysis \
+  --srt subtitle_example.extracted.srt \
+  --video subtitle_example.mp4 \
+  --min-gap-sec 1.5 \
+  --subtitle-guard-sec 0.25 \
+  --narrate \
+  --polish \
+  --speech \
+  --embed-video \
+  --speech-output-dir subtitle_example.narration_audio \
+  --embed-output subtitle_example.narrated.mp4 \
   --json
 ```
 
@@ -105,6 +124,8 @@ payload = analyze_and_narrate(
     subtitle_guard_sec=0.25,
     max_candidates=3,
     polish=True,
+    speech=True,
+    embed_video=True,
 )
 ```
 

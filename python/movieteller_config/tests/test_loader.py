@@ -117,6 +117,15 @@ ffmpeg_path: /usr/bin/ffmpeg
         self.assertEqual(s.narration_polish_cefr_level, "B1")
         self.assertEqual(s.narration_polish_strength, "medium")
         self.assertEqual(s.narration_polish_safety_margin_sec, 0.2)
+        self.assertFalse(s.narration_speech_enabled)
+        self.assertEqual(s.narration_speech_provider, "edge_tts")
+        self.assertEqual(s.narration_speech_voice, "en-US-EmmaMultilingualNeural")
+        self.assertEqual(s.narration_speech_rate, "+0%")
+        self.assertEqual(s.narration_speech_volume, "+0%")
+        self.assertEqual(s.narration_speech_pitch, "+0Hz")
+        self.assertEqual(s.narration_speech_boundary, "SentenceBoundary")
+        self.assertEqual(s.narration_video_background_audio_volume, 0.35)
+        self.assertEqual(s.narration_video_speech_audio_volume, 1.0)
         self.assertEqual(len(s.narration_provider_models), 0)
         self.assertEqual(len(s.narration_provider_model_catalog), 0)
         self.assertEqual(len(s.narration_polish_provider_models), 0)
@@ -385,6 +394,33 @@ ffmpeg_path: /usr/bin/ffmpeg
             self.assertEqual(s.narration_polish_cefr_level, "A1")
             self.assertEqual(s.narration_polish_strength, "light")
             self.assertEqual(s.narration_polish_safety_margin_sec, 0.5)
+
+    def test_narration_speech_env_overrides(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NARRATION_SPEECH_ENABLED": "true",
+                "NARRATION_SPEECH_PROVIDER": "EDGE_TTS",
+                "NARRATION_SPEECH_VOICE": "en-US-GuyNeural",
+                "NARRATION_SPEECH_RATE": "+12%",
+                "NARRATION_SPEECH_VOLUME": "+3%",
+                "NARRATION_SPEECH_PITCH": "+4Hz",
+                "NARRATION_SPEECH_BOUNDARY": "WordBoundary",
+                "NARRATION_VIDEO_BACKGROUND_AUDIO_VOLUME": "0.2",
+                "NARRATION_VIDEO_SPEECH_AUDIO_VOLUME": "1.3",
+            },
+            clear=False,
+        ):
+            s = load_settings()
+            self.assertTrue(s.narration_speech_enabled)
+            self.assertEqual(s.narration_speech_provider, "edge_tts")
+            self.assertEqual(s.narration_speech_voice, "en-US-GuyNeural")
+            self.assertEqual(s.narration_speech_rate, "+12%")
+            self.assertEqual(s.narration_speech_volume, "+3%")
+            self.assertEqual(s.narration_speech_pitch, "+4Hz")
+            self.assertEqual(s.narration_speech_boundary, "WordBoundary")
+            self.assertEqual(s.narration_video_background_audio_volume, 0.2)
+            self.assertEqual(s.narration_video_speech_audio_volume, 1.3)
 
     def test_scoped_model_catalog_env_overrides(self):
         with mock.patch("movieteller_config.loader._load_repo_dotenv", lambda: None):

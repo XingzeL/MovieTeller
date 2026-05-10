@@ -16,7 +16,7 @@ cd /path/to/MovieTeller
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ./python/movieteller_config -e ./python/narration -e ./python/subtitle_extraction
-python -m pip install -e ./python/narration_polish -e ./python/subtitle_analysis
+python -m pip install -e ./python/narration_polish -e ./python/narration_speech -e ./python/narration_video -e ./python/subtitle_analysis
 python -m pip install videocaptioner pytest
 ```
 
@@ -66,5 +66,7 @@ MovieTeller 使用统一的配置加载规则（Python **`movieteller_config`**�
 - **详情**：见 [python/movieteller_config/README.md](python/movieteller_config/README.md) 与根目录 [.env.example](.env.example)。
 - **Python 旁白生成（ffmpeg 区间抽帧 + OpenAI 兼容 API，slug 由 ``NARRATION_PROVIDER`` 指定）**：见 [python/narration/README.md](python/narration/README.md)。
 - **Python 旁白润色（按 duration / 语速 / CEFR 级别改写，供后续 TTS 使用）**：见 [python/narration_polish/README.md](python/narration_polish/README.md)。
+- **Python 旁白语音生成（edge-tts）**：见 [python/narration_speech/README.md](python/narration_speech/README.md)。
+- **Python 旁白嵌回视频（ffmpeg 混流）**：见 [python/narration_video/README.md](python/narration_video/README.md)。
 
 后端启动时会加载 `.env` 并缓存配置（见 `server/src/index.js` 中对 `loadConfig()` 的调用）。

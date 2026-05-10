@@ -40,6 +40,15 @@ Narration polishing keys used before future TTS:
 - `narration_polish_cefr_level`
 - `narration_polish_strength`
 - `narration_polish_safety_margin_sec`
+- `narration_speech_enabled`
+- `narration_speech_provider`
+- `narration_speech_voice`
+- `narration_speech_rate`
+- `narration_speech_volume`
+- `narration_speech_pitch`
+- `narration_speech_boundary`
+- `narration_video_background_audio_volume`
+- `narration_video_speech_audio_volume`
 
 ## Tests
 

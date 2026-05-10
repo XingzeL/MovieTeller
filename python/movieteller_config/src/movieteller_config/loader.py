@@ -274,6 +274,30 @@ def _env_overrides() -> dict[str, Any]:
             out["narration_polish_safety_margin_sec"] = float(v)
         except ValueError:
             pass
+    if v := os.environ.get("NARRATION_SPEECH_ENABLED", "").strip():
+        out["narration_speech_enabled"] = v
+    if v := os.environ.get("NARRATION_SPEECH_PROVIDER", "").strip():
+        out["narration_speech_provider"] = v.lower()
+    if v := os.environ.get("NARRATION_SPEECH_VOICE", "").strip():
+        out["narration_speech_voice"] = v
+    if v := os.environ.get("NARRATION_SPEECH_RATE", "").strip():
+        out["narration_speech_rate"] = v
+    if v := os.environ.get("NARRATION_SPEECH_VOLUME", "").strip():
+        out["narration_speech_volume"] = v
+    if v := os.environ.get("NARRATION_SPEECH_PITCH", "").strip():
+        out["narration_speech_pitch"] = v
+    if v := os.environ.get("NARRATION_SPEECH_BOUNDARY", "").strip():
+        out["narration_speech_boundary"] = v
+    if v := os.environ.get("NARRATION_VIDEO_BACKGROUND_AUDIO_VOLUME", "").strip():
+        try:
+            out["narration_video_background_audio_volume"] = float(v)
+        except ValueError:
+            pass
+    if v := os.environ.get("NARRATION_VIDEO_SPEECH_AUDIO_VOLUME", "").strip():
+        try:
+            out["narration_video_speech_audio_volume"] = float(v)
+        except ValueError:
+            pass
 
     url_patch = _collect_base_urls_from_env()
     if url_patch:

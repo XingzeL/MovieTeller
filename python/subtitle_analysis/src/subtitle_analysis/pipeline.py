@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable
 
 from movieteller_config import load_settings
@@ -12,6 +13,7 @@ from subtitle_analysis.analyze import analyze_subtitle_file, result_to_dict
 from subtitle_analysis.types import (
     NarratedSegment,
     NarrationPolishDetails,
+    NarrationSpeechDetails,
     SubtitleAnalysisResult,
 )
 
@@ -88,9 +90,18 @@ def narrate_analysis_candidates(
     polish_cefr_level: str | None = None,
     polish_strength: str | None = None,
     polish_safety_margin_sec: float | None = None,
+    speech: bool | None = None,
+    speech_provider_slug: str | None = None,
+    speech_voice: str | None = None,
+    speech_rate: str | None = None,
+    speech_volume: str | None = None,
+    speech_pitch: str | None = None,
+    speech_boundary: str | None = None,
+    speech_output_dir: str | None = None,
     settings: object | None = None,
     narrator: Callable[..., tuple[str, float]] | None = None,
     polisher: Callable[..., object] | None = None,
+    synthesizer: Callable[..., object] | None = None,
 ) -> tuple[NarratedSegment, ...]:
     resolved_settings = (
         settings
@@ -122,13 +133,26 @@ def narrate_analysis_candidates(
         from narration_polish import polish_narration_text as _default_polisher
 
         call_polisher = _default_polisher
+    speech_enabled = (
+        bool(speech)
+        if speech is not None
+        else bool(getattr(resolved_settings, "narration_speech_enabled", False))
+    )
+    call_synthesizer: Callable[..., object] | None = synthesizer
+    if speech_enabled and call_synthesizer is None:
+        from narration_speech import synthesize_narration_text as _default_synthesizer
+
+        call_synthesizer = _default_synthesizer
+    speech_dir = Path(speech_output_dir) if speech_output_dir else None
+    if speech_dir is not None:
+        speech_dir.mkdir(parents=True, exist_ok=True)
 
     candidates = analysis.narration_candidates
     if max_candidates is not None:
         candidates = candidates[: max(0, int(max_candidates))]
 
     out: list[NarratedSegment] = []
-    for seg in candidates:
+    for idx, seg in enumerate(candidates, start=1):
         timings: dict[str, Any] = {}
         text, _duration = call_narrator(
             video_path,
@@ -142,6 +166,7 @@ def narrate_analysis_candidates(
             timings_out=timings,
         )
         polish_details: NarrationPolishDetails | None = None
+        speech_details: NarrationSpeechDetails | None = None
         speech_text = text
         if polish_enabled:
             if call_polisher is None:
@@ -183,6 +208,63 @@ def narrate_analysis_candidates(
                     else None
                 ),
             )
+        if speech_enabled:
+            if call_synthesizer is None:
+                raise RuntimeError("Narration speech synthesizer is not available")
+            if speech_dir is None:
+                raise ValueError("speech_output_dir is required when speech synthesis is enabled")
+            filename = (
+                f"segment_{idx:03d}_"
+                f"{round(seg.start_sec * 1000):08d}_"
+                f"{round(seg.end_sec * 1000):08d}.mp3"
+            )
+            audio_path = speech_dir / filename
+            metadata_path = audio_path.with_suffix(audio_path.suffix + ".jsonl")
+            target_duration_sec = (
+                polish_details.target_duration_sec
+                if polish_details is not None
+                else seg.duration_sec
+            )
+            spoken = call_synthesizer(
+                speech_text,
+                seg.duration_sec,
+                output_path=str(audio_path),
+                metadata_path=str(metadata_path),
+                target_duration_sec=target_duration_sec,
+                provider_slug=speech_provider_slug,
+                voice=speech_voice,
+                rate=speech_rate,
+                volume=speech_volume,
+                pitch=speech_pitch,
+                boundary=speech_boundary,
+                settings=resolved_settings,
+            )
+            speech_details = NarrationSpeechDetails(
+                text=str(getattr(spoken, "text")),
+                audio_path=str(getattr(spoken, "audio_path")),
+                metadata_path=getattr(spoken, "metadata_path", None),
+                segment_duration_sec=float(getattr(spoken, "segment_duration_sec")),
+                target_duration_sec=float(getattr(spoken, "target_duration_sec")),
+                raw_duration_sec=float(getattr(spoken, "raw_duration_sec")),
+                audio_duration_sec=float(getattr(spoken, "audio_duration_sec")),
+                provider=str(getattr(spoken, "provider")),
+                voice=str(getattr(spoken, "voice")),
+                rate=str(getattr(spoken, "rate")),
+                volume=str(getattr(spoken, "volume")),
+                pitch=str(getattr(spoken, "pitch")),
+                boundary=str(getattr(spoken, "boundary")),
+                fit_applied=bool(getattr(spoken, "fit_applied")),
+                timing_tts_sec=(
+                    float(getattr(spoken, "timing_tts_sec"))
+                    if getattr(spoken, "timing_tts_sec", None) is not None
+                    else None
+                ),
+                timing_fit_sec=(
+                    float(getattr(spoken, "timing_fit_sec"))
+                    if getattr(spoken, "timing_fit_sec", None) is not None
+                    else None
+                ),
+            )
         out.append(
             NarratedSegment(
                 start_sec=seg.start_sec,
@@ -192,6 +274,7 @@ def narrate_analysis_candidates(
                 next_subtitle_text=seg.next_subtitle_text,
                 speech_text=speech_text,
                 polish=polish_details,
+                speech=speech_details,
                 timing_extract_sec=(
                     float(timings["extract_sec"]) if "extract_sec" in timings else None
                 ),
@@ -230,9 +313,23 @@ def analyze_and_narrate(
     polish_cefr_level: str | None = None,
     polish_strength: str | None = None,
     polish_safety_margin_sec: float | None = None,
+    speech: bool | None = None,
+    speech_provider_slug: str | None = None,
+    speech_voice: str | None = None,
+    speech_rate: str | None = None,
+    speech_volume: str | None = None,
+    speech_pitch: str | None = None,
+    speech_boundary: str | None = None,
+    speech_output_dir: str | None = None,
+    embed_video: bool = False,
+    embed_output_path: str | None = None,
+    background_audio_volume: float | None = None,
+    narration_audio_volume: float | None = None,
     settings: object | None = None,
     narrator: Callable[..., tuple[str, float]] | None = None,
     polisher: Callable[..., object] | None = None,
+    synthesizer: Callable[..., object] | None = None,
+    video_renderer: Callable[..., object] | None = None,
 ) -> dict[str, object]:
     analysis = analyze_subtitle_file(
         srt_path,
@@ -242,6 +339,15 @@ def analyze_and_narrate(
         subtitle_guard_sec=subtitle_guard_sec,
         ffprobe_bin=ffprobe_bin,
     )
+    resolved_speech_output_dir = speech_output_dir
+    speech_requested = bool(speech) or embed_video
+    if not speech_requested and settings is not None:
+        speech_requested = bool(getattr(settings, "narration_speech_enabled", False))
+    if not speech_requested and settings is None:
+        speech_requested = bool(load_settings().narration_speech_enabled)
+    if resolved_speech_output_dir is None and speech_requested:
+        resolved_speech_output_dir = str(Path(video_path).with_suffix("")) + ".narration_audio"
+
     narrated_segments = narrate_analysis_candidates(
         analysis,
         video_path=video_path,
@@ -258,9 +364,18 @@ def analyze_and_narrate(
         polish_cefr_level=polish_cefr_level,
         polish_strength=polish_strength,
         polish_safety_margin_sec=polish_safety_margin_sec,
+        speech=(True if embed_video else speech),
+        speech_provider_slug=speech_provider_slug,
+        speech_voice=speech_voice,
+        speech_rate=speech_rate,
+        speech_volume=speech_volume,
+        speech_pitch=speech_pitch,
+        speech_boundary=speech_boundary,
+        speech_output_dir=resolved_speech_output_dir,
         settings=settings,
         narrator=narrator,
         polisher=polisher,
+        synthesizer=synthesizer,
     )
     payload = result_to_dict(analysis)
     payload["narratedSegments"] = [
@@ -294,6 +409,30 @@ def analyze_and_narrate(
                 if seg.polish is not None
                 else None
             ),
+            "speech": (
+                {
+                    "text": seg.speech.text,
+                    "audioPath": seg.speech.audio_path,
+                    "metadataPath": seg.speech.metadata_path,
+                    "segmentDurationSec": seg.speech.segment_duration_sec,
+                    "targetDurationSec": seg.speech.target_duration_sec,
+                    "rawDurationSec": seg.speech.raw_duration_sec,
+                    "audioDurationSec": seg.speech.audio_duration_sec,
+                    "durationDeltaSec": seg.speech.duration_delta_sec,
+                    "provider": seg.speech.provider,
+                    "voice": seg.speech.voice,
+                    "rate": seg.speech.rate,
+                    "volume": seg.speech.volume,
+                    "pitch": seg.speech.pitch,
+                    "boundary": seg.speech.boundary,
+                    "fitApplied": seg.speech.fit_applied,
+                    "fitsDuration": seg.speech.fits_duration,
+                    "timingTtsSec": seg.speech.timing_tts_sec,
+                    "timingFitSec": seg.speech.timing_fit_sec,
+                }
+                if seg.speech is not None
+                else None
+            ),
             "timingExtractSec": seg.timing_extract_sec,
             "timingApiSec": seg.timing_api_sec,
             "timingTotalSec": seg.timing_total_sec,
@@ -301,4 +440,48 @@ def analyze_and_narrate(
         }
         for seg in narrated_segments
     ]
+    payload["speechOutputDir"] = resolved_speech_output_dir
+    if embed_video:
+        from narration_video import NarrationAudioSegment, render_narrated_video
+
+        _default_renderer = video_renderer or render_narrated_video
+        audio_segments = [seg for seg in narrated_segments if seg.speech is not None]
+        if not audio_segments:
+            raise RuntimeError("embed_video requires synthesized speech audio segments")
+        output_path = embed_output_path or (
+            str(Path(video_path).with_suffix("")) + ".narrated.mp4"
+        )
+        render_segments = [
+            NarrationAudioSegment(
+                start_sec=seg.start_sec,
+                end_sec=seg.end_sec,
+                audio_path=seg.speech.audio_path,
+            )
+            for seg in audio_segments
+        ]
+        render_result = _default_renderer(
+            video_path,
+            render_segments,
+            output_path=output_path,
+            background_audio_volume=background_audio_volume,
+            speech_audio_volume=narration_audio_volume,
+            settings=settings,
+        )
+        payload["renderedVideo"] = {
+            "videoPath": str(getattr(render_result, "video_path")),
+            "outputPath": str(getattr(render_result, "output_path")),
+            "segmentCount": int(getattr(render_result, "segment_count")),
+            "videoDurationSec": float(getattr(render_result, "video_duration_sec")),
+            "backgroundAudioVolume": float(
+                getattr(render_result, "background_audio_volume")
+            ),
+            "speechAudioVolume": float(getattr(render_result, "speech_audio_volume")),
+            "timingRenderSec": (
+                float(getattr(render_result, "timing_render_sec"))
+                if getattr(render_result, "timing_render_sec", None) is not None
+                else None
+            ),
+        }
+    else:
+        payload["renderedVideo"] = None
     return payload

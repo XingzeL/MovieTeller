@@ -97,6 +97,52 @@ def main() -> int:
         default=None,
         help="Reserve this much time inside the segment when polishing for TTS",
     )
+    ap.add_argument(
+        "--speech",
+        action="store_true",
+        help="Synthesize speech audio for each narration segment",
+    )
+    ap.add_argument(
+        "--speech-provider",
+        default=None,
+        help="Override narration speech provider slug for the pipeline run",
+    )
+    ap.add_argument("--speech-voice", default=None, help="Override TTS voice")
+    ap.add_argument("--speech-rate", default=None, help="Override TTS rate, e.g. +5%")
+    ap.add_argument("--speech-volume", default=None, help="Override TTS volume, e.g. +0%")
+    ap.add_argument("--speech-pitch", default=None, help="Override TTS pitch, e.g. +0Hz")
+    ap.add_argument(
+        "--speech-boundary",
+        default=None,
+        help="Boundary metadata mode: SentenceBoundary or WordBoundary",
+    )
+    ap.add_argument(
+        "--speech-output-dir",
+        default=None,
+        help="Directory for synthesized narration audio files",
+    )
+    ap.add_argument(
+        "--embed-video",
+        action="store_true",
+        help="Mix synthesized narration audio back into the source video",
+    )
+    ap.add_argument(
+        "--embed-output",
+        default=None,
+        help="Rendered output video path when --embed-video is set",
+    )
+    ap.add_argument(
+        "--background-audio-volume",
+        type=float,
+        default=None,
+        help="Volume multiplier for original video audio during embed",
+    )
+    ap.add_argument(
+        "--narration-audio-volume",
+        type=float,
+        default=None,
+        help="Volume multiplier for synthesized narration audio during embed",
+    )
     ap.add_argument("--json", action="store_true", help="Print JSON payload")
     args = ap.parse_args()
 
@@ -125,10 +171,22 @@ def main() -> int:
             polish_cefr_level=args.polish_cefr_level,
             polish_strength=args.polish_strength,
             polish_safety_margin_sec=args.polish_safety_margin_sec,
+            speech=(True if args.embed_video else (args.speech if args.speech else None)),
+            speech_provider_slug=args.speech_provider,
+            speech_voice=args.speech_voice,
+            speech_rate=args.speech_rate,
+            speech_volume=args.speech_volume,
+            speech_pitch=args.speech_pitch,
+            speech_boundary=args.speech_boundary,
+            speech_output_dir=args.speech_output_dir,
+            embed_video=args.embed_video,
+            embed_output_path=args.embed_output,
+            background_audio_volume=args.background_audio_volume,
+            narration_audio_volume=args.narration_audio_volume,
         )
     else:
-        if args.polish:
-            ap.error("--polish requires --narrate")
+        if args.polish or args.speech or args.embed_video:
+            ap.error("--polish, --speech, and --embed-video require --narrate")
         result = analyze_subtitle_file(
             args.srt,
             video_path=args.video,
@@ -155,6 +213,8 @@ def main() -> int:
                     f"{seg['startSec']:.3f}-{seg['endSec']:.3f}s "
                     f"({seg['durationSec']:.3f}s) {line_text}"
                 )
+            if payload.get("renderedVideo"):
+                print(payload["renderedVideo"]["outputPath"])
         else:
             print(
                 f"subtitle_spans={len(payload['subtitleSpans'])} "

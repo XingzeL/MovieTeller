@@ -29,6 +29,15 @@ export const DEFAULTS = {
   narration_polish_cefr_level: "B1",
   narration_polish_strength: "medium",
   narration_polish_safety_margin_sec: 0.2,
+  narration_speech_enabled: false,
+  narration_speech_provider: "edge_tts",
+  narration_speech_voice: "en-US-EmmaMultilingualNeural",
+  narration_speech_rate: "+0%",
+  narration_speech_volume: "+0%",
+  narration_speech_pitch: "+0Hz",
+  narration_speech_boundary: "SentenceBoundary",
+  narration_video_background_audio_volume: 0.35,
+  narration_video_speech_audio_volume: 1.0,
 };
 
 /**
@@ -117,6 +126,29 @@ export function toPublicConfig(s) {
     narrationPolishSafetyMarginSec: (() => {
       const n = Number(s.narration_polish_safety_margin_sec ?? 0.2);
       return Number.isFinite(n) && n >= 0 ? n : 0.2;
+    })(),
+    narrationSpeechEnabled: (() => {
+      const raw = String(s.narration_speech_enabled ?? "").trim().toLowerCase();
+      return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+    })(),
+    narrationSpeechProvider:
+      String(s.narration_speech_provider ?? "edge_tts").trim().toLowerCase() || "edge_tts",
+    narrationSpeechVoice:
+      String(s.narration_speech_voice ?? "en-US-EmmaMultilingualNeural").trim() ||
+      "en-US-EmmaMultilingualNeural",
+    narrationSpeechRate: String(s.narration_speech_rate ?? "+0%").trim() || "+0%",
+    narrationSpeechVolume: String(s.narration_speech_volume ?? "+0%").trim() || "+0%",
+    narrationSpeechPitch: String(s.narration_speech_pitch ?? "+0Hz").trim() || "+0Hz",
+    narrationSpeechBoundary:
+      String(s.narration_speech_boundary ?? "SentenceBoundary").trim() ||
+      "SentenceBoundary",
+    narrationVideoBackgroundAudioVolume: (() => {
+      const n = Number(s.narration_video_background_audio_volume ?? 0.35);
+      return Number.isFinite(n) && n >= 0 ? n : 0.35;
+    })(),
+    narrationVideoSpeechAudioVolume: (() => {
+      const n = Number(s.narration_video_speech_audio_volume ?? 1.0);
+      return Number.isFinite(n) && n >= 0 ? n : 1.0;
     })(),
     narrationProviderModelCatalog: normalizeProviderModelCatalogObject(
       s.narration_provider_model_catalog ?? {}
