@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import List
 
-from subtitle_extraction.types import SubtitleCue
+from pipeline_types import SubtitleCue
 
 _TS_LINE = re.compile(
     r"^(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})"

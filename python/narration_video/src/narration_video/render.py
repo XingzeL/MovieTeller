@@ -5,10 +5,11 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
+from media_utils import ffprobe_path_for, probe_duration_sec
 from movieteller_config import load_settings
+from pipeline_types import NarrationAudioSegment
 
-from narration.frames import ffprobe_path_for, probe_duration_sec
-from narration_video.types import NarrationAudioSegment, NarrationVideoRenderResult
+from narration_video.types import NarrationVideoRenderResult
 
 
 def _video_has_audio_stream(

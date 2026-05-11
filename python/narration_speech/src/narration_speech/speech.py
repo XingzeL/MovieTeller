@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from edge_tts import Communicate
+from media_utils import ffprobe_path_for, probe_duration_sec
 from movieteller_config import load_settings
 
-from narration.frames import ffprobe_path_for
 from narration_speech.types import NarrationSpeechResult
 
 if TYPE_CHECKING:
@@ -26,28 +26,11 @@ def _probe_media_duration_sec(
     ffprobe_bin: str,
     subprocess_run: Callable[..., Any] = subprocess.run,
 ) -> float:
-    path = Path(media_path)
-    if not path.is_file():
-        raise FileNotFoundError(f"Media not found: {path}")
-    cmd = [
-        ffprobe_bin,
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        str(path),
-    ]
-    proc = subprocess_run(cmd, capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"ffprobe failed ({proc.returncode}): {(proc.stderr or '').strip()}"
-        )
-    raw = (proc.stdout or "").strip()
-    if not raw:
-        raise RuntimeError("ffprobe returned empty duration")
-    return float(raw)
+    return probe_duration_sec(
+        media_path,
+        ffprobe_bin=ffprobe_bin,
+        subprocess_run=subprocess_run,
+    )
 
 
 def _atempo_filter_for_speed(speed: float) -> str:

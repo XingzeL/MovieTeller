@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 
+from pipeline_types import NarrationAudioSegment
 from narration_video.render import render_narrated_video
-from narration_video.types import NarrationAudioSegment
 
 
 def main() -> int:

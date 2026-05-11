@@ -3,15 +3,15 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "subtitle_extraction"
+name = "media_utils"
 version = "0.1.0"
-description = "VideoCaptioner CLI subprocess + SRT parsing for MovieTeller"
+description = "Shared media probing helpers for MovieTeller"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = ["pipeline_types"]
+dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "movieteller_config"]
+dev = ["pytest>=7"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

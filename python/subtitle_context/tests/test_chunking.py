@@ -1,4 +1,4 @@
-from subtitle_extraction.types import SubtitleCue
+from pipeline_types import SubtitleCue
 
 from subtitle_context.chunking import chunk_subtitle_cues
 

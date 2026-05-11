@@ -5,8 +5,8 @@ import subprocess
 from pathlib import Path
 
 from movieteller_config import load_settings
+from pipeline_types import SubtitleCue
 from subtitle_extraction.parse_srt import parse_srt_text
-from subtitle_extraction.types import SubtitleCue
 
 from video_frame_pool.scenes import detect_shots
 from video_frame_pool.storage import write_manifest, write_shots

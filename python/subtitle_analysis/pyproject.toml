@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Analyze SRT subtitle coverage and derive narration candidate gaps for MovieTeller"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = ["subtitle_extraction"]
+dependencies = ["pipeline_types", "subtitle_extraction"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]

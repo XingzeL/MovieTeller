@@ -4,10 +4,10 @@ import json
 import subprocess
 from pathlib import Path
 
+from pipeline_types import NarrationCandidate, SubtitleCue
 from subtitle_extraction.parse_srt import parse_srt_text
-from subtitle_extraction.types import SubtitleCue
 
-from subtitle_analysis.types import NarrationCandidate, SubtitleAnalysisResult, TimeSpan
+from subtitle_analysis.types import SubtitleAnalysisResult, TimeSpan
 
 
 def probe_video_duration_sec(

@@ -9,7 +9,9 @@ description = "Stage-1 frame-pool preprocessing and query for MovieTeller"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
+    "media_utils",
     "movieteller_config",
+    "pipeline_types",
     "subtitle_extraction",
 ]
 

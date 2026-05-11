@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from subtitle_extraction.types import SubtitleCue
+from pipeline_types import SubtitleCue
 
 from subtitle_context.types import SubtitleContextChunk
 

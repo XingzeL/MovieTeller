@@ -4,13 +4,10 @@ from dataclasses import dataclass
 import time
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
+from media_utils import ffprobe_path_for, segment_duration_sec
 from movieteller_config import load_settings
 
-from narration.frames import (
-    extract_frames_base64,
-    ffprobe_path_for,
-    segment_duration_sec,
-)
+from narration.frames import extract_frames_base64
 from narration.prompts import build_system_message, build_user_text
 from narration.story import generate_narration
 

@@ -2,16 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
-@dataclass(frozen=True)
-class NarrationAudioSegment:
-    start_sec: float
-    end_sec: float
-    audio_path: str
-
-    @property
-    def duration_sec(self) -> float:
-        return self.end_sec - self.start_sec
+from pipeline_types import NarrationAudioSegment
 
 
 @dataclass(frozen=True)

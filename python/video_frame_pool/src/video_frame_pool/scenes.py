@@ -1,45 +1,8 @@
 from __future__ import annotations
 
-import subprocess
-from pathlib import Path
+from media_utils import ffprobe_path_for, probe_duration_sec
 
 from video_frame_pool.types import ShotSpan
-
-
-def _ffprobe_path_for(ffmpeg_bin: str) -> str:
-    p = Path(ffmpeg_bin)
-    if p.name == "ffmpeg":
-        return str(p.with_name("ffprobe"))
-    return "ffprobe"
-
-
-def _probe_duration_sec(video_path: str, *, ffprobe_bin: str) -> float:
-    path = Path(video_path)
-    if not path.is_file():
-        raise FileNotFoundError(f"Video not found: {video_path}")
-    proc = subprocess.run(
-        [
-            ffprobe_bin,
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"ffprobe failed ({proc.returncode}): {(proc.stderr or proc.stdout).strip()}"
-        )
-    raw = (proc.stdout or "").strip()
-    if not raw:
-        raise RuntimeError("ffprobe returned empty duration")
-    return float(raw)
 
 
 def _merge_short_shots(shots: list[ShotSpan], *, merge_sec: float) -> list[ShotSpan]:
@@ -87,7 +50,10 @@ def detect_shots(
             "PySceneDetect is required for frame-pool build. Install 'scenedetect'."
         ) from exc
 
-    duration_sec = _probe_duration_sec(video_path, ffprobe_bin=_ffprobe_path_for(ffmpeg_bin))
+    duration_sec = probe_duration_sec(
+        video_path,
+        ffprobe_bin=ffprobe_path_for(ffmpeg_bin),
+    )
     video = open_video(video_path)
     scene_manager = SceneManager()
     scene_manager.add_detector(ContentDetector())

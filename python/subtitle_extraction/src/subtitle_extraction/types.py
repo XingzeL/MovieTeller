@@ -2,14 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
-@dataclass(frozen=True)
-class SubtitleCue:
-    """One subtitle line with seconds-based timeline."""
-
-    start_sec: float
-    end_sec: float
-    text: str
+from pipeline_types import SubtitleCue
 
 
 @dataclass(frozen=True)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pipeline_types import NarrationCandidate
+
 
 @dataclass(frozen=True)
 class TimeSpan:
@@ -11,19 +13,6 @@ class TimeSpan:
     @property
     def duration_sec(self) -> float:
         return self.end_sec - self.start_sec
-
-
-@dataclass(frozen=True)
-class NarrationCandidate:
-    start_sec: float
-    end_sec: float
-    prev_subtitle_text: str | None
-    next_subtitle_text: str | None
-
-    @property
-    def duration_sec(self) -> float:
-        return self.end_sec - self.start_sec
-
 
 @dataclass(frozen=True)
 class NarratedSegment:
