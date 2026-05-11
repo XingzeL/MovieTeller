@@ -77,6 +77,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--provider", default=None, help="Override polish provider slug")
     p.add_argument("--model", default=None, help="Override polish model id")
     p.add_argument(
+        "--style",
+        default=None,
+        help="Narration style hint to preserve during polish (e.g. documentary, movie_commentary)",
+    )
+    p.add_argument(
         "--model-index",
         type=int,
         default=None,
@@ -121,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         result = polish_narration_text(
             raw_text,
             args.duration_sec,
+            prompt_style=args.style,
             target_wpm=args.target_wpm,
             cefr_level=args.cefr_level,
             strength=args.strength,

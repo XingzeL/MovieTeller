@@ -174,6 +174,7 @@ def narrate_analysis_candidates(
             polished = call_polisher(
                 text,
                 seg.duration_sec,
+                prompt_style=style,
                 target_wpm=polish_target_wpm,
                 cefr_level=polish_cefr_level,
                 strength=polish_strength,

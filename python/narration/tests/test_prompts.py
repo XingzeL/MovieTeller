@@ -20,6 +20,11 @@ def test_build_system_message_includes_custom():
     assert "lighting" in s
 
 
+def test_build_system_message_supports_movie_commentary_style():
+    s = build_system_message("movie_commentary", "")
+    assert "movie commentary" in s.lower() or "film recap" in s.lower()
+
+
 def test_build_user_text_mentions_duration_and_frames():
     t = build_user_text(duration_sec=12.5, prompt_style="documentary", frame_count=8)
     assert "12.50" in t or "12.5" in t

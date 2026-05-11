@@ -1,12 +1,32 @@
 from __future__ import annotations
 
 
-def build_system_message(*, cefr_level: str, strength: str) -> str:
+def _style_hint(style: str | None) -> str:
+    s = (style or "").strip().lower()
+    if s in {"movie_commentary", "movie-commentary"}:
+        return (
+            " Preserve a movie commentary voice: flowing, scene-led, and lightly dramatic, "
+            "like a film recap narrator."
+        )
+    if s == "documentary":
+        return " Preserve a calm, observational documentary voice."
+    if s == "cinematic":
+        return " Preserve a cinematic, scene-setting voice."
+    if s == "educational":
+        return " Preserve a clear, explanatory educational voice."
+    if s == "concise":
+        return " Preserve a crisp, concise voice-over style."
+    return ""
+
+
+def build_system_message(*, cefr_level: str, strength: str, style: str | None = None) -> str:
+    style_hint = _style_hint(style)
     return (
         "You rewrite short English video narration for text-to-speech. "
         f"Target language difficulty: CEFR {cefr_level}. "
         f"Rewrite strength: {strength}. "
         "Keep the meaning visually grounded, natural to read aloud, and concise. "
+        f"{style_hint} "
         "Do not explain your choices. Output only the final narration text."
     )
 

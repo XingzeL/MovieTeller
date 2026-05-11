@@ -6,6 +6,8 @@ _WORDS_PER_MIN: dict[str, float] = {
     "cinematic": 100.0,
     "concise": 160.0,
     "educational": 140.0,
+    "movie_commentary": 145.0,
+    "movie-commentary": 145.0,
 }
 
 _DEFAULT_SYSTEM = """You are a professional film narrator. Describe what is visible in the \
@@ -16,6 +18,12 @@ meta commentary, and no frame numbers."""
 
 def _style_system_addendum(style: str) -> str:
     s = style.strip().lower()
+    if s in {"movie_commentary", "movie-commentary"}:
+        return (
+            " Use a movie commentary / film recap tone: vivid, flowing, and slightly dramatic, "
+            "as if guiding the audience through the scene beat by beat. Keep every statement "
+            "grounded in what is visually supported by the frames."
+        )
     if s == "cinematic":
         return " Use a slightly dramatic, scene-setting tone; still stay literal to the frames."
     if s == "concise":

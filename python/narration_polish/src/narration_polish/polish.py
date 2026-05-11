@@ -116,6 +116,7 @@ def polish_narration_text(
     text: str,
     duration_sec: float,
     *,
+    prompt_style: str | None = None,
     target_wpm: int | None = None,
     cefr_level: str | None = None,
     strength: str | None = None,
@@ -166,6 +167,14 @@ def polish_narration_text(
             else getattr(cfg, "narration_polish_safety_margin_sec", 0.2)
         ),
     )
+    resolved_prompt_style = (
+        str(
+            prompt_style
+            if prompt_style is not None
+            else getattr(cfg, "default_prompt_style", "documentary")
+        ).strip()
+        or "documentary"
+    )
     resolved_provider = _resolve_provider_slug(cfg, provider_slug)
     resolved_model = model or cfg.polish_model_for_provider(resolved_provider)
     target_duration_sec = compute_target_duration_sec(
@@ -191,7 +200,9 @@ def polish_narration_text(
             {
                 "role": "system",
                 "content": build_system_message(
-                    cefr_level=resolved_cefr_level, strength=resolved_strength
+                    cefr_level=resolved_cefr_level,
+                    strength=resolved_strength,
+                    style=resolved_prompt_style,
                 ),
             },
             {
