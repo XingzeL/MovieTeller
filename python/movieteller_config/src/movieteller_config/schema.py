@@ -49,6 +49,20 @@ class Settings:
     narration_frame_max_edge: int
     ffmpeg_path: str
     default_prompt_style: str
+    frame_pool_manifest: str | None
+    pool_frames_per_shot_min: int
+    pool_frames_per_shot_max: int
+    pool_frames_per_shot_rate: float | None
+    pool_miss_uniform_max_frames: int
+    dialogue_overlap_threshold: float
+    pyscenedetect_merge_sec: float
+    subtitle_context_embedding_provider: str | None
+    subtitle_context_embedding_model: str | None
+    subtitle_context_chunk_cue_count: int
+    subtitle_context_chunk_stride: int
+    subtitle_context_history_window_sec: float
+    subtitle_context_top_k: int
+    subtitle_context_summary_enabled: bool
     videocaptioner_bin: str | None
     videocaptioner_asr: str
     videocaptioner_language: str
@@ -184,6 +198,22 @@ class Settings:
             scoped_catalog=self.narration_polish_provider_model_catalog,
         )
 
+    def subtitle_context_provider(self) -> str:
+        slug = _none_if_empty(self.subtitle_context_embedding_provider)
+        if slug:
+            return slug.strip().lower()
+        np = self.narration_provider.strip().lower()
+        return np or "openai"
+
+    def require_subtitle_context_embedding_model(self) -> str:
+        model = _none_if_empty(self.subtitle_context_embedding_model)
+        if model:
+            return model
+        raise ValueError(
+            "subtitle_context_embedding_model is not configured. "
+            "Set SUBTITLE_CONTEXT_EMBEDDING_MODEL or subtitle_context_embedding_model in YAML."
+        )
+
 
 def _coerce_int(value: Any, fallback: int) -> int:
     if value is None:
@@ -316,6 +346,8 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
         )
     except (TypeError, ValueError):
         narration_polish_model_index = 0
+    pool_min = max(1, _coerce_int(data.get("pool_frames_per_shot_min"), 1))
+    pool_max = max(pool_min, _coerce_int(data.get("pool_frames_per_shot_max"), 3))
     openai = api_keys.get("openai") or _expand_optional_env_str(data.get("openai_api_key"))
     return Settings(
         openai_api_key=openai,
@@ -325,6 +357,47 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
         narration_frame_max_edge=_coerce_int(data.get("narration_frame_max_edge"), 768),
         ffmpeg_path=str(data.get("ffmpeg_path") or "ffmpeg"),
         default_prompt_style=str(data.get("default_prompt_style") or "documentary"),
+        frame_pool_manifest=_none_if_empty(
+            _expand_optional_env_str(data.get("frame_pool_manifest"))
+        ),
+        pool_frames_per_shot_min=pool_min,
+        pool_frames_per_shot_max=pool_max,
+        pool_frames_per_shot_rate=(
+            max(0.0, _coerce_float(data.get("pool_frames_per_shot_rate"), 0.0))
+            if data.get("pool_frames_per_shot_rate") is not None
+            and str(data.get("pool_frames_per_shot_rate")).strip() != ""
+            else None
+        ),
+        pool_miss_uniform_max_frames=max(
+            1, _coerce_int(data.get("pool_miss_uniform_max_frames"), 24)
+        ),
+        dialogue_overlap_threshold=max(
+            0.0, _coerce_float(data.get("dialogue_overlap_threshold"), 0.05)
+        ),
+        pyscenedetect_merge_sec=max(
+            0.0, _coerce_float(data.get("pyscenedetect_merge_sec"), 0.25)
+        ),
+        subtitle_context_embedding_provider=_none_if_empty(
+            _expand_optional_env_str(data.get("subtitle_context_embedding_provider"))
+        ),
+        subtitle_context_embedding_model=_expand_optional_env_str(
+            data.get("subtitle_context_embedding_model")
+        ),
+        subtitle_context_chunk_cue_count=max(
+            1, _coerce_int(data.get("subtitle_context_chunk_cue_count"), 5)
+        ),
+        subtitle_context_chunk_stride=max(
+            1, _coerce_int(data.get("subtitle_context_chunk_stride"), 3)
+        ),
+        subtitle_context_history_window_sec=max(
+            0.0, _coerce_float(data.get("subtitle_context_history_window_sec"), 600.0)
+        ),
+        subtitle_context_top_k=max(
+            1, _coerce_int(data.get("subtitle_context_top_k"), 6)
+        ),
+        subtitle_context_summary_enabled=_coerce_bool(
+            data.get("subtitle_context_summary_enabled"), False
+        ),
         videocaptioner_bin=_none_if_empty(data.get("videocaptioner_bin")),
         videocaptioner_asr=str(data.get("videocaptioner_asr") or "bijian").strip().lower()
         or "bijian",

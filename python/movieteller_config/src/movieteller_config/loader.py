@@ -211,6 +211,64 @@ def _env_overrides() -> dict[str, Any]:
         out["ffmpeg_path"] = v
     if v := os.environ.get("DEFAULT_PROMPT_STYLE"):
         out["default_prompt_style"] = v
+    if v := os.environ.get("FRAME_POOL_MANIFEST", "").strip():
+        out["frame_pool_manifest"] = v
+    if v := os.environ.get("POOL_FRAMES_PER_SHOT_MIN", "").strip():
+        try:
+            out["pool_frames_per_shot_min"] = int(v)
+        except ValueError:
+            pass
+    if v := os.environ.get("POOL_FRAMES_PER_SHOT_MAX", "").strip():
+        try:
+            out["pool_frames_per_shot_max"] = int(v)
+        except ValueError:
+            pass
+    if v := os.environ.get("POOL_FRAMES_PER_SHOT_RATE", "").strip():
+        try:
+            out["pool_frames_per_shot_rate"] = float(v)
+        except ValueError:
+            pass
+    if v := os.environ.get("POOL_MISS_UNIFORM_MAX_FRAMES", "").strip():
+        try:
+            out["pool_miss_uniform_max_frames"] = int(v)
+        except ValueError:
+            pass
+    if v := os.environ.get("DIALOGUE_OVERLAP_THRESHOLD", "").strip():
+        try:
+            out["dialogue_overlap_threshold"] = float(v)
+        except ValueError:
+            pass
+    if v := os.environ.get("PYSCENEDETECT_MERGE_SEC", "").strip():
+        try:
+            out["pyscenedetect_merge_sec"] = float(v)
+        except ValueError:
+            pass
+    if v := os.environ.get("SUBTITLE_CONTEXT_EMBEDDING_PROVIDER", "").strip():
+        out["subtitle_context_embedding_provider"] = v.lower()
+    if v := os.environ.get("SUBTITLE_CONTEXT_EMBEDDING_MODEL", "").strip():
+        out["subtitle_context_embedding_model"] = v
+    if v := os.environ.get("SUBTITLE_CONTEXT_CHUNK_CUE_COUNT", "").strip():
+        try:
+            out["subtitle_context_chunk_cue_count"] = int(v)
+        except ValueError:
+            pass
+    if v := os.environ.get("SUBTITLE_CONTEXT_CHUNK_STRIDE", "").strip():
+        try:
+            out["subtitle_context_chunk_stride"] = int(v)
+        except ValueError:
+            pass
+    if v := os.environ.get("SUBTITLE_CONTEXT_HISTORY_WINDOW_SEC", "").strip():
+        try:
+            out["subtitle_context_history_window_sec"] = float(v)
+        except ValueError:
+            pass
+    if v := os.environ.get("SUBTITLE_CONTEXT_TOP_K", "").strip():
+        try:
+            out["subtitle_context_top_k"] = int(v)
+        except ValueError:
+            pass
+    if v := os.environ.get("SUBTITLE_CONTEXT_SUMMARY_ENABLED", "").strip():
+        out["subtitle_context_summary_enabled"] = v
     if v := os.environ.get("VIDEOCAPTIONER_BIN"):
         out["videocaptioner_bin"] = v
     if v := os.environ.get("VIDEOCAPTIONER_ASR", "").strip():

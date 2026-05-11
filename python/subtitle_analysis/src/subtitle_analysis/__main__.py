@@ -55,6 +55,16 @@ def main() -> int:
         help="Override narration provider slug for the pipeline run",
     )
     ap.add_argument(
+        "--frame-pool-manifest",
+        default=None,
+        help="Optional frame-pool manifest path override for narration",
+    )
+    ap.add_argument(
+        "--subtitle-context-index-dir",
+        default=None,
+        help="Optional subtitle context index dir; defaults to sibling <srt>.subtitle_context when present",
+    )
+    ap.add_argument(
         "--polish",
         action="store_true",
         help="Rewrite narration to better fit TTS duration constraints",
@@ -154,6 +164,7 @@ def main() -> int:
         payload = analyze_and_narrate(
             srt_path=args.srt,
             video_path=args.video,
+            subtitle_context_index_dir=args.subtitle_context_index_dir,
             video_duration_sec=args.duration_sec,
             min_gap_sec=args.min_gap_sec,
             subtitle_guard_sec=args.subtitle_guard_sec,
@@ -163,6 +174,7 @@ def main() -> int:
             custom_prompt=args.custom_prompt,
             image_model=args.model,
             provider_slug=args.provider,
+            frame_pool_manifest=args.frame_pool_manifest,
             polish=args.polish if args.polish else None,
             polish_provider_slug=args.polish_provider,
             polish_model=args.polish_model,

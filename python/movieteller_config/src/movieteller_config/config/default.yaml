@@ -9,6 +9,20 @@ max_frames_per_segment: 24
 narration_frame_max_edge: 768
 ffmpeg_path: ffmpeg
 default_prompt_style: documentary
+frame_pool_manifest: null
+pool_frames_per_shot_min: 1
+pool_frames_per_shot_max: 3
+pool_frames_per_shot_rate: null
+pool_miss_uniform_max_frames: 24
+dialogue_overlap_threshold: 0.05
+pyscenedetect_merge_sec: 0.25
+subtitle_context_embedding_provider: null
+subtitle_context_embedding_model: null
+subtitle_context_chunk_cue_count: 5
+subtitle_context_chunk_stride: 3
+subtitle_context_history_window_sec: 600
+subtitle_context_top_k: 6
+subtitle_context_summary_enabled: false
 videocaptioner_bin: null
 # VideoCaptioner transcribe: ASR engine (CLI --asr choices).
 videocaptioner_asr: bijian

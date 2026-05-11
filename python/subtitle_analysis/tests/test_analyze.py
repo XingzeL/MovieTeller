@@ -123,6 +123,41 @@ b
     assert calls[0][0] == "demo.mp4"
 
 
+def test_narrate_analysis_candidates_passes_subtitle_context_input():
+    raw = """1
+00:00:00,000 --> 00:00:01,000
+a
+
+2
+00:00:04,000 --> 00:00:05,000
+b
+"""
+    analysis = analyze_srt_text(
+        raw,
+        video_duration_sec=8.0,
+        min_gap_sec=1.0,
+        subtitle_guard_sec=0.25,
+    )
+    calls = []
+
+    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
+        calls.append(kwargs["subtitle_context_input"])
+        return ("narration", end_sec - start_sec)
+
+    segments = narrate_analysis_candidates(
+        analysis,
+        video_path="demo.mp4",
+        subtitle_context_index_dir="demo.subtitle_context",
+        max_candidates=1,
+        narrator=fake_narrator,
+        settings=object(),
+    )
+    assert len(segments) == 1
+    assert calls[0]["index_dir"] == "demo.subtitle_context"
+    assert calls[0]["prev_subtitle_text"] == "a"
+    assert calls[0]["next_subtitle_text"] == "b"
+
+
 def test_analyze_and_narrate_returns_timed_json_payload():
     raw = """1
 00:00:01,000 --> 00:00:02,000
@@ -151,6 +186,35 @@ x
     assert len(payload["narratedSegments"]) == 1
     assert payload["narratedSegments"][0]["text"] == "narration"
     assert payload["narratedSegments"][0]["speechText"] == "narration"
+
+
+def test_analyze_and_narrate_detects_default_subtitle_context_index_dir():
+    raw = """1
+00:00:01,000 --> 00:00:02,000
+x
+"""
+
+    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
+        return ("narration", end_sec - start_sec)
+
+    from tempfile import TemporaryDirectory
+
+    with TemporaryDirectory() as tmp:
+        srt = Path(tmp) / "demo.srt"
+        index_dir = Path(tmp) / "demo.subtitle_context"
+        index_dir.mkdir()
+        srt.write_text(raw, encoding="utf-8")
+        payload = analyze_and_narrate(
+            srt_path=str(srt),
+            video_path="demo.mp4",
+            video_duration_sec=4.0,
+            min_gap_sec=0.5,
+            subtitle_guard_sec=0.0,
+            max_candidates=1,
+            narrator=fake_narrator,
+            settings=object(),
+        )
+    assert payload["subtitleContextIndexDir"] == str(index_dir)
 
 
 def test_analyze_and_narrate_can_polish_output():

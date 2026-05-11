@@ -18,9 +18,23 @@ from subtitle_analysis.types import (
 )
 
 
+def _resolve_subtitle_context_index_dir(
+    srt_path: str,
+    override: str | None,
+) -> str | None:
+    if override is not None:
+        value = override.strip()
+        return value or None
+    candidate = Path(str(Path(srt_path).with_suffix("")) + ".subtitle_context")
+    if candidate.is_dir():
+        return str(candidate)
+    return None
+
+
 def _resolve_pipeline_settings(
     provider_override: str | None,
     *,
+    frame_pool_manifest_override: str | None = None,
     polish_override: bool | None = None,
     polish_provider_override: str | None = None,
     polish_model_override: str | None = None,
@@ -32,6 +46,7 @@ def _resolve_pipeline_settings(
 ):
     if (
         provider_override is None
+        and frame_pool_manifest_override is None
         and polish_override is None
         and polish_provider_override is None
         and polish_model_override is None
@@ -48,6 +63,8 @@ def _resolve_pipeline_settings(
     flat = load_flat_dict()
     if provider_override is not None:
         flat["narration_provider"] = provider_override.strip().lower()
+    if frame_pool_manifest_override is not None:
+        flat["frame_pool_manifest"] = frame_pool_manifest_override.strip()
     if polish_override is not None:
         flat["narration_polish_enabled"] = polish_override
     if polish_provider_override is not None:
@@ -77,11 +94,13 @@ def narrate_analysis_candidates(
     analysis: SubtitleAnalysisResult,
     *,
     video_path: str,
+    subtitle_context_index_dir: str | None = None,
     max_candidates: int | None = None,
     prompt_style: str | None = None,
     custom_prompt: str = "",
     image_model: str | None = None,
     provider_slug: str | None = None,
+    frame_pool_manifest: str | None = None,
     polish: bool | None = None,
     polish_provider_slug: str | None = None,
     polish_model: str | None = None,
@@ -108,6 +127,7 @@ def narrate_analysis_candidates(
         if settings is not None
         else _resolve_pipeline_settings(
             provider_slug,
+            frame_pool_manifest_override=frame_pool_manifest,
             polish_override=polish,
             polish_provider_override=polish_provider_slug,
             polish_model_override=polish_model,
@@ -164,6 +184,13 @@ def narrate_analysis_candidates(
             provider_slug=provider_slug,
             settings=resolved_settings,
             timings_out=timings,
+            subtitle_context_input={
+                "segment_start_sec": seg.start_sec,
+                "segment_end_sec": seg.end_sec,
+                "prev_subtitle_text": seg.prev_subtitle_text,
+                "next_subtitle_text": seg.next_subtitle_text,
+                "index_dir": subtitle_context_index_dir,
+            },
         )
         polish_details: NarrationPolishDetails | None = None
         speech_details: NarrationSpeechDetails | None = None
@@ -297,6 +324,7 @@ def analyze_and_narrate(
     *,
     srt_path: str,
     video_path: str,
+    subtitle_context_index_dir: str | None = None,
     video_duration_sec: float | None = None,
     min_gap_sec: float = 1.0,
     subtitle_guard_sec: float = 0.25,
@@ -306,6 +334,7 @@ def analyze_and_narrate(
     custom_prompt: str = "",
     image_model: str | None = None,
     provider_slug: str | None = None,
+    frame_pool_manifest: str | None = None,
     polish: bool | None = None,
     polish_provider_slug: str | None = None,
     polish_model: str | None = None,
@@ -348,15 +377,21 @@ def analyze_and_narrate(
         speech_requested = bool(load_settings().narration_speech_enabled)
     if resolved_speech_output_dir is None and speech_requested:
         resolved_speech_output_dir = str(Path(video_path).with_suffix("")) + ".narration_audio"
+    resolved_subtitle_context_index_dir = _resolve_subtitle_context_index_dir(
+        srt_path,
+        subtitle_context_index_dir,
+    )
 
     narrated_segments = narrate_analysis_candidates(
         analysis,
         video_path=video_path,
+        subtitle_context_index_dir=resolved_subtitle_context_index_dir,
         max_candidates=max_candidates,
         prompt_style=prompt_style,
         custom_prompt=custom_prompt,
         image_model=image_model,
         provider_slug=provider_slug,
+        frame_pool_manifest=frame_pool_manifest,
         polish=polish,
         polish_provider_slug=polish_provider_slug,
         polish_model=polish_model,
@@ -442,6 +477,7 @@ def analyze_and_narrate(
         for seg in narrated_segments
     ]
     payload["speechOutputDir"] = resolved_speech_output_dir
+    payload["subtitleContextIndexDir"] = resolved_subtitle_context_index_dir
     if embed_video:
         from narration_video import NarrationAudioSegment, render_narrated_video
 

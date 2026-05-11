@@ -12,12 +12,18 @@ from movieteller_config.schema import settings_from_dict
 from narration.narrate import narrate_segment_with_duration
 
 
-def _resolve_cli_settings(provider_override: str | None):
+def _resolve_cli_settings(
+    provider_override: str | None,
+    frame_pool_manifest_override: str | None,
+):
     """Apply optional ``--provider`` without mutating frozen Settings in place."""
-    if provider_override is None:
+    if provider_override is None and frame_pool_manifest_override is None:
         return load_settings(require_narration=True)
     flat = load_flat_dict()
-    flat["narration_provider"] = provider_override.strip().lower()
+    if provider_override is not None:
+        flat["narration_provider"] = provider_override.strip().lower()
+    if frame_pool_manifest_override is not None:
+        flat["frame_pool_manifest"] = frame_pool_manifest_override.strip()
     s = settings_from_dict(flat)
     s.require_api_key(s.narration_provider)
     return s
@@ -44,6 +50,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Override narration_provider slug (e.g. openai, modelscope); default from config",
     )
     p.add_argument(
+        "--frame-pool-manifest",
+        default=None,
+        help="Optional frame-pool manifest path override",
+    )
+    p.add_argument(
         "--json",
         action="store_true",
         dest="json_out",
@@ -51,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = p.parse_args(argv)
 
-    settings = _resolve_cli_settings(args.provider)
+    settings = _resolve_cli_settings(args.provider, args.frame_pool_manifest)
     style = args.prompt_style or settings.default_prompt_style
 
     try:

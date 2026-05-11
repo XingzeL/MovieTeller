@@ -18,6 +18,12 @@ class TestLoader(unittest.TestCase):
                 "MAX_FRAMES_PER_SEGMENT": "8",
                 "NARRATION_FRAME_MAX_EDGE": "512",
                 "NARRATION_PROVIDER": "modelscope",
+                "FRAME_POOL_MANIFEST": "/tmp/example.frame_pool/manifest.jsonl",
+                "POOL_FRAMES_PER_SHOT_MAX": "5",
+                "POOL_MISS_UNIFORM_MAX_FRAMES": "9",
+                "SUBTITLE_CONTEXT_EMBEDDING_PROVIDER": "dashscope",
+                "SUBTITLE_CONTEXT_EMBEDDING_MODEL": "text-embedding-v1",
+                "SUBTITLE_CONTEXT_TOP_K": "9",
             },
             clear=False,
         ):
@@ -28,6 +34,16 @@ class TestLoader(unittest.TestCase):
             self.assertEqual(s.max_frames_per_segment, 8)
             self.assertEqual(s.narration_frame_max_edge, 512)
             self.assertEqual(s.narration_provider, "modelscope")
+            self.assertEqual(
+                s.frame_pool_manifest, "/tmp/example.frame_pool/manifest.jsonl"
+            )
+            self.assertEqual(s.pool_frames_per_shot_max, 5)
+            self.assertEqual(s.pool_miss_uniform_max_frames, 9)
+            self.assertEqual(s.subtitle_context_provider(), "dashscope")
+            self.assertEqual(
+                s.require_subtitle_context_embedding_model(), "text-embedding-v1"
+            )
+            self.assertEqual(s.subtitle_context_top_k, 9)
 
     def test_api_keys_json_and_anthropic_env(self):
         with mock.patch.dict(
@@ -112,6 +128,20 @@ ffmpeg_path: /usr/bin/ffmpeg
         self.assertEqual(s.videocaptioner_language, "auto")
         self.assertIsNone(s.videocaptioner_transcribe_timeout_ms)
         self.assertFalse(s.narration_polish_enabled)
+        self.assertIsNone(s.frame_pool_manifest)
+        self.assertEqual(s.pool_frames_per_shot_min, 1)
+        self.assertEqual(s.pool_frames_per_shot_max, 3)
+        self.assertIsNone(s.pool_frames_per_shot_rate)
+        self.assertEqual(s.pool_miss_uniform_max_frames, 24)
+        self.assertEqual(s.dialogue_overlap_threshold, 0.05)
+        self.assertEqual(s.pyscenedetect_merge_sec, 0.25)
+        self.assertIsNone(s.subtitle_context_embedding_provider)
+        self.assertIsNone(s.subtitle_context_embedding_model)
+        self.assertEqual(s.subtitle_context_chunk_cue_count, 5)
+        self.assertEqual(s.subtitle_context_chunk_stride, 3)
+        self.assertEqual(s.subtitle_context_history_window_sec, 600.0)
+        self.assertEqual(s.subtitle_context_top_k, 6)
+        self.assertFalse(s.subtitle_context_summary_enabled)
         self.assertEqual(s.narration_polish_model_index, 0)
         self.assertEqual(s.narration_polish_target_wpm, 150)
         self.assertEqual(s.narration_polish_cefr_level, "B1")
@@ -209,10 +239,36 @@ ffmpeg_path: /usr/bin/ffmpeg
                 "ffmpeg_path": "ff",
                 "default_prompt_style": "how-to",
                 "narration_frame_max_edge": "640",
+                "pool_frames_per_shot_min": "2",
+                "pool_frames_per_shot_max": "6",
+                "pool_frames_per_shot_rate": "0.5",
+                "pool_miss_uniform_max_frames": "10",
+                "dialogue_overlap_threshold": "0.1",
+                "pyscenedetect_merge_sec": "0.5",
+                "subtitle_context_embedding_provider": "glm",
+                "subtitle_context_embedding_model": "embedding-3",
+                "subtitle_context_chunk_cue_count": "4",
+                "subtitle_context_chunk_stride": "2",
+                "subtitle_context_history_window_sec": "480",
+                "subtitle_context_top_k": "8",
+                "subtitle_context_summary_enabled": "true",
             }
         )
         self.assertEqual(s.max_frames_per_segment, 12)
         self.assertEqual(s.narration_frame_max_edge, 640)
+        self.assertEqual(s.pool_frames_per_shot_min, 2)
+        self.assertEqual(s.pool_frames_per_shot_max, 6)
+        self.assertEqual(s.pool_frames_per_shot_rate, 0.5)
+        self.assertEqual(s.pool_miss_uniform_max_frames, 10)
+        self.assertEqual(s.dialogue_overlap_threshold, 0.1)
+        self.assertEqual(s.pyscenedetect_merge_sec, 0.5)
+        self.assertEqual(s.subtitle_context_provider(), "glm")
+        self.assertEqual(s.require_subtitle_context_embedding_model(), "embedding-3")
+        self.assertEqual(s.subtitle_context_chunk_cue_count, 4)
+        self.assertEqual(s.subtitle_context_chunk_stride, 2)
+        self.assertEqual(s.subtitle_context_history_window_sec, 480.0)
+        self.assertEqual(s.subtitle_context_top_k, 8)
+        self.assertTrue(s.subtitle_context_summary_enabled)
         self.assertEqual(s.narration_provider, "openai")
         self.assertEqual(len(s.api_keys), 0)
         self.assertEqual(len(s.api_base_urls), 0)

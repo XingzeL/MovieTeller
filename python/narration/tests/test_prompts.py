@@ -29,3 +29,19 @@ def test_build_user_text_mentions_duration_and_frames():
     t = build_user_text(duration_sec=12.5, prompt_style="documentary", frame_count=8)
     assert "12.50" in t or "12.5" in t
     assert "8" in t
+
+
+def test_build_user_text_includes_subtitle_context_sections():
+    t = build_user_text(
+        duration_sec=6.0,
+        prompt_style="movie_commentary",
+        frame_count=4,
+        prev_subtitle_text="先别走",
+        next_subtitle_text="你听我解释",
+        retrieved_context_texts=("他们之前在争吵", "信件是误会的起点"),
+    )
+    assert "[Scene Boundary]" in t
+    assert "先别走" in t
+    assert "你听我解释" in t
+    assert "[Relevant Earlier Dialogue]" in t
+    assert "信件是误会的起点" in t

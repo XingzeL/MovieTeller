@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock
+from types import SimpleNamespace
 
 from movieteller_config.schema import settings_from_dict
 
@@ -45,3 +46,184 @@ def test_narrate_segment_with_duration_end_to_end_mocked(
     )
     assert text == "Unified narration."
     assert dur == 1.0
+
+
+def test_narrate_segment_uses_frame_pool_when_manifest_configured(tmp_path):
+    settings = settings_from_dict(
+        {
+            "openai_api_key": "sk-test",
+            "narration_image_model": "gpt-4o-mini",
+            "max_frames_per_segment": 4,
+            "ffmpeg_path": "/bin/ffmpeg",
+            "frame_pool_manifest": str(tmp_path / "pool" / "manifest.jsonl"),
+        }
+    )
+    pool = tmp_path / "pool"
+    images = pool / "images"
+    images.mkdir(parents=True)
+    (pool / "shots.json").write_text(
+        '{"schemaVersion":1,"videoPath":"seg.mp4","shots":[{"shotId":0,"startSec":0.0,"endSec":1.0,"isDialogue":false}]}',
+        encoding="utf-8",
+    )
+    (images / "000001.png").write_bytes(b"\x89PNG\r\n\x1a\npool")
+    (pool / "manifest.jsonl").write_text(
+        '{"schemaVersion":1,"shotId":0,"tSec":0.5,"imageRef":"images/000001.png","embeddingIndex":null}\n',
+        encoding="utf-8",
+    )
+    vid = tmp_path / "seg.mp4"
+    vid.write_bytes(b"x")
+
+    def fake_run(*args, **kwargs):
+        raise AssertionError("uniform frame extraction should not run when pool hits")
+
+    def fake_client_factory(_k, _b):
+        client = MagicMock()
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = "From frame pool."
+        client.chat.completions.create.return_value = resp
+        return client
+
+    timings = {}
+    text, dur = narrate_segment_with_duration(
+        str(vid),
+        0.0,
+        1.0,
+        settings=settings,
+        subprocess_run=fake_run,
+        client_factory=fake_client_factory,
+        timings_out=timings,
+    )
+    assert text == "From frame pool."
+    assert dur == 1.0
+    assert timings["frame_source"] == "pool"
+    assert timings["frame_count"] == 1
+
+
+def test_narrate_segment_falls_back_to_uniform_on_pool_window_miss(
+    tmp_path, fake_concat_png_stdout
+):
+    settings = settings_from_dict(
+        {
+            "openai_api_key": "sk-test",
+            "narration_image_model": "gpt-4o-mini",
+            "max_frames_per_segment": 4,
+            "pool_miss_uniform_max_frames": 2,
+            "ffmpeg_path": "/bin/ffmpeg",
+            "frame_pool_manifest": str(tmp_path / "pool" / "manifest.jsonl"),
+        }
+    )
+    pool = tmp_path / "pool"
+    images = pool / "images"
+    images.mkdir(parents=True)
+    (pool / "shots.json").write_text(
+        '{"schemaVersion":1,"videoPath":"seg.mp4","shots":[{"shotId":0,"startSec":0.0,"endSec":1.0,"isDialogue":false}]}',
+        encoding="utf-8",
+    )
+    (images / "000001.png").write_bytes(b"\x89PNG\r\n\x1a\npool")
+    (pool / "manifest.jsonl").write_text(
+        '{"schemaVersion":1,"shotId":0,"tSec":0.1,"imageRef":"images/000001.png","embeddingIndex":null}\n',
+        encoding="utf-8",
+    )
+    vid = tmp_path / "seg.mp4"
+    vid.write_bytes(b"x")
+    calls = []
+
+    def fake_run(cmd, capture_output, check):
+        calls.append(list(cmd))
+        m = MagicMock()
+        m.returncode = 0
+        m.stdout = fake_concat_png_stdout
+        m.stderr = b""
+        return m
+
+    def fake_client_factory(_k, _b):
+        client = MagicMock()
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = "Fallback narration."
+        client.chat.completions.create.return_value = resp
+        return client
+
+    timings = {}
+    text, _dur = narrate_segment_with_duration(
+        str(vid),
+        2.0,
+        3.0,
+        settings=settings,
+        subprocess_run=fake_run,
+        client_factory=fake_client_factory,
+        timings_out=timings,
+    )
+    assert text == "Fallback narration."
+    assert timings["frame_source"] == "uniform_fallback"
+    assert "-frames:v" in calls[0]
+
+
+def test_narrate_segment_includes_subtitle_context_in_prompt(
+    tmp_path, fake_concat_png_stdout
+):
+    settings = settings_from_dict(
+        {
+            "openai_api_key": "sk-test",
+            "narration_image_model": "gpt-4o-mini",
+            "max_frames_per_segment": 4,
+            "ffmpeg_path": "/bin/ffmpeg",
+        }
+    )
+    vid = tmp_path / "seg.mp4"
+    vid.write_bytes(b"x")
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, capture_output, check):
+        m = MagicMock()
+        m.returncode = 0
+        m.stdout = fake_concat_png_stdout
+        m.stderr = b""
+        return m
+
+    def fake_retriever(**kwargs):
+        captured["retriever_kwargs"] = kwargs
+        return SimpleNamespace(
+            retrieved_chunks=(
+                SimpleNamespace(text="他们之前因为信件起了争执"),
+                SimpleNamespace(text="后来她一直保留着那些信"),
+            )
+        )
+
+    def fake_client_factory(_k, _b):
+        client = MagicMock()
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = "Narration with context."
+        def _create(**kwargs):
+            captured["chat_kwargs"] = kwargs
+            return resp
+
+        client.chat.completions.create.side_effect = _create
+        return client
+
+    text, dur = narrate_segment_with_duration(
+        str(vid),
+        5.0,
+        8.0,
+        prompt_style="movie_commentary",
+        settings=settings,
+        subprocess_run=fake_run,
+        client_factory=fake_client_factory,
+        subtitle_context_input={
+            "segment_start_sec": 5.0,
+            "segment_end_sec": 8.0,
+            "prev_subtitle_text": "你为什么不给我送信了",
+            "next_subtitle_text": "这是给你的，快收下",
+            "index_dir": "demo.subtitle_context",
+        },
+        subtitle_context_retriever=fake_retriever,
+    )
+    assert text == "Narration with context."
+    assert dur == 3.0
+    assert captured["retriever_kwargs"]["query_text"] == "你为什么不给我送信了"
+    user_text = captured["chat_kwargs"]["messages"][1]["content"][0]["text"]
+    assert "Previous subtitle: 你为什么不给我送信了" in user_text
+    assert "Next subtitle: 这是给你的，快收下" in user_text
+    assert "他们之前因为信件起了争执" in user_text

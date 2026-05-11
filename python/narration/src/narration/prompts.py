@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Sequence
+
 # Words per minute style hints (used only for target length, not hard limits)
 _WORDS_PER_MIN: dict[str, float] = {
     "documentary": 130.0,
@@ -56,12 +58,41 @@ def build_user_text(
     duration_sec: float,
     prompt_style: str,
     frame_count: int,
+    prev_subtitle_text: str | None = None,
+    next_subtitle_text: str | None = None,
+    retrieved_context_texts: Sequence[str] = (),
 ) -> str:
     """User message text accompanying the image batch."""
     words = target_word_count(duration_sec, prompt_style)
-    return (
+    parts = [
+        (
         f"This segment is about {duration_sec:.2f} seconds long "
         f"(use roughly {words} words as a soft target, not a hard count). "
         f"You are given {frame_count} evenly spaced key frames from this segment. "
         "Write continuous narration that flows across the segment."
-    )
+        )
+    ]
+    boundary_lines: list[str] = []
+    prev_text = str(prev_subtitle_text or "").strip()
+    next_text = str(next_subtitle_text or "").strip()
+    if prev_text or next_text:
+        boundary_lines.append("[Scene Boundary]")
+        if prev_text:
+            boundary_lines.append(f"Previous subtitle: {prev_text}")
+        if next_text:
+            boundary_lines.append(f"Next subtitle: {next_text}")
+        boundary_lines.append(
+            "Use these subtitle boundaries to maintain continuity, but stay grounded in the frames."
+        )
+        parts.append("\n".join(boundary_lines))
+    context_items = [str(item).strip() for item in retrieved_context_texts if str(item).strip()]
+    if context_items:
+        context_lines = [
+            "[Relevant Earlier Dialogue]",
+            "The following lines are earlier context from the same video. Treat them as weak background reference only.",
+        ]
+        context_lines.extend(
+            f"{idx}. {text}" for idx, text in enumerate(context_items, start=1)
+        )
+        parts.append("\n".join(context_lines))
+    return "\n\n".join(parts)
