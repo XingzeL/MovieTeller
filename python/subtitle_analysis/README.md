@@ -1,8 +1,7 @@
 # subtitle_analysis
 
 Analyze `.srt` subtitle output and derive **non-subtitle intervals** that are good
-candidates for frame extraction and narration. It can also directly call
-`narration` and emit a timed JSON script list.
+candidates for frame extraction and narration.
 
 This module does **not** run ASR itself. It assumes subtitles already exist
 (for example from `subtitle_extraction` / `videocaptioner transcribe`).
@@ -25,13 +24,7 @@ python -m pip install -e python/subtitle_extraction
 python -m pip install -e python/subtitle_analysis
 ```
 
-If you also want the one-click narration pipeline, install `narration` in the same
-`.venv`:
-
-```bash
-python -m pip install -e python/movieteller_config -e python/narration -e python/narration_polish
-python -m pip install -e python/narration_speech -e python/narration_video
-```
+If you want the end-to-end narration pipeline, use `movie_pipeline`.
 
 ## CLI
 
@@ -44,43 +37,6 @@ python -m subtitle_analysis \
   --video subtitle_example.mp4 \
   --min-gap-sec 1.5 \
   --subtitle-guard-sec 0.25 \
-  --json
-```
-
-Run the full pipeline and generate narration JSON for the derived gaps:
-
-```bash
-source .venv/bin/activate
-python -m subtitle_analysis \
-  --srt subtitle_example.extracted.srt \
-  --video subtitle_example.mp4 \
-  --min-gap-sec 1.5 \
-  --subtitle-guard-sec 0.25 \
-  --narrate \
-  --polish \
-  --polish-provider glm \
-  --polish-model-index 0 \
-  --polish-target-wpm 150 \
-  --polish-cefr-level B1 \
-  --max-candidates 3 \
-  --json
-```
-
-Run the full pipeline all the way to speech audio and a rendered narrated video:
-
-```bash
-source .venv/bin/activate
-python -m subtitle_analysis \
-  --srt subtitle_example.extracted.srt \
-  --video subtitle_example.mp4 \
-  --min-gap-sec 1.5 \
-  --subtitle-guard-sec 0.25 \
-  --narrate \
-  --polish \
-  --speech \
-  --embed-video \
-  --speech-output-dir subtitle_example.narration_audio \
-  --embed-output subtitle_example.narrated.mp4 \
   --json
 ```
 
@@ -112,22 +68,7 @@ text = narrate_segment(
 )
 ```
 
-Or do it in one step:
-
-```python
-from subtitle_analysis import analyze_and_narrate
-
-payload = analyze_and_narrate(
-    srt_path="subtitle_example.extracted.srt",
-    video_path="subtitle_example.mp4",
-    min_gap_sec=1.5,
-    subtitle_guard_sec=0.25,
-    max_candidates=3,
-    polish=True,
-    speech=True,
-    embed_video=True,
-)
-```
+For the full orchestration flow, use `movie_pipeline`.
 
 ## Notes
 

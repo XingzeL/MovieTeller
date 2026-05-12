@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 
+from pipeline_types import FrameBatch
+
 from video_frame_pool.errors import PoolWindowMiss
 from video_frame_pool.storage import (
     load_image_base64,
@@ -150,4 +152,29 @@ def query_frame_pool(
         frames_base64_png=frames,
         frame_times_sec=tuple(entry.t_sec for entry in selected),
         shot_ids=tuple(entry.shot_id for entry in selected),
+    )
+
+
+def query_frame_pool_as_frame_batch(
+    *,
+    manifest_path: str,
+    start_sec: float,
+    end_sec: float,
+    duration_sec: float,
+    budget: int,
+    settings: object | None = None,
+) -> FrameBatch:
+    result = query_frame_pool(
+        manifest_path=manifest_path,
+        start_sec=start_sec,
+        end_sec=end_sec,
+        budget=budget,
+        settings=settings,
+    )
+    return FrameBatch(
+        frames_base64_png=result.frames_base64_png,
+        frame_times_sec=result.frame_times_sec,
+        duration_sec=float(duration_sec),
+        source="frame_pool",
+        shot_ids=result.shot_ids,
     )

@@ -63,17 +63,19 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     settings = _resolve_cli_settings(args.provider, args.frame_pool_manifest)
-    style = args.prompt_style or settings.default_prompt_style
+    narration_options = settings.narration_options(
+        provider_slug=args.provider,
+        model=args.model,
+        prompt_style=args.prompt_style,
+        custom_prompt=args.custom_prompt,
+    )
 
     try:
         text, duration_sec = narrate_segment_with_duration(
             args.video,
             args.start,
             args.end,
-            prompt_style=style,
-            custom_prompt=args.custom_prompt,
-            image_model=args.model,
-            provider_slug=args.provider,
+            options=narration_options,
             settings=settings,
         )
     except Exception as e:

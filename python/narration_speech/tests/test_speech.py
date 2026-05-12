@@ -1,16 +1,8 @@
 from pathlib import Path
 
+from movieteller_config.schema import NarrationSpeechOptions
+
 from narration_speech.speech import _atempo_filter_for_speed, synthesize_narration_text
-
-
-class DummySettings:
-    ffmpeg_path = "ffmpeg"
-    narration_speech_provider = "edge_tts"
-    narration_speech_voice = "en-US-EmmaMultilingualNeural"
-    narration_speech_rate = "+0%"
-    narration_speech_volume = "+0%"
-    narration_speech_pitch = "+0Hz"
-    narration_speech_boundary = "SentenceBoundary"
 
 
 class FakeCommunicate:
@@ -37,7 +29,15 @@ def test_synthesize_narration_without_fit(monkeypatch, tmp_path):
         "hello world",
         2.0,
         output_path=str(tmp_path / "out.mp3"),
-        settings=DummySettings(),
+        options=NarrationSpeechOptions(
+            provider_slug="edge_tts",
+            voice="en-US-EmmaMultilingualNeural",
+            rate="+0%",
+            volume="+0%",
+            pitch="+0Hz",
+            boundary="SentenceBoundary",
+            ffmpeg_bin="ffmpeg",
+        ),
         communicator_factory=lambda *args, **kwargs: FakeCommunicate(),
     )
     assert Path(result.audio_path).is_file()
@@ -60,7 +60,15 @@ def test_synthesize_narration_with_fit(monkeypatch, tmp_path):
         "hello world",
         2.0,
         output_path=str(tmp_path / "out.mp3"),
-        settings=DummySettings(),
+        options=NarrationSpeechOptions(
+            provider_slug="edge_tts",
+            voice="en-US-EmmaMultilingualNeural",
+            rate="+0%",
+            volume="+0%",
+            pitch="+0Hz",
+            boundary="SentenceBoundary",
+            ffmpeg_bin="ffmpeg",
+        ),
         communicator_factory=lambda *args, **kwargs: FakeCommunicate(),
     )
     assert result.fit_applied is True

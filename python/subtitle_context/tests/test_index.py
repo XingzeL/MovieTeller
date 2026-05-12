@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from movieteller_config.schema import settings_from_dict
 from subtitle_context.storage import write_chunks, write_embeddings
@@ -8,6 +9,7 @@ from subtitle_context.storage import write_chunks, write_embeddings
 from subtitle_context.index import (
     build_subtitle_context_index,
     retrieve_past_subtitle_context,
+    subtitle_context_index_is_complete,
 )
 from subtitle_context.types import SubtitleContextChunk
 
@@ -41,6 +43,32 @@ world
     assert result.embedding_dim == 2
     assert Path(result.chunks_path).is_file()
     assert Path(result.embeddings_path).is_file()
+    assert subtitle_context_index_is_complete(tmp_path / "index")
+
+
+def test_build_subtitle_context_index_does_not_leave_partial_dir_on_failure(tmp_path):
+    srt = tmp_path / "demo.srt"
+    srt.write_text(
+        """1
+00:00:00,000 --> 00:00:01,000
+hello
+""",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "index"
+
+    def failing_embedder(_texts):
+        raise RuntimeError("embedding failed")
+
+    settings = settings_from_dict({"narration_image_model": "x"})
+    with pytest.raises(RuntimeError, match="embedding failed"):
+        build_subtitle_context_index(
+            srt_path=str(srt),
+            output_dir=str(output_dir),
+            settings=settings,
+            embedder=failing_embedder,
+        )
+    assert not output_dir.exists()
 
 
 def test_retrieve_past_subtitle_context_filters_future_chunks(tmp_path):

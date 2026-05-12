@@ -1,6 +1,6 @@
 from video_frame_pool.build import build_frame_pool
 from video_frame_pool.errors import FramePoolError, PoolManifestError, PoolWindowMiss
-from video_frame_pool.query import query_frame_pool
+from video_frame_pool.query import query_frame_pool, query_frame_pool_as_frame_batch
 from video_frame_pool.types import (
     FramePoolBuildResult,
     FramePoolEntry,
@@ -18,4 +18,5 @@ __all__ = [
     "ShotSpan",
     "build_frame_pool",
     "query_frame_pool",
+    "query_frame_pool_as_frame_batch",
 ]

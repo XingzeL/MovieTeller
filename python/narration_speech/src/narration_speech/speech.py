@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from edge_tts import Communicate
 from media_utils import ffprobe_path_for, probe_duration_sec
 from movieteller_config import load_settings
+from movieteller_config.schema import NarrationSpeechOptions
 
 from narration_speech.types import NarrationSpeechResult
 
@@ -104,6 +105,7 @@ def synthesize_narration_text(
     output_path: str,
     metadata_path: str | None = None,
     target_duration_sec: float | None = None,
+    options: NarrationSpeechOptions | None = None,
     provider_slug: str | None = None,
     voice: str | None = None,
     rate: str | None = None,
@@ -119,33 +121,24 @@ def synthesize_narration_text(
         raise ValueError("speech text is empty")
 
     cfg = settings if settings is not None else load_settings()
-    resolved_provider = (
-        str(provider_slug or getattr(cfg, "narration_speech_provider", "edge_tts"))
-        .strip()
-        .lower()
-        or "edge_tts"
+    resolved_options = options or cfg.narration_speech_options(
+        provider_slug=provider_slug,
+        voice=voice,
+        rate=rate,
+        volume=volume,
+        pitch=pitch,
+        boundary=boundary,
     )
+    resolved_provider = resolved_options.provider_slug
     if resolved_provider != "edge_tts":
         raise ValueError(
             f"Unsupported narration_speech provider '{resolved_provider}'; only edge_tts is implemented"
         )
-    resolved_voice = (
-        str(voice or getattr(cfg, "narration_speech_voice", "")).strip()
-        or "en-US-EmmaMultilingualNeural"
-    )
-    resolved_rate = (
-        str(rate or getattr(cfg, "narration_speech_rate", "+0%")).strip() or "+0%"
-    )
-    resolved_volume = (
-        str(volume or getattr(cfg, "narration_speech_volume", "+0%")).strip() or "+0%"
-    )
-    resolved_pitch = (
-        str(pitch or getattr(cfg, "narration_speech_pitch", "+0Hz")).strip() or "+0Hz"
-    )
-    resolved_boundary = (
-        str(boundary or getattr(cfg, "narration_speech_boundary", "SentenceBoundary")).strip()
-        or "SentenceBoundary"
-    )
+    resolved_voice = resolved_options.voice
+    resolved_rate = resolved_options.rate
+    resolved_volume = resolved_options.volume
+    resolved_pitch = resolved_options.pitch
+    resolved_boundary = resolved_options.boundary
     resolved_target_duration_sec = max(
         0.1,
         float(
@@ -162,7 +155,7 @@ def synthesize_narration_text(
         if metadata_path is not None
         else final_audio_path.with_suffix(final_audio_path.suffix + ".jsonl")
     )
-    ffprobe_bin = ffprobe_path_for(cfg.ffmpeg_path)
+    ffprobe_bin = ffprobe_path_for(resolved_options.ffmpeg_bin)
 
     with tempfile.TemporaryDirectory(prefix="narration_speech_") as tmpdir:
         raw_audio_path = Path(tmpdir) / final_audio_path.name
@@ -193,7 +186,7 @@ def synthesize_narration_text(
                 str(final_audio_path),
                 target_duration_sec=resolved_target_duration_sec,
                 raw_duration_sec=raw_duration_sec,
-                ffmpeg_bin=cfg.ffmpeg_path,
+                ffmpeg_bin=resolved_options.ffmpeg_bin,
                 subprocess_run=subprocess_run,
             )
             timing_fit_sec = time.perf_counter() - t_fit0

@@ -21,7 +21,7 @@ class FrameBatch:
     frames_base64_png: tuple[str, ...]
     frame_times_sec: tuple[float, ...]
     duration_sec: float
-    source: Literal["uniform", "frame_pool", "external"]
+    source: Literal["uniform", "uniform_fallback", "frame_pool", "external"]
     shot_ids: tuple[int | None, ...] | None = None
 
 

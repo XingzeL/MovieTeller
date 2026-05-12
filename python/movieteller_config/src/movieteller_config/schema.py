@@ -39,6 +39,74 @@ def _expand_optional_env_str(value: Any) -> str | None:
 
 
 @dataclass(frozen=True)
+class NarrationOptions:
+    provider_slug: str
+    model: str
+    prompt_style: str
+    custom_prompt: str = ""
+
+
+@dataclass(frozen=True)
+class NarrationPolishOptions:
+    provider_slug: str
+    model: str
+    prompt_style: str
+    target_wpm: int
+    cefr_level: str
+    strength: str
+    safety_margin_sec: float
+
+
+@dataclass(frozen=True)
+class NarrationSpeechOptions:
+    provider_slug: str
+    voice: str
+    rate: str
+    volume: str
+    pitch: str
+    boundary: str
+    ffmpeg_bin: str
+
+
+@dataclass(frozen=True)
+class NarrationVideoOptions:
+    ffmpeg_bin: str
+    background_audio_volume: float
+    speech_audio_volume: float
+
+
+@dataclass(frozen=True)
+class SubtitleContextBuildOptions:
+    chunk_cue_count: int
+    chunk_stride: int
+
+
+@dataclass(frozen=True)
+class SubtitleContextRetrieveOptions:
+    history_window_sec: float
+    top_k: int
+
+
+@dataclass(frozen=True)
+class SubtitleExtractionOptions:
+    videocaptioner_bin: str | None
+    asr: str
+    language: str
+    timeout_sec: float | None
+
+
+@dataclass(frozen=True)
+class FramePoolBuildOptions:
+    ffmpeg_bin: str
+    max_edge_pixels: int
+    min_frames_per_shot: int
+    max_frames_per_shot: int
+    frames_per_shot_rate: float | None
+    dialogue_overlap_threshold: float
+    pyscenedetect_merge_sec: float
+
+
+@dataclass(frozen=True)
 class Settings:
     """Resolved configuration for MovieTeller Python components."""
 
@@ -212,6 +280,277 @@ class Settings:
         raise ValueError(
             "subtitle_context_embedding_model is not configured. "
             "Set SUBTITLE_CONTEXT_EMBEDDING_MODEL or subtitle_context_embedding_model in YAML."
+        )
+
+    def narration_options(
+        self,
+        *,
+        provider_slug: str | None = None,
+        model: str | None = None,
+        prompt_style: str | None = None,
+        custom_prompt: str = "",
+    ) -> NarrationOptions:
+        slug = (provider_slug or self.narration_provider).strip().lower() or "openai"
+        resolved_model = str(model or self.model_for_provider(slug)).strip()
+        if not resolved_model:
+            raise ValueError(f"narration model is empty for provider '{slug}'")
+        resolved_prompt_style = (
+            str(prompt_style or self.default_prompt_style).strip() or "documentary"
+        )
+        return NarrationOptions(
+            provider_slug=slug,
+            model=resolved_model,
+            prompt_style=resolved_prompt_style,
+            custom_prompt=str(custom_prompt or ""),
+        )
+
+    def narration_polish_options(
+        self,
+        *,
+        provider_slug: str | None = None,
+        model: str | None = None,
+        prompt_style: str | None = None,
+        target_wpm: int | None = None,
+        cefr_level: str | None = None,
+        strength: str | None = None,
+        safety_margin_sec: float | None = None,
+    ) -> NarrationPolishOptions:
+        slug = (provider_slug or self.polish_provider()).strip().lower() or "openai"
+        resolved_model = str(model or self.polish_model_for_provider(slug)).strip()
+        if not resolved_model:
+            raise ValueError(f"narration polish model is empty for provider '{slug}'")
+        resolved_prompt_style = (
+            str(prompt_style or self.default_prompt_style).strip() or "documentary"
+        )
+        return NarrationPolishOptions(
+            provider_slug=slug,
+            model=resolved_model,
+            prompt_style=resolved_prompt_style,
+            target_wpm=max(
+                1,
+                int(
+                    target_wpm
+                    if target_wpm is not None
+                    else self.narration_polish_target_wpm
+                ),
+            ),
+            cefr_level=(
+                str(
+                    cefr_level
+                    if cefr_level is not None
+                    else self.narration_polish_cefr_level
+                )
+                .strip()
+                .upper()
+                or "B1"
+            ),
+            strength=(
+                str(
+                    strength
+                    if strength is not None
+                    else self.narration_polish_strength
+                )
+                .strip()
+                .lower()
+                or "medium"
+            ),
+            safety_margin_sec=max(
+                0.0,
+                float(
+                    safety_margin_sec
+                    if safety_margin_sec is not None
+                    else self.narration_polish_safety_margin_sec
+                ),
+            ),
+        )
+
+    def narration_speech_options(
+        self,
+        *,
+        provider_slug: str | None = None,
+        voice: str | None = None,
+        rate: str | None = None,
+        volume: str | None = None,
+        pitch: str | None = None,
+        boundary: str | None = None,
+    ) -> NarrationSpeechOptions:
+        return NarrationSpeechOptions(
+            provider_slug=(
+                str(provider_slug or self.narration_speech_provider).strip().lower()
+                or "edge_tts"
+            ),
+            voice=(
+                str(voice or self.narration_speech_voice).strip()
+                or "en-US-EmmaMultilingualNeural"
+            ),
+            rate=str(rate or self.narration_speech_rate).strip() or "+0%",
+            volume=str(volume or self.narration_speech_volume).strip() or "+0%",
+            pitch=str(pitch or self.narration_speech_pitch).strip() or "+0Hz",
+            boundary=(
+                str(boundary or self.narration_speech_boundary).strip()
+                or "SentenceBoundary"
+            ),
+            ffmpeg_bin=self.ffmpeg_path,
+        )
+
+    def narration_video_options(
+        self,
+        *,
+        background_audio_volume: float | None = None,
+        speech_audio_volume: float | None = None,
+        ffmpeg_bin: str | None = None,
+    ) -> NarrationVideoOptions:
+        return NarrationVideoOptions(
+            ffmpeg_bin=str(ffmpeg_bin or self.ffmpeg_path).strip() or self.ffmpeg_path,
+            background_audio_volume=max(
+                0.0,
+                float(
+                    background_audio_volume
+                    if background_audio_volume is not None
+                    else self.narration_video_background_audio_volume
+                ),
+            ),
+            speech_audio_volume=max(
+                0.0,
+                float(
+                    speech_audio_volume
+                    if speech_audio_volume is not None
+                    else self.narration_video_speech_audio_volume
+                ),
+            ),
+        )
+
+    def subtitle_context_build_options(
+        self,
+        *,
+        chunk_cue_count: int | None = None,
+        chunk_stride: int | None = None,
+    ) -> SubtitleContextBuildOptions:
+        return SubtitleContextBuildOptions(
+            chunk_cue_count=max(
+                1,
+                int(
+                    chunk_cue_count
+                    if chunk_cue_count is not None
+                    else self.subtitle_context_chunk_cue_count
+                ),
+            ),
+            chunk_stride=max(
+                1,
+                int(
+                    chunk_stride
+                    if chunk_stride is not None
+                    else self.subtitle_context_chunk_stride
+                ),
+            ),
+        )
+
+    def subtitle_context_retrieve_options(
+        self,
+        *,
+        history_window_sec: float | None = None,
+        top_k: int | None = None,
+    ) -> SubtitleContextRetrieveOptions:
+        return SubtitleContextRetrieveOptions(
+            history_window_sec=float(
+                history_window_sec
+                if history_window_sec is not None
+                else self.subtitle_context_history_window_sec
+            ),
+            top_k=max(
+                1,
+                int(top_k if top_k is not None else self.subtitle_context_top_k),
+            ),
+        )
+
+    def subtitle_extraction_options(
+        self,
+        *,
+        videocaptioner_bin: str | None = None,
+        asr: str | None = None,
+        language: str | None = None,
+        timeout_sec: float | None = None,
+    ) -> SubtitleExtractionOptions:
+        resolved_timeout_sec = timeout_sec
+        if resolved_timeout_sec is None and self.videocaptioner_transcribe_timeout_ms is not None:
+            resolved_timeout_sec = max(
+                1.0, float(self.videocaptioner_transcribe_timeout_ms) / 1000.0
+            )
+        return SubtitleExtractionOptions(
+            videocaptioner_bin=_none_if_empty(
+                videocaptioner_bin
+                if videocaptioner_bin is not None
+                else self.videocaptioner_bin
+            ),
+            asr=str(asr or self.videocaptioner_asr).strip().lower() or "bijian",
+            language=str(language or self.videocaptioner_language).strip() or "auto",
+            timeout_sec=resolved_timeout_sec,
+        )
+
+    def frame_pool_build_options(
+        self,
+        *,
+        ffmpeg_bin: str | None = None,
+        max_edge_pixels: int | None = None,
+        min_frames_per_shot: int | None = None,
+        max_frames_per_shot: int | None = None,
+        frames_per_shot_rate: float | None = None,
+        dialogue_overlap_threshold: float | None = None,
+        pyscenedetect_merge_sec: float | None = None,
+    ) -> FramePoolBuildOptions:
+        resolved_min_frames = max(
+            1,
+            int(
+                min_frames_per_shot
+                if min_frames_per_shot is not None
+                else self.pool_frames_per_shot_min
+            ),
+        )
+        resolved_max_frames = max(
+            resolved_min_frames,
+            int(
+                max_frames_per_shot
+                if max_frames_per_shot is not None
+                else self.pool_frames_per_shot_max
+            ),
+        )
+        return FramePoolBuildOptions(
+            ffmpeg_bin=str(ffmpeg_bin or self.ffmpeg_path).strip() or self.ffmpeg_path,
+            max_edge_pixels=max(
+                16,
+                int(
+                    max_edge_pixels
+                    if max_edge_pixels is not None
+                    else self.narration_frame_max_edge
+                ),
+            ),
+            min_frames_per_shot=resolved_min_frames,
+            max_frames_per_shot=resolved_max_frames,
+            frames_per_shot_rate=(
+                float(frames_per_shot_rate)
+                if frames_per_shot_rate is not None
+                else (
+                    float(self.pool_frames_per_shot_rate)
+                    if self.pool_frames_per_shot_rate is not None
+                    else None
+                )
+            ),
+            dialogue_overlap_threshold=max(
+                0.0,
+                float(
+                    dialogue_overlap_threshold
+                    if dialogue_overlap_threshold is not None
+                    else self.dialogue_overlap_threshold
+                ),
+            ),
+            pyscenedetect_merge_sec=max(
+                0.0,
+                float(
+                    pyscenedetect_merge_sec
+                    if pyscenedetect_merge_sec is not None
+                    else self.pyscenedetect_merge_sec
+                ),
+            ),
         )
 
 

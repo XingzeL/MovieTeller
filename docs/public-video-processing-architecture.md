@@ -224,7 +224,7 @@ Worker 消费任务：
 
 或者先直接复用：
 
-- `python -m subtitle_analysis --narrate --json`
+- `python -m movie_pipeline --json`
 
 推荐 Worker 内部步骤：
 
@@ -448,7 +448,7 @@ Worker 消费任务：
 }
 ```
 
-这个格式已经和当前 `subtitle_analysis --narrate --json` 的输出方向一致，可以直接复用。
+这个格式已经和当前 `movie_pipeline --json` 的输出方向一致，可以直接复用。
 
 ---
 

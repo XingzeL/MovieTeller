@@ -1,15 +1,10 @@
 from pathlib import Path
 
 import pytest
+from movieteller_config.schema import NarrationVideoOptions
 
 from narration_video.render import render_narrated_video
 from narration_video.types import NarrationAudioSegment
-
-
-class DummySettings:
-    ffmpeg_path = "ffmpeg"
-    narration_video_background_audio_volume = 0.35
-    narration_video_speech_audio_volume = 1.0
 
 
 def test_render_narrated_video_requires_segments(tmp_path):
@@ -20,7 +15,11 @@ def test_render_narrated_video_requires_segments(tmp_path):
             str(video),
             [],
             output_path=str(tmp_path / "out.mp4"),
-            settings=DummySettings(),
+            options=NarrationVideoOptions(
+                ffmpeg_bin="ffmpeg",
+                background_audio_volume=0.35,
+                speech_audio_volume=1.0,
+            ),
         )
 
 
@@ -53,7 +52,11 @@ def test_render_narrated_video_builds_ffmpeg_command(monkeypatch, tmp_path):
         str(video),
         [NarrationAudioSegment(start_sec=1.25, end_sec=2.0, audio_path=str(audio))],
         output_path=str(tmp_path / "out.mp4"),
-        settings=DummySettings(),
+        options=NarrationVideoOptions(
+            ffmpeg_bin="ffmpeg",
+            background_audio_volume=0.35,
+            speech_audio_volume=1.0,
+        ),
         subprocess_run=fake_run,
     )
     assert result.output_path.endswith("out.mp4")

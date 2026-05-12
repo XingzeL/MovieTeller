@@ -506,6 +506,7 @@ def render_narrated_video(
 
 - 唯一的流程编排层
 - 决定哪些模块按什么顺序调用
+- 对外提供唯一全流程入口
 
 建议接口：
 
@@ -520,6 +521,13 @@ def run_pipeline(
 ```
 
 它是唯一允许直接串起多个领域模块的地方。
+
+当前规范入口：
+
+- CLI: `python -m movie_pipeline`
+- Python API: `run_pipeline(...)`
+
+`analyze_and_narrate(...)` 仅保留为旧调用方兼容层，不再作为推荐接口。
 
 ---
 

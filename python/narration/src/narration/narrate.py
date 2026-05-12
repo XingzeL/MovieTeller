@@ -1,27 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import time
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
+from frame_source import FrameRequest, FrameSourceOptions, get_frames_for_segment
 from media_utils import ffprobe_path_for, segment_duration_sec
 from movieteller_config import load_settings
+from movieteller_config.schema import NarrationOptions
+from pipeline_types import FrameBatch, NarrationContext, NarrationResult
 
-from narration.frames import extract_frames_base64
 from narration.prompts import build_system_message, build_user_text
 from narration.story import generate_narration
 
 if TYPE_CHECKING:
     from movieteller_config.schema import Settings
-
-
-@dataclass(frozen=True)
-class SubtitleNarrationContext:
-    segment_start_sec: float
-    segment_end_sec: float
-    prev_subtitle_text: str | None = None
-    next_subtitle_text: str | None = None
-    index_dir: str | None = None
 
 
 def _window_bounds(
@@ -35,79 +27,15 @@ def _window_bounds(
     return start_sec, end_sec
 
 
-def _extract_frames_for_narration(
-    *,
-    cfg: "Settings",
-    video_path: str,
-    start_sec: float | None,
-    end_sec: float | None,
-    duration_sec: float,
-    subprocess_run: Callable[..., Any],
-    timings_out: dict[str, Any] | None = None,
-) -> list[str]:
-    manifest_path = str(getattr(cfg, "frame_pool_manifest", "") or "").strip()
-    if manifest_path:
-        try:
-            from video_frame_pool import PoolWindowMiss, query_frame_pool
-        except ImportError as exc:
-            raise RuntimeError(
-                "frame_pool_manifest is configured but video_frame_pool is not installed"
-            ) from exc
-        win_start, win_end = _window_bounds(
-            start_sec=start_sec,
-            end_sec=end_sec,
-            duration_sec=duration_sec,
-        )
-        try:
-            query = query_frame_pool(
-                manifest_path=manifest_path,
-                start_sec=win_start,
-                end_sec=win_end,
-                budget=cfg.max_frames_per_segment,
-                settings=cfg,
-            )
-        except PoolWindowMiss:
-            if timings_out is not None:
-                timings_out["frame_source"] = "uniform_fallback"
-            return extract_frames_base64(
-                video_path,
-                start_sec=start_sec,
-                end_sec=end_sec,
-                duration_sec=duration_sec,
-                max_frames=cfg.pool_miss_uniform_max_frames,
-                ffmpeg_bin=cfg.ffmpeg_path,
-                max_edge_pixels=cfg.narration_frame_max_edge,
-                subprocess_run=subprocess_run,
-            )
-        if timings_out is not None:
-            timings_out["frame_source"] = "pool"
-            timings_out["frame_times_sec"] = list(query.frame_times_sec)
-            timings_out["frame_shot_ids"] = list(query.shot_ids)
-        return list(query.frames_base64_png)
-
-    if timings_out is not None:
-        timings_out["frame_source"] = "uniform"
-    return extract_frames_base64(
-        video_path,
-        start_sec=start_sec,
-        end_sec=end_sec,
-        duration_sec=duration_sec,
-        max_frames=cfg.max_frames_per_segment,
-        ffmpeg_bin=cfg.ffmpeg_path,
-        max_edge_pixels=cfg.narration_frame_max_edge,
-        subprocess_run=subprocess_run,
-    )
-
-
-def _coerce_subtitle_context_input(
-    value: SubtitleNarrationContext | Mapping[str, Any] | object | None,
-) -> SubtitleNarrationContext | None:
+def _coerce_narration_context(
+    value: NarrationContext | Mapping[str, Any] | object | None,
+) -> NarrationContext | None:
     if value is None:
         return None
-    if isinstance(value, SubtitleNarrationContext):
+    if isinstance(value, NarrationContext):
         return value
     if isinstance(value, Mapping):
-        return SubtitleNarrationContext(
+        return NarrationContext(
             segment_start_sec=float(value["segment_start_sec"]),
             segment_end_sec=float(value["segment_end_sec"]),
             prev_subtitle_text=(
@@ -120,9 +48,13 @@ def _coerce_subtitle_context_input(
                 if value.get("next_subtitle_text") is not None
                 else None
             ),
-            index_dir=(str(value["index_dir"]) if value.get("index_dir") is not None else None),
+            retrieved_context_texts=tuple(
+                str(item).strip()
+                for item in value.get("retrieved_context_texts", ())
+                if str(item).strip()
+            ),
         )
-    return SubtitleNarrationContext(
+    return NarrationContext(
         segment_start_sec=float(getattr(value, "segment_start_sec")),
         segment_end_sec=float(getattr(value, "segment_end_sec")),
         prev_subtitle_text=(
@@ -135,43 +67,103 @@ def _coerce_subtitle_context_input(
             if getattr(value, "next_subtitle_text", None) is not None
             else None
         ),
-        index_dir=(
-            str(getattr(value, "index_dir"))
-            if getattr(value, "index_dir", None) is not None
-            else None
+        retrieved_context_texts=tuple(
+            str(item).strip()
+            for item in getattr(value, "retrieved_context_texts", ())
+            if str(item).strip()
         ),
     )
 
 
-def _retrieve_subtitle_context_texts(
+def _resolve_requested_context(
     *,
-    cfg: "Settings",
-    subtitle_context_input: SubtitleNarrationContext | None,
-    retriever: Callable[..., Any] | None,
-    timings_out: dict[str, Any] | None = None,
-) -> tuple[str, ...]:
-    if subtitle_context_input is None:
-        return ()
-    index_dir = str(subtitle_context_input.index_dir or "").strip()
-    query_text = str(subtitle_context_input.prev_subtitle_text or "").strip()
-    if not index_dir or not query_text:
-        return ()
-    call_retriever = retriever
-    if call_retriever is None:
-        from subtitle_context import retrieve_past_subtitle_context as _default_retriever
+    narration_context: NarrationContext | Mapping[str, Any] | object | None,
+    subtitle_context_input: Mapping[str, Any] | object | None,
+) -> NarrationContext | None:
+    if narration_context is not None:
+        return _coerce_narration_context(narration_context)
+    return _coerce_narration_context(subtitle_context_input)
 
-        call_retriever = _default_retriever
-    result = call_retriever(
-        index_dir=index_dir,
-        query_text=query_text,
-        segment_start_sec=float(subtitle_context_input.segment_start_sec),
-        settings=cfg,
+
+def _resolve_narration_options(
+    *,
+    settings: "Settings",
+    options: NarrationOptions | None,
+    prompt_style: str,
+    custom_prompt: str,
+    image_model: str | None,
+    provider_slug: str | None,
+) -> NarrationOptions:
+    if options is not None:
+        return options
+    return settings.narration_options(
+        provider_slug=provider_slug,
+        model=image_model,
+        prompt_style=prompt_style,
+        custom_prompt=custom_prompt,
     )
-    chunks = tuple(str(chunk.text).strip() for chunk in result.retrieved_chunks if str(chunk.text).strip())
-    if timings_out is not None:
-        timings_out["subtitle_context_index_dir"] = index_dir
-        timings_out["subtitle_context_chunk_count"] = len(chunks)
-    return chunks
+
+
+def narrate_from_frames(
+    *,
+    frames: FrameBatch,
+    context: NarrationContext | Mapping[str, Any] | object | None = None,
+    options: NarrationOptions | None = None,
+    prompt_style: str = "documentary",
+    custom_prompt: str = "",
+    image_model: str | None = None,
+    provider_slug: str | None = None,
+    settings: "Settings | None" = None,
+    client_factory: Callable[..., Any] | None = None,
+) -> NarrationResult:
+    cfg = settings if settings is not None else load_settings(require_narration=True)
+    resolved_options = _resolve_narration_options(
+        settings=cfg,
+        options=options,
+        prompt_style=prompt_style,
+        custom_prompt=custom_prompt,
+        image_model=image_model,
+        provider_slug=provider_slug,
+    )
+    system_msg = build_system_message(
+        resolved_options.prompt_style,
+        resolved_options.custom_prompt,
+    )
+    narration_ctx = _coerce_narration_context(context)
+    user_txt = build_user_text(
+        duration_sec=frames.duration_sec,
+        prompt_style=resolved_options.prompt_style,
+        frame_count=len(frames.frames_base64_png),
+        prev_subtitle_text=(
+            narration_ctx.prev_subtitle_text if narration_ctx is not None else None
+        ),
+        next_subtitle_text=(
+            narration_ctx.next_subtitle_text if narration_ctx is not None else None
+        ),
+        retrieved_context_texts=(
+            narration_ctx.retrieved_context_texts if narration_ctx is not None else ()
+        ),
+    )
+
+    t_api0 = time.perf_counter()
+    text = generate_narration(
+        system_message=system_msg,
+        user_text=user_txt,
+        frames_base64_png=list(frames.frames_base64_png),
+        model=resolved_options.model,
+        settings=cfg,
+        provider_slug=resolved_options.provider_slug,
+        client_factory=client_factory,
+    )
+    api_sec = time.perf_counter() - t_api0
+    return NarrationResult(
+        text=text,
+        duration_sec=float(frames.duration_sec),
+        frame_count=len(frames.frames_base64_png),
+        frame_source=str(frames.source),
+        timing_api_sec=api_sec,
+        timing_total_sec=api_sec,
+    )
 
 
 def narrate_segment_with_duration(
@@ -179,6 +171,8 @@ def narrate_segment_with_duration(
     start_sec: float | None = None,
     end_sec: float | None = None,
     *,
+    options: NarrationOptions | None = None,
+    frame_source_options: FrameSourceOptions | None = None,
     prompt_style: str = "documentary",
     custom_prompt: str = "",
     image_model: str | None = None,
@@ -187,8 +181,8 @@ def narrate_segment_with_duration(
     subprocess_run: Callable[..., Any] | None = None,
     client_factory: Callable[..., Any] | None = None,
     timings_out: dict[str, Any] | None = None,
-    subtitle_context_input: SubtitleNarrationContext | Mapping[str, Any] | object | None = None,
-    subtitle_context_retriever: Callable[..., Any] | None = None,
+    narration_context: NarrationContext | Mapping[str, Any] | object | None = None,
+    subtitle_context_input: Mapping[str, Any] | object | None = None,
 ) -> tuple[str, float]:
     """
     Produce narration text and the segment duration (seconds) used for prompts and ffmpeg.
@@ -206,61 +200,62 @@ def narrate_segment_with_duration(
 
     run = subprocess_run or __import__("subprocess").run
     t_extract0 = time.perf_counter()
-    frames = _extract_frames_for_narration(
-        cfg=cfg,
-        video_path=video_path,
+    manifest_path = str(getattr(cfg, "frame_pool_manifest", "") or "").strip()
+    strategy = "frame_pool" if manifest_path else "uniform"
+    win_start, win_end = _window_bounds(
         start_sec=start_sec,
         end_sec=end_sec,
         duration_sec=duration,
+    )
+    resolved_frame_source_options = frame_source_options or FrameSourceOptions(
+        ffmpeg_bin=cfg.ffmpeg_path,
+        max_frames_per_segment=cfg.max_frames_per_segment,
+        max_edge_pixels=cfg.narration_frame_max_edge,
+        pool_miss_uniform_max_frames=cfg.pool_miss_uniform_max_frames,
+        allow_uniform_fallback=True,
+    )
+    frames = get_frames_for_segment(
+        FrameRequest(
+            video_path=video_path,
+            start_sec=(win_start if strategy == "frame_pool" else start_sec),
+            end_sec=(win_end if strategy == "frame_pool" else end_sec),
+            duration_sec=duration,
+            strategy=strategy,
+            frame_pool_manifest=(manifest_path or None),
+        ),
+        options=resolved_frame_source_options,
+        settings=cfg,
         subprocess_run=run,
-        timings_out=timings_out,
     )
     t_extract1 = time.perf_counter()
-
-    slug = (provider_slug or cfg.narration_provider).strip().lower() or "openai"
-    model = image_model or cfg.model_for_provider(slug)
-    system_msg = build_system_message(prompt_style, custom_prompt)
-    subtitle_ctx = _coerce_subtitle_context_input(subtitle_context_input)
-    retrieved_context_texts = _retrieve_subtitle_context_texts(
-        cfg=cfg,
-        subtitle_context_input=subtitle_ctx,
-        retriever=subtitle_context_retriever,
-        timings_out=timings_out,
-    )
-    user_txt = build_user_text(
-        duration_sec=duration,
+    result = narrate_from_frames(
+        frames=frames,
+        context=_resolve_requested_context(
+            narration_context=narration_context,
+            subtitle_context_input=subtitle_context_input,
+        ),
+        options=options,
         prompt_style=prompt_style,
-        frame_count=len(frames),
-        prev_subtitle_text=(
-            subtitle_ctx.prev_subtitle_text if subtitle_ctx is not None else None
-        ),
-        next_subtitle_text=(
-            subtitle_ctx.next_subtitle_text if subtitle_ctx is not None else None
-        ),
-        retrieved_context_texts=retrieved_context_texts,
-    )
-
-    t_api0 = time.perf_counter()
-    text = generate_narration(
-        system_message=system_msg,
-        user_text=user_txt,
-        frames_base64_png=frames,
-        model=model,
-        settings=cfg,
+        custom_prompt=custom_prompt,
+        image_model=image_model,
         provider_slug=provider_slug,
+        settings=cfg,
         client_factory=client_factory,
     )
-    t_api1 = time.perf_counter()
 
     if timings_out is not None:
         extract_sec = t_extract1 - t_extract0
-        api_sec = t_api1 - t_api0
+        api_sec = float(result.timing_api_sec or 0.0)
         timings_out["extract_sec"] = extract_sec
         timings_out["api_sec"] = api_sec
         timings_out["total_sec"] = extract_sec + api_sec
-        timings_out["frame_count"] = len(frames)
+        timings_out["frame_count"] = result.frame_count
+        timings_out["frame_source"] = result.frame_source
+        timings_out["frame_times_sec"] = list(frames.frame_times_sec)
+        if frames.shot_ids is not None:
+            timings_out["frame_shot_ids"] = list(frames.shot_ids)
 
-    return text, duration
+    return result.text, duration
 
 
 def narrate_segment(
@@ -268,6 +263,8 @@ def narrate_segment(
     start_sec: float | None = None,
     end_sec: float | None = None,
     *,
+    options: NarrationOptions | None = None,
+    frame_source_options: FrameSourceOptions | None = None,
     prompt_style: str = "documentary",
     custom_prompt: str = "",
     image_model: str | None = None,
@@ -276,8 +273,8 @@ def narrate_segment(
     subprocess_run: Callable[..., Any] | None = None,
     client_factory: Callable[..., Any] | None = None,
     timings_out: dict[str, Any] | None = None,
-    subtitle_context_input: SubtitleNarrationContext | Mapping[str, Any] | object | None = None,
-    subtitle_context_retriever: Callable[..., Any] | None = None,
+    narration_context: NarrationContext | Mapping[str, Any] | object | None = None,
+    subtitle_context_input: Mapping[str, Any] | object | None = None,
 ) -> str:
     """Produce English narration using ffmpeg frames + an OpenAI-compatible multimodal API."""
 
@@ -285,6 +282,8 @@ def narrate_segment(
         video_path,
         start_sec,
         end_sec,
+        options=options,
+        frame_source_options=frame_source_options,
         prompt_style=prompt_style,
         custom_prompt=custom_prompt,
         image_model=image_model,
@@ -293,7 +292,7 @@ def narrate_segment(
         subprocess_run=subprocess_run,
         client_factory=client_factory,
         timings_out=timings_out,
+        narration_context=narration_context,
         subtitle_context_input=subtitle_context_input,
-        subtitle_context_retriever=subtitle_context_retriever,
     )
     return text

@@ -98,7 +98,7 @@
 它可以统一包装：
 
 - `subtitle_extraction`
-- `subtitle_analysis --narrate`
+- `movie_pipeline`
 
 ---
 
@@ -258,13 +258,13 @@
 
 ## Step 6: Python Pipeline Invocation
 
-### Option A: Directly Reuse `subtitle_analysis --narrate`
+### Option A: Directly Reuse `movie_pipeline`
 
 Worker 里直接执行：
 
 ```bash
 python -m subtitle_extraction ...
-python -m subtitle_analysis --narrate --json ...
+python -m movie_pipeline --json ...
 ```
 
 优点：
@@ -505,7 +505,7 @@ Worker 完成后，建议上传这些对象：
 
 ### PR 4
 
-- Worker 接 `subtitle_analysis --narrate`
+- Worker 接 `movie_pipeline`
 - 打通真实 pipeline
 
 ### PR 5

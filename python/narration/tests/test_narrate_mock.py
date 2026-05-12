@@ -1,9 +1,9 @@
 from unittest.mock import MagicMock
-from types import SimpleNamespace
 
+from pipeline_types import FrameBatch, NarrationContext
 from movieteller_config.schema import settings_from_dict
 
-from narration.narrate import narrate_segment_with_duration
+from narration.narrate import narrate_from_frames, narrate_segment_with_duration
 
 
 def test_narrate_segment_with_duration_end_to_end_mocked(
@@ -96,7 +96,7 @@ def test_narrate_segment_uses_frame_pool_when_manifest_configured(tmp_path):
     )
     assert text == "From frame pool."
     assert dur == 1.0
-    assert timings["frame_source"] == "pool"
+    assert timings["frame_source"] == "frame_pool"
     assert timings["frame_count"] == 1
 
 
@@ -182,15 +182,6 @@ def test_narrate_segment_includes_subtitle_context_in_prompt(
         m.stderr = b""
         return m
 
-    def fake_retriever(**kwargs):
-        captured["retriever_kwargs"] = kwargs
-        return SimpleNamespace(
-            retrieved_chunks=(
-                SimpleNamespace(text="他们之前因为信件起了争执"),
-                SimpleNamespace(text="后来她一直保留着那些信"),
-            )
-        )
-
     def fake_client_factory(_k, _b):
         client = MagicMock()
         resp = MagicMock()
@@ -211,19 +202,70 @@ def test_narrate_segment_includes_subtitle_context_in_prompt(
         settings=settings,
         subprocess_run=fake_run,
         client_factory=fake_client_factory,
-        subtitle_context_input={
-            "segment_start_sec": 5.0,
-            "segment_end_sec": 8.0,
-            "prev_subtitle_text": "你为什么不给我送信了",
-            "next_subtitle_text": "这是给你的，快收下",
-            "index_dir": "demo.subtitle_context",
-        },
-        subtitle_context_retriever=fake_retriever,
+        narration_context=NarrationContext(
+            segment_start_sec=5.0,
+            segment_end_sec=8.0,
+            prev_subtitle_text="你为什么不给我送信了",
+            next_subtitle_text="这是给你的，快收下",
+            retrieved_context_texts=(
+                "他们之前因为信件起了争执",
+                "后来她一直保留着那些信",
+            ),
+        ),
     )
     assert text == "Narration with context."
     assert dur == 3.0
-    assert captured["retriever_kwargs"]["query_text"] == "你为什么不给我送信了"
     user_text = captured["chat_kwargs"]["messages"][1]["content"][0]["text"]
     assert "Previous subtitle: 你为什么不给我送信了" in user_text
     assert "Next subtitle: 这是给你的，快收下" in user_text
     assert "他们之前因为信件起了争执" in user_text
+
+
+def test_narrate_from_frames_is_pure_generation_interface():
+    settings = settings_from_dict(
+        {
+            "openai_api_key": "sk-test",
+            "narration_image_model": "gpt-4o-mini",
+            "max_frames_per_segment": 4,
+            "ffmpeg_path": "/bin/ffmpeg",
+        }
+    )
+    captured: dict[str, object] = {}
+
+    def fake_client_factory(_k, _b):
+        client = MagicMock()
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = "Pure frame narration."
+
+        def _create(**kwargs):
+            captured["chat_kwargs"] = kwargs
+            return resp
+
+        client.chat.completions.create.side_effect = _create
+        return client
+
+    result = narrate_from_frames(
+        frames=FrameBatch(
+            frames_base64_png=("abc", "def"),
+            frame_times_sec=(1.0, 2.0),
+            duration_sec=3.0,
+            source="uniform",
+            shot_ids=None,
+        ),
+        context=NarrationContext(
+            segment_start_sec=0.0,
+            segment_end_sec=3.0,
+            prev_subtitle_text="prev",
+            next_subtitle_text="next",
+            retrieved_context_texts=("ctx1",),
+        ),
+        settings=settings,
+        client_factory=fake_client_factory,
+    )
+    assert result.text == "Pure frame narration."
+    assert result.frame_source == "uniform"
+    assert result.frame_count == 2
+    user_text = captured["chat_kwargs"]["messages"][1]["content"][0]["text"]
+    assert "Previous subtitle: prev" in user_text
+    assert "ctx1" in user_text

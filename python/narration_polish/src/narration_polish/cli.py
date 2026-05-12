@@ -123,16 +123,19 @@ def main(argv: list[str] | None = None) -> int:
             args.strength,
             args.safety_margin_sec,
         )
-        result = polish_narration_text(
-            raw_text,
-            args.duration_sec,
+        options = settings.narration_polish_options(
+            provider_slug=args.provider,
+            model=args.model,
             prompt_style=args.style,
             target_wpm=args.target_wpm,
             cefr_level=args.cefr_level,
             strength=args.strength,
             safety_margin_sec=args.safety_margin_sec,
-            provider_slug=args.provider,
-            model=args.model,
+        )
+        result = polish_narration_text(
+            raw_text,
+            args.duration_sec,
+            options=options,
             settings=settings,
         )
     except Exception as e:

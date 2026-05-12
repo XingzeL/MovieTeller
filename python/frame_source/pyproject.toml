@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "frame_source"
+version = "0.1.0"
+description = "Unified frame sourcing for MovieTeller narration"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "pipeline_types",
+    "video_frame_pool",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "movieteller-config", "narration"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

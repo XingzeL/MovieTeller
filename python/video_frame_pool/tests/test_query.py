@@ -1,9 +1,10 @@
 import json
 
 import pytest
+from pipeline_types import FrameBatch
 
 from video_frame_pool.errors import PoolManifestError, PoolWindowMiss
-from video_frame_pool.query import query_frame_pool
+from video_frame_pool.query import query_frame_pool, query_frame_pool_as_frame_batch
 
 
 def _write_png(path, label: str) -> None:
@@ -100,3 +101,45 @@ def test_query_frame_pool_raises_on_missing_shots_file(tmp_path):
             end_sec=1.0,
             budget=1,
         )
+
+
+def test_query_frame_pool_as_frame_batch_adapts_result(tmp_path):
+    pool = tmp_path / "pool"
+    images = pool / "images"
+    images.mkdir(parents=True)
+    (pool / "shots.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "videoPath": "demo.mp4",
+                "shots": [
+                    {"shotId": 0, "startSec": 0.0, "endSec": 2.0, "isDialogue": False},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    _write_png(images / "000001.png", "x")
+    (pool / "manifest.jsonl").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "shotId": 0,
+                "tSec": 1.0,
+                "imageRef": "images/000001.png",
+                "embeddingIndex": None,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    batch = query_frame_pool_as_frame_batch(
+        manifest_path=str(pool / "manifest.jsonl"),
+        start_sec=0.0,
+        end_sec=2.0,
+        duration_sec=2.0,
+        budget=2,
+    )
+    assert isinstance(batch, FrameBatch)
+    assert batch.source == "frame_pool"
+    assert batch.duration_sec == 2.0

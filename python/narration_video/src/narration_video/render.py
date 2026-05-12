@@ -7,6 +7,7 @@ from typing import Any, Callable, Sequence
 
 from media_utils import ffprobe_path_for, probe_duration_sec
 from movieteller_config import load_settings
+from movieteller_config.schema import NarrationVideoOptions
 from pipeline_types import NarrationAudioSegment
 
 from narration_video.types import NarrationVideoRenderResult
@@ -43,6 +44,7 @@ def render_narrated_video(
     segments: Sequence[NarrationAudioSegment],
     *,
     output_path: str,
+    options: NarrationVideoOptions | None = None,
     background_audio_volume: float | None = None,
     speech_audio_volume: float | None = None,
     ffmpeg_bin: str | None = None,
@@ -56,8 +58,12 @@ def render_narrated_video(
         raise FileNotFoundError(f"Video not found: {src}")
 
     cfg = settings if settings is not None else load_settings()
-    resolved_ffmpeg_bin = ffmpeg_bin or cfg.ffmpeg_path
-    ffprobe_bin = ffprobe_path_for(resolved_ffmpeg_bin)
+    resolved_options = options or cfg.narration_video_options(
+        background_audio_volume=background_audio_volume,
+        speech_audio_volume=speech_audio_volume,
+        ffmpeg_bin=ffmpeg_bin,
+    )
+    ffprobe_bin = ffprobe_path_for(resolved_options.ffmpeg_bin)
     video_duration_sec = probe_duration_sec(str(src), ffprobe_bin=ffprobe_bin)
     has_audio = _video_has_audio_stream(
         str(src), ffprobe_bin=ffprobe_bin, subprocess_run=subprocess_run
@@ -65,25 +71,11 @@ def render_narrated_video(
 
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    resolved_background_audio_volume = max(
-        0.0,
-        float(
-            background_audio_volume
-            if background_audio_volume is not None
-            else cfg.narration_video_background_audio_volume
-        ),
-    )
-    resolved_speech_audio_volume = max(
-        0.0,
-        float(
-            speech_audio_volume
-            if speech_audio_volume is not None
-            else cfg.narration_video_speech_audio_volume
-        ),
-    )
+    resolved_background_audio_volume = resolved_options.background_audio_volume
+    resolved_speech_audio_volume = resolved_options.speech_audio_volume
 
     cmd: list[str] = [
-        resolved_ffmpeg_bin,
+        resolved_options.ffmpeg_bin,
         "-nostdin",
         "-hide_banner",
         "-loglevel",

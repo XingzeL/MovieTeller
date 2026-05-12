@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "movie_pipeline"
+version = "0.1.0"
+description = "Video narration orchestration pipeline for MovieTeller"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "frame_source",
+  "video_frame_pool",
+  "movieteller_config",
+  "narration",
+  "narration_polish",
+  "narration_speech",
+  "narration_video",
+  "subtitle_extraction",
+  "pipeline_types",
+  "subtitle_analysis",
+  "subtitle_context",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

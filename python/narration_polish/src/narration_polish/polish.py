@@ -6,6 +6,7 @@ import time
 from typing import TYPE_CHECKING, Any, Callable
 
 from movieteller_config import load_settings
+from movieteller_config.schema import NarrationPolishOptions
 
 from narration_polish.prompts import build_system_message, build_user_message
 from narration_polish.types import NarrationPolishResult
@@ -116,6 +117,7 @@ def polish_narration_text(
     text: str,
     duration_sec: float,
     *,
+    options: NarrationPolishOptions | None = None,
     prompt_style: str | None = None,
     target_wpm: int | None = None,
     cefr_level: str | None = None,
@@ -131,52 +133,22 @@ def polish_narration_text(
         raise ValueError("narration text is empty")
 
     cfg = settings if settings is not None else load_settings()
-    resolved_target_wpm = max(
-        1,
-        int(
-            target_wpm
-            if target_wpm is not None
-            else getattr(cfg, "narration_polish_target_wpm", 150)
-        ),
+    resolved_options = options or cfg.narration_polish_options(
+        provider_slug=provider_slug,
+        model=model,
+        prompt_style=prompt_style,
+        target_wpm=target_wpm,
+        cefr_level=cefr_level,
+        strength=strength,
+        safety_margin_sec=safety_margin_sec,
     )
-    resolved_cefr_level = (
-        str(
-            cefr_level
-            if cefr_level is not None
-            else getattr(cfg, "narration_polish_cefr_level", "B1")
-        )
-        .strip()
-        .upper()
-        or "B1"
-    )
-    resolved_strength = (
-        str(
-            strength
-            if strength is not None
-            else getattr(cfg, "narration_polish_strength", "medium")
-        )
-        .strip()
-        .lower()
-        or "medium"
-    )
-    resolved_safety_margin_sec = max(
-        0.0,
-        float(
-            safety_margin_sec
-            if safety_margin_sec is not None
-            else getattr(cfg, "narration_polish_safety_margin_sec", 0.2)
-        ),
-    )
-    resolved_prompt_style = (
-        str(
-            prompt_style
-            if prompt_style is not None
-            else getattr(cfg, "default_prompt_style", "documentary")
-        ).strip()
-        or "documentary"
-    )
-    resolved_provider = _resolve_provider_slug(cfg, provider_slug)
-    resolved_model = model or cfg.polish_model_for_provider(resolved_provider)
+    resolved_target_wpm = resolved_options.target_wpm
+    resolved_cefr_level = resolved_options.cefr_level
+    resolved_strength = resolved_options.strength
+    resolved_safety_margin_sec = resolved_options.safety_margin_sec
+    resolved_prompt_style = resolved_options.prompt_style
+    resolved_provider = resolved_options.provider_slug
+    resolved_model = resolved_options.model
     target_duration_sec = compute_target_duration_sec(
         duration_sec, resolved_safety_margin_sec
     )

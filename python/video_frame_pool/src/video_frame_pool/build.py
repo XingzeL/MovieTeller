@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from movieteller_config import load_settings
+from movieteller_config.schema import FramePoolBuildOptions
 from pipeline_types import SubtitleCue
 from subtitle_extraction.parse_srt import parse_srt_text
 
@@ -183,10 +184,12 @@ def build_frame_pool(
     video_path: str,
     srt_path: str,
     output_dir: str | None = None,
+    options: FramePoolBuildOptions | None = None,
     settings: object | None = None,
     subprocess_run=subprocess.run,
 ) -> FramePoolBuildResult:
     cfg = settings if settings is not None else load_settings()
+    resolved_options = options if options is not None else cfg.frame_pool_build_options()
     out_dir = Path(output_dir or (str(Path(video_path).with_suffix("")) + ".frame_pool"))
     out_dir.mkdir(parents=True, exist_ok=True)
     images_dir = out_dir / "images"
@@ -195,20 +198,20 @@ def build_frame_pool(
     cues = parse_srt_text(Path(srt_path).read_text(encoding="utf-8"))
     shots = detect_shots(
         video_path,
-        ffmpeg_bin=str(getattr(cfg, "ffmpeg_path", "ffmpeg")),
-        merge_sec=float(getattr(cfg, "pyscenedetect_merge_sec", 0.25)),
+        ffmpeg_bin=resolved_options.ffmpeg_bin,
+        merge_sec=resolved_options.pyscenedetect_merge_sec,
     )
     tagged = _tag_dialogue_shots(
         shots,
         cues,
-        threshold=float(getattr(cfg, "dialogue_overlap_threshold", 0.05)),
+        threshold=resolved_options.dialogue_overlap_threshold,
     )
 
     entries: list[FramePoolEntry] = []
     image_counter = 0
-    min_frames = int(getattr(cfg, "pool_frames_per_shot_min", 1))
-    max_frames = int(getattr(cfg, "pool_frames_per_shot_max", 3))
-    rate = getattr(cfg, "pool_frames_per_shot_rate", None)
+    min_frames = resolved_options.min_frames_per_shot
+    max_frames = resolved_options.max_frames_per_shot
+    rate = resolved_options.frames_per_shot_rate
     for shot in tagged:
         if not shot.non_dialogue_ranges:
             continue
@@ -229,8 +232,8 @@ def build_frame_pool(
                 video_path,
                 t_sec=t_sec,
                 output_path=str(output_path),
-                ffmpeg_bin=str(getattr(cfg, "ffmpeg_path", "ffmpeg")),
-                max_edge_pixels=int(getattr(cfg, "narration_frame_max_edge", 768)),
+                ffmpeg_bin=resolved_options.ffmpeg_bin,
+                max_edge_pixels=resolved_options.max_edge_pixels,
                 subprocess_run=subprocess_run,
             )
             entries.append(
@@ -250,8 +253,8 @@ def build_frame_pool(
         "poolFramesPerShotMin": min_frames,
         "poolFramesPerShotMax": max_frames,
         "poolFramesPerShotRate": (float(rate) if rate is not None else None),
-        "dialogueOverlapThreshold": float(getattr(cfg, "dialogue_overlap_threshold", 0.05)),
-        "pyscenedetectMergeSec": float(getattr(cfg, "pyscenedetect_merge_sec", 0.25)),
+        "dialogueOverlapThreshold": resolved_options.dialogue_overlap_threshold,
+        "pyscenedetectMergeSec": resolved_options.pyscenedetect_merge_sec,
     }
     (out_dir / "build_config.json").write_text(
         json.dumps(build_config, ensure_ascii=False, indent=2),

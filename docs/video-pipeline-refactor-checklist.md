@@ -258,9 +258,9 @@
 
 ### Acceptance
 
-- [ ] `subtitle_analysis` 只暴露分析接口
-- [ ] `subtitle_analysis` 不再直接调用 `narration`
-- [ ] 包依赖声明与实际实现一致
+- [x] `subtitle_analysis` 只暴露分析接口
+- [x] `subtitle_analysis` 不再直接调用 `narration`
+- [x] 包依赖声明与实际实现一致
 
 ---
 
@@ -299,9 +299,9 @@
 
 ### Acceptance
 
-- [ ] 总流程能力只存在于 `movie_pipeline`
-- [ ] 旧的 `subtitle_analysis --narrate` 有迁移路径
-- [ ] 编排顺序可以只通过 mock 测试验证，不依赖真实外部 API
+- [x] 总流程能力只存在于 `movie_pipeline`
+- [x] 旧的 `subtitle_analysis --narrate` 有迁移路径
+- [x] 编排顺序可以只通过 mock 测试验证，不依赖真实外部 API
 
 ---
 
@@ -337,8 +337,8 @@
 
 ### Acceptance
 
-- [ ] 核心函数大多不再隐式读全局配置
-- [ ] CLI 和 orchestrator 是主要配置装配入口
+- [x] 核心函数大多不再隐式读全局配置
+- [x] CLI 和 orchestrator 是主要配置装配入口
 
 ---
 
@@ -361,8 +361,8 @@
 
 ### Acceptance
 
-- [ ] 用户能明确知道哪个 CLI 属于哪个职责
-- [ ] 不再通过 `subtitle_analysis` 承担视频全流程
+- [x] 用户能明确知道哪个 CLI 属于哪个职责
+- [x] 不再通过 `subtitle_analysis` 承担视频全流程
 
 ---
 
@@ -414,20 +414,20 @@
 
 当以下条件都满足时，认为重构完成：
 
-- [ ] `subtitle_analysis` 只负责字幕分析
-- [ ] `narration` 只负责旁白生成
-- [ ] `movie_pipeline` 成为唯一总流程编排层
-- [ ] `video_frame_pool` 与 `narration` 之间只通过 `FrameBatch` 耦合
-- [ ] `subtitle_context` 与 `narration` 之间只通过 `NarrationContext` 中的文本字段耦合
-- [ ] `narration_speech` 和 `narration_video` 不再依赖 `narration` 业务模块
-- [ ] 核心配置通过显式 options 传递
-- [ ] 相关测试通过
-- [ ] README / docs 已同步更新
+- [x] `subtitle_analysis` 只负责字幕分析
+- [x] `narration` 只负责旁白生成
+- [x] `movie_pipeline` 成为唯一总流程编排层
+- [x] `video_frame_pool` 与 `narration` 之间只通过 `FrameBatch` 耦合
+- [x] `subtitle_context` 与 `narration` 之间只通过 `NarrationContext` 中的文本字段耦合
+- [x] `narration_speech` 和 `narration_video` 不再依赖 `narration` 业务模块
+- [x] 核心配置通过显式 options 传递
+- [x] 相关测试通过
+- [x] README / docs 已同步更新
 
 ---
 
 ## Notes
 
-- 第一阶段不需要一次性删光旧接口，可以先保留兼容层。
+- 当前规范入口已经切到 `python -m movie_pipeline` 和 `run_pipeline(...)`。
+- `analyze_and_narrate(...)` 仍保留，但仅作为兼容包装层。
 - 优先保证边界清晰，再考虑进一步优化内部实现。
-- 如果需要平滑迁移，可先在 `movie_pipeline` 中复用现有实现，再逐步收缩旧模块职责。

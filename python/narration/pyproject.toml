@@ -9,8 +9,11 @@ description = "Segment-local ffmpeg frame extraction + multimodal narration for 
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
+    "frame_source",
     "media_utils",
+    "movieteller_config",
     "openai>=1.30.0",
+    "pipeline_types",
 ]
 
 [project.optional-dependencies]

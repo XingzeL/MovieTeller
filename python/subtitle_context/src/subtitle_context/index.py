@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Callable, Sequence
 
 import numpy as np
 
 from movieteller_config import load_settings
+from movieteller_config.schema import (
+    SubtitleContextBuildOptions,
+    SubtitleContextRetrieveOptions,
+)
 from rerank import mmr_select
 from subtitle_extraction.parse_srt import parse_srt_text
 
@@ -25,22 +31,34 @@ from subtitle_context.types import (
 )
 
 
+def subtitle_context_index_is_complete(index_dir: str | Path) -> bool:
+    root = Path(index_dir)
+    if not root.is_dir():
+        return False
+    return (root / "chunks.jsonl").is_file() and (root / "embeddings.npy").is_file()
+
+
 def build_subtitle_context_index(
     *,
     srt_path: str,
     output_dir: str | None = None,
+    options: SubtitleContextBuildOptions | None = None,
     settings: object | None = None,
     embedder: Callable[[Sequence[str]], np.ndarray] | None = None,
 ) -> SubtitleContextBuildResult:
     cfg = settings if settings is not None else load_settings()
     out_dir = Path(output_dir or (str(Path(srt_path).with_suffix("")) + ".subtitle_context"))
-    out_dir.mkdir(parents=True, exist_ok=True)
+    resolved_options = (
+        options
+        if options is not None
+        else cfg.subtitle_context_build_options()
+    )
 
     cues = parse_srt_text(Path(srt_path).read_text(encoding="utf-8"))
     chunks = chunk_subtitle_cues(
         cues,
-        cue_count=int(getattr(cfg, "subtitle_context_chunk_cue_count", 5)),
-        stride=int(getattr(cfg, "subtitle_context_chunk_stride", 3)),
+        cue_count=resolved_options.chunk_cue_count,
+        stride=resolved_options.chunk_stride,
     )
     texts = [chunk.text for chunk in chunks]
     if embedder is not None:
@@ -51,24 +69,48 @@ def build_subtitle_context_index(
         raise RuntimeError(
             f"embedding row count mismatch: chunks={len(chunks)} embeddings={embeddings.shape[0]}"
         )
-    chunks_path = out_dir / "chunks.jsonl"
-    embeddings_path = out_dir / "embeddings.npy"
+
+    parent_dir = out_dir.parent
+    parent_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir = Path(
+        tempfile.mkdtemp(prefix=f"{out_dir.name}.tmp.", dir=str(parent_dir))
+    )
+    chunks_path = temp_dir / "chunks.jsonl"
+    embeddings_path = temp_dir / "embeddings.npy"
     write_chunks(chunks_path, chunks)
     write_embeddings(embeddings_path, embeddings)
     build_config = {
-        "chunkCueCount": int(getattr(cfg, "subtitle_context_chunk_cue_count", 5)),
-        "chunkStride": int(getattr(cfg, "subtitle_context_chunk_stride", 3)),
+        "chunkCueCount": resolved_options.chunk_cue_count,
+        "chunkStride": resolved_options.chunk_stride,
         "embeddingProvider": str(getattr(cfg, "subtitle_context_embedding_provider", "") or ""),
         "embeddingModel": str(getattr(cfg, "subtitle_context_embedding_model", "") or ""),
     }
-    (out_dir / "build_config.json").write_text(
+    (temp_dir / "build_config.json").write_text(
         json.dumps(build_config, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    backup_dir: Path | None = None
+    if out_dir.exists():
+        if out_dir.is_dir():
+            backup_dir = parent_dir / f"{out_dir.name}.bak"
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir)
+            out_dir.replace(backup_dir)
+        else:
+            raise RuntimeError(f"subtitle context output path is not a directory: {out_dir}")
+    try:
+        temp_dir.replace(out_dir)
+    except Exception:
+        if backup_dir is not None and backup_dir.exists() and not out_dir.exists():
+            backup_dir.replace(out_dir)
+        raise
+    else:
+        if backup_dir is not None and backup_dir.exists():
+            shutil.rmtree(backup_dir)
     return SubtitleContextBuildResult(
         output_dir=str(out_dir),
-        chunks_path=str(chunks_path),
-        embeddings_path=str(embeddings_path),
+        chunks_path=str(out_dir / "chunks.jsonl"),
+        embeddings_path=str(out_dir / "embeddings.npy"),
         chunk_count=len(chunks),
         embedding_dim=(int(embeddings.shape[1]) if embeddings.ndim == 2 and embeddings.size else 0),
     )
@@ -81,10 +123,19 @@ def retrieve_past_subtitle_context(
     segment_start_sec: float,
     history_window_sec: float | None = None,
     top_k: int | None = None,
+    options: SubtitleContextRetrieveOptions | None = None,
     settings: object | None = None,
     embedder: Callable[[Sequence[str]], np.ndarray] | None = None,
 ) -> SubtitleContextRetrievalResult:
     cfg = settings if settings is not None else load_settings()
+    resolved_options = (
+        options
+        if options is not None
+        else cfg.subtitle_context_retrieve_options(
+            history_window_sec=history_window_sec,
+            top_k=top_k,
+        )
+    )
     query = str(query_text or "").strip()
     if not query:
         raise ValueError("query_text is empty")
@@ -95,12 +146,8 @@ def retrieve_past_subtitle_context(
         raise RuntimeError(
             f"subtitle context index mismatch: chunks={len(chunks)} embeddings={embeddings.shape[0]}"
         )
-    window = (
-        float(history_window_sec)
-        if history_window_sec is not None
-        else float(getattr(cfg, "subtitle_context_history_window_sec", 600.0))
-    )
-    k = max(1, int(top_k if top_k is not None else getattr(cfg, "subtitle_context_top_k", 6)))
+    window = resolved_options.history_window_sec
+    k = resolved_options.top_k
     eligible: list[int] = []
     for idx, chunk in enumerate(chunks):
         if chunk.end_sec > segment_start_sec:
