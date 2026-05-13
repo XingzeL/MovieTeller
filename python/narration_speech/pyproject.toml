@@ -11,6 +11,7 @@ requires-python = ">=3.9"
 dependencies = [
     "edge-tts>=7.2.8",
     "media_utils",
+    "model_gateway",
 ]
 
 [project.optional-dependencies]

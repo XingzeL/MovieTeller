@@ -5,6 +5,8 @@ import re
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
+from model_gateway import generate_chat
+from model_gateway.types import ChatRequest
 from movieteller_config import load_settings
 from movieteller_config.schema import NarrationPolishOptions
 
@@ -50,22 +52,6 @@ def _normalize_text(text: str) -> str:
 def _resolve_provider_slug(settings: "Settings", provider_slug: str | None) -> str:
     slug = (provider_slug or settings.polish_provider()).strip().lower()
     return slug or "openai"
-
-
-def _resolve_base_url(settings: "Settings", slug: str) -> str | None:
-    base_url = settings.get_api_base_url(slug)
-    if slug == "openai" and not base_url:
-        return settings.openai_base_url
-    return base_url
-
-
-def _openai_sdk_client_factory(api_key: str, base_url: str | None) -> Any:
-    from openai import OpenAI
-
-    kwargs: dict[str, Any] = {"api_key": api_key}
-    if base_url:
-        kwargs["base_url"] = base_url
-    return OpenAI(**kwargs)
 
 
 def _truncate_to_word_budget(text: str, target_word_count: int) -> str:
@@ -160,39 +146,39 @@ def polish_narration_text(
         raw_text, resolved_target_wpm
     )
 
-    api_key = cfg.require_api_key(resolved_provider)
-    base_url = _resolve_base_url(cfg, resolved_provider)
-    factory = client_factory or _openai_sdk_client_factory
-    client = factory(api_key, base_url)
-
     t0 = time.perf_counter()
-    resp = client.chat.completions.create(
-        model=resolved_model,
-        messages=[
-            {
-                "role": "system",
-                "content": build_system_message(
-                    cefr_level=resolved_cefr_level,
-                    strength=resolved_strength,
-                    style=resolved_prompt_style,
-                ),
-            },
-            {
-                "role": "user",
-                "content": build_user_message(
-                    text=raw_text,
-                    segment_duration_sec=duration_sec,
-                    target_duration_sec=target_duration_sec,
-                    target_wpm=resolved_target_wpm,
-                    target_word_count=target_word_count,
-                    strength=resolved_strength,
-                ),
-            },
-        ],
+    result = generate_chat(
+        ChatRequest(
+            provider=resolved_provider,
+            model=resolved_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": build_system_message(
+                        cefr_level=resolved_cefr_level,
+                        strength=resolved_strength,
+                        style=resolved_prompt_style,
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": build_user_message(
+                        text=raw_text,
+                        segment_duration_sec=duration_sec,
+                        target_duration_sec=target_duration_sec,
+                        target_wpm=resolved_target_wpm,
+                        target_word_count=target_word_count,
+                        strength=resolved_strength,
+                    ),
+                },
+            ],
+        ),
+        settings=cfg,
+        client_factory=client_factory,
     )
     t1 = time.perf_counter()
 
-    content = (resp.choices[0].message.content or "").strip()
+    content = result.text.strip()
     if not content:
         raise RuntimeError("Model returned empty polished narration text")
     polished_text = _truncate_to_word_budget(content, target_word_count)

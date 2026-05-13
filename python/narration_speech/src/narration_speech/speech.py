@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import os
 import subprocess
 import tempfile
@@ -8,8 +7,9 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from edge_tts import Communicate
 from media_utils import ffprobe_path_for, probe_duration_sec
+from model_gateway import synthesize_speech
+from model_gateway.types import SpeechRequest
 from movieteller_config import load_settings
 from movieteller_config.schema import NarrationSpeechOptions
 
@@ -77,27 +77,6 @@ def _fit_audio_speedup(
         raise RuntimeError(
             f"ffmpeg audio fit failed ({proc.returncode}): {(proc.stderr or '').strip()}"
         )
-
-
-def _communicator_factory(
-    text: str,
-    voice: str,
-    *,
-    rate: str,
-    volume: str,
-    pitch: str,
-    boundary: str,
-) -> Any:
-    return Communicate(
-        text,
-        voice,
-        rate=rate,
-        volume=volume,
-        pitch=pitch,
-        boundary=boundary,
-    )
-
-
 def synthesize_narration_text(
     text: str,
     segment_duration_sec: float,
@@ -159,17 +138,22 @@ def synthesize_narration_text(
 
     with tempfile.TemporaryDirectory(prefix="narration_speech_") as tmpdir:
         raw_audio_path = Path(tmpdir) / final_audio_path.name
-        factory = communicator_factory or _communicator_factory
-        communicate = factory(
-            raw_text,
-            resolved_voice,
-            rate=resolved_rate,
-            volume=resolved_volume,
-            pitch=resolved_pitch,
-            boundary=resolved_boundary,
-        )
         t0 = time.perf_counter()
-        asyncio.run(communicate.save(str(raw_audio_path), str(metadata_file)))
+        synthesize_speech(
+            SpeechRequest(
+                provider=resolved_provider,
+                voice=resolved_voice,
+                text=raw_text,
+                rate=resolved_rate,
+                volume=resolved_volume,
+                pitch=resolved_pitch,
+                boundary=resolved_boundary,
+                output_path=str(raw_audio_path),
+                metadata_path=str(metadata_file),
+            ),
+            settings=cfg,
+            communicator_factory=communicator_factory,
+        )
         t1 = time.perf_counter()
 
         raw_duration_sec = _probe_media_duration_sec(

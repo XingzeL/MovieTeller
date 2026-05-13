@@ -9,6 +9,7 @@ description = "Subtitle semantic context index and historical retrieval for Movi
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
+    "model_gateway",
     "movieteller_config",
     "pipeline_types",
     "subtitle_extraction",

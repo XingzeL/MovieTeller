@@ -64,6 +64,7 @@ def _ensure_paths() -> None:
         root / "python" / "subtitle_context" / "src",
         root / "python" / "video_frame_pool" / "src",
         root / "python" / "frame_source" / "src",
+        root / "python" / "model_gateway" / "src",
         root / "python" / "narration" / "src",
         root / "python" / "narration_polish" / "src",
         root / "python" / "narration_speech" / "src",
