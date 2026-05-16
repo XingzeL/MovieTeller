@@ -1,76 +1,36 @@
-# Copy this file to `local.yaml` in the same directory and fill in your values.
-# `local.yaml` is gitignored — never commit secrets.
-#
-# Priority: environment variables > this file > packaged defaults (movieteller_config).
+# Local overrides (merged after packaged default.yaml). Env vars override this file.
+# Never commit secrets — this file is gitignored; copy from local.yaml.example.
 
-# narration_provider is read from packaged default.yaml unless you set it here or NARRATION_PROVIDER.
 
+default_prompt_style: movie_commentary
+narration_polish_enabled: true
+narration_tts_enabled: true
+narration_polish_model_index: 2
 narration_model_index: 0
+narration_polish_target_wpm: 250  
+narration_polish_cefr_level: B1   #CEFR等级为B1
+narration_polish_strength: medium 
+narration_polish_safety_margin_sec: 0.2
 
-api_keys:
-  modelscope: "$MODELSCOPE_API_KEY_FREE"
-  volcengine: "$VOLCENGINE_API_KEY"
-  glm: "$GLM_API_KEY"
-  # Alibaba DashScope (OpenAI-compatible); env DASHSCOPE_API_KEY is auto-mapped to slug dashscope too.
-  dashscope: "${DASHSCOPE_API_KEY}"
-
-api_base_urls:
+api_providers:
+  newapi: "http://127.0.0.1:3000/v1"
   modelscope: "https://api-inference.modelscope.cn/v1"
-  volcengine: "https://ark.cn-beijing.volces.com/api/v3"
-  glm: "https://open.bigmodel.cn/api/paas/v4"
-  # Uncomment when narration_provider: dashscope (verify region/endpoint in DashScope docs).
-  # dashscope: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+api_keys:
+  newapi: "$NEW_API_KEY_NARRATION_FREE"
+model_catalog:
+  - Qwen/Qwen3-VL-30B-A3B-Instruct
+  - qwen2.5-7b-instruct
+  - deepseek-v4-flash
+  - qwen3-14b
+  - qwen3-tts-flash
+  - doubao-seed-2-0-mini-260428
+  - glm-4v-flash   
 
-narration_provider_model_catalog:
-  volcengine:
-    - doubao-seed-1-6-vision-250815
-  glm:
-    - glm-4.6v-flash
-  modelscope:
-    - Qwen/Qwen3-VL-30B-A3B-Instruct
+embedding:
+  - text-embedding-v4
 
-# Optional narration-only per-provider fixed model.
-# narration_provider_models:
-#   glm: glm-4.6v-flash
-
-# Optional narration post-process before TTS.
-# narration_polish_enabled: true
-# narration_polish_provider: glm
-# narration_polish_model_index: 0
-# narration_polish_model: null   # optional explicit override; higher priority than index
-# narration_polish_provider_model_catalog:
-#   glm:
-#     - glm-4.7-flash
-#   dashscope:
-#     - qwen-turbo
-#     - qwen2.5-7b-instruct
-# narration_polish_provider_models:
-#   dashscope: qwen-turbo
-# narration_polish_target_wpm: 150
-# narration_polish_cefr_level: B1
-# narration_polish_strength: medium
-# narration_polish_safety_margin_sec: 0.2
-# narration_speech_enabled: true
-# narration_speech_provider: edge_tts
-# narration_speech_voice: en-US-EmmaMultilingualNeural
-# narration_speech_rate: +0%
-# narration_speech_volume: +0%
-# narration_speech_pitch: +0Hz
-# narration_speech_boundary: SentenceBoundary
-# narration_video_background_audio_volume: 0.35
-# narration_video_speech_audio_volume: 1.0
-
-# -----------------------------------------------------------------------------
-# Legacy commented snippets (ModelScope-only minimal layout):
-#
-# api_keys:
-#   modelscope: "$MODELSCOPE_API_KEY_FREE"
-# api_base_urls:
-#   modelscope: "https://api-inference.modelscope.cn/v1"
-# Model switching without editing narration_provider_model_catalog: NARRATION_MODEL=... or NARRATION_MODEL_INDEX=...
-
-# --- VideoCaptioner subtitle extraction (Python subprocess + optional HTTP /api/extract/subtitles) ---
-# videocaptioner_bin: null   # or absolute path to videocaptioner executable
-# videocaptioner_asr: bijian   # bijian | jianying | whisper-api | whisper-cpp
-# videocaptioner_language: auto
-# videocaptioner_transcribe_timeout_ms: null   # milliseconds; null = no timeout
+# 以下的配置是给model_gateway使用，用于选择默认模型，功能模块无需关心
+narration_model_default: "Qwen/Qwen3-VL-30B-A3B-Instruct"
+polish_model_default: "qwen2.5-7b-instruct"
+tts_model_default: "qwen3-tts-flash"
+embedding_model_default: "text-embedding-v4"
