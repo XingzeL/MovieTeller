@@ -40,9 +40,11 @@ def test_polish_narration_uses_injected_client_and_enforces_budget():
     )
     fake_client.chat.completions.create.return_value = fake_resp
 
+    options = settings.narration_polish_options()
     result = polish_narration_text(
         "A young girl in a pink dress stands outside with a backpack, crossing her arms.",
         2.5,
+        options=options,
         settings=settings,
         client_factory=lambda _k, _b: fake_client,
     )
@@ -71,11 +73,14 @@ def test_polish_narration_respects_explicit_provider_and_model_overrides():
         client.chat.completions.create.return_value = resp
         return client
 
+    options = settings.narration_polish_options(
+        provider_slug="openai",
+        model="gpt-4.1-nano",
+    )
     result = polish_narration_text(
         "A student receives a letter and looks down at it in class.",
         3.0,
-        provider_slug="openai",
-        model="gpt-4.1-nano",
+        options=options,
         settings=settings,
         client_factory=fake_client_factory,
     )
@@ -112,9 +117,11 @@ def test_polish_narration_uses_dedicated_provider_and_catalog_index():
         client.chat.completions.create.return_value = resp
         return client
 
+    options = settings.narration_polish_options()
     result = polish_narration_text(
         "A student receives a letter and looks down at it in class.",
         3.0,
+        options=options,
         settings=settings,
         client_factory=fake_client_factory,
     )

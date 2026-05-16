@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock
 
+from frame_source import FrameSourceOptions
 from pipeline_types import FrameBatch, NarrationContext
 from movieteller_config.schema import settings_from_dict
 
@@ -35,11 +36,20 @@ def test_narrate_segment_with_duration_end_to_end_mocked(
         client.chat.completions.create.return_value = resp
         return client
 
+    options = settings.narration_options(prompt_style="documentary")
+    frame_source_options = FrameSourceOptions(
+        ffmpeg_bin=settings.ffmpeg_path,
+        max_frames_per_segment=settings.max_frames_per_segment,
+        max_edge_pixels=settings.narration_frame_max_edge,
+        pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
+        allow_uniform_fallback=True,
+    )
     text, dur = narrate_segment_with_duration(
         str(vid),
         0.0,
         1.0,
-        prompt_style="documentary",
+        options=options,
+        frame_source_options=frame_source_options,
         settings=settings,
         subprocess_run=fake_run,
         client_factory=fake_client_factory,
@@ -84,11 +94,21 @@ def test_narrate_segment_uses_frame_pool_when_manifest_configured(tmp_path):
         client.chat.completions.create.return_value = resp
         return client
 
+    options = settings.narration_options()
+    frame_source_options = FrameSourceOptions(
+        ffmpeg_bin=settings.ffmpeg_path,
+        max_frames_per_segment=settings.max_frames_per_segment,
+        max_edge_pixels=settings.narration_frame_max_edge,
+        pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
+        allow_uniform_fallback=True,
+    )
     timings = {}
     text, dur = narrate_segment_with_duration(
         str(vid),
         0.0,
         1.0,
+        options=options,
+        frame_source_options=frame_source_options,
         settings=settings,
         subprocess_run=fake_run,
         client_factory=fake_client_factory,
@@ -145,11 +165,21 @@ def test_narrate_segment_falls_back_to_uniform_on_pool_window_miss(
         client.chat.completions.create.return_value = resp
         return client
 
+    options = settings.narration_options()
+    frame_source_options = FrameSourceOptions(
+        ffmpeg_bin=settings.ffmpeg_path,
+        max_frames_per_segment=settings.max_frames_per_segment,
+        max_edge_pixels=settings.narration_frame_max_edge,
+        pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
+        allow_uniform_fallback=True,
+    )
     timings = {}
     text, _dur = narrate_segment_with_duration(
         str(vid),
         2.0,
         3.0,
+        options=options,
+        frame_source_options=frame_source_options,
         settings=settings,
         subprocess_run=fake_run,
         client_factory=fake_client_factory,
@@ -194,11 +224,20 @@ def test_narrate_segment_includes_subtitle_context_in_prompt(
         client.chat.completions.create.side_effect = _create
         return client
 
+    options = settings.narration_options(prompt_style="movie_commentary")
+    frame_source_options = FrameSourceOptions(
+        ffmpeg_bin=settings.ffmpeg_path,
+        max_frames_per_segment=settings.max_frames_per_segment,
+        max_edge_pixels=settings.narration_frame_max_edge,
+        pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
+        allow_uniform_fallback=True,
+    )
     text, dur = narrate_segment_with_duration(
         str(vid),
         5.0,
         8.0,
-        prompt_style="movie_commentary",
+        options=options,
+        frame_source_options=frame_source_options,
         settings=settings,
         subprocess_run=fake_run,
         client_factory=fake_client_factory,
@@ -260,6 +299,7 @@ def test_narrate_from_frames_is_pure_generation_interface():
             next_subtitle_text="next",
             retrieved_context_texts=("ctx1",),
         ),
+        options=settings.narration_options(),
         settings=settings,
         client_factory=fake_client_factory,
     )

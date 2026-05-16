@@ -1,17 +1,27 @@
 from pathlib import Path
 
+from frame_source import FrameSourceOptions
 from movieteller_config.schema import settings_from_dict
 
 from movie_pipeline import (
     MoviePipelineOptions,
     parse_product_request,
     run_full_workflow,
-    analyze_and_narrate,
     narrate_analysis_candidates,
     run_pipeline,
     translate_product_request_to_workflow_options,
 )
 from subtitle_analysis import analyze_srt_text
+
+
+def settings_to_frame_source_options(settings):
+    return FrameSourceOptions(
+        ffmpeg_bin=settings.ffmpeg_path,
+        max_frames_per_segment=settings.max_frames_per_segment,
+        max_edge_pixels=settings.narration_frame_max_edge,
+        pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
+        allow_uniform_fallback=True,
+    )
 
 
 def test_narrate_analysis_candidates_uses_selected_gaps():
@@ -40,6 +50,7 @@ b
             "pool_miss_uniform_max_frames": 2,
         }
     )
+    frame_source_options = settings_to_frame_source_options(settings)
 
     calls = []
 
@@ -56,7 +67,8 @@ b
         analysis,
         video_path="demo.mp4",
         max_candidates=2,
-        prompt_style="documentary",
+        narration_options=settings.narration_options(prompt_style="documentary"),
+        frame_source_options=frame_source_options,
         narrator=fake_narrator,
         settings=settings,
     )
@@ -92,6 +104,7 @@ b
             "pool_miss_uniform_max_frames": 2,
         }
     )
+    frame_source_options = settings_to_frame_source_options(settings)
     calls = []
 
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
@@ -103,6 +116,8 @@ b
         video_path="demo.mp4",
         subtitle_context_index_dir="demo.subtitle_context",
         max_candidates=1,
+        narration_options=settings.narration_options(),
+        frame_source_options=frame_source_options,
         narrator=fake_narrator,
         settings=settings,
     )
@@ -481,44 +496,6 @@ x
     assert payload["renderedVideo"]["outputPath"] == "demo.narrated.mp4"
 
 
-def test_analyze_and_narrate_compatibility_wrapper_still_runs():
-    raw = """1
-00:00:01,000 --> 00:00:02,000
-x
-"""
-
-    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
-        return ("narration", end_sec - start_sec)
-
-    from tempfile import TemporaryDirectory
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_provider": "openai",
-            "narration_image_model": "gpt-4o-mini",
-            "ffmpeg_path": "ffmpeg",
-            "max_frames_per_segment": 4,
-            "narration_frame_max_edge": 768,
-            "pool_miss_uniform_max_frames": 2,
-        }
-    )
-
-    with TemporaryDirectory() as tmp:
-        srt = Path(tmp) / "demo.srt"
-        srt.write_text(raw, encoding="utf-8")
-        payload = analyze_and_narrate(
-            srt_path=str(srt),
-            video_path="demo.mp4",
-            video_duration_sec=4.0,
-            min_gap_sec=0.5,
-            subtitle_guard_sec=0.0,
-            max_candidates=1,
-            narrator=fake_narrator,
-            settings=settings,
-        )
-    assert payload["narratedSegments"][0]["text"] == "narration"
-
-
 def test_translate_product_request_to_workflow_options_applies_level_defaults():
     settings = settings_from_dict(
         {
@@ -633,8 +610,10 @@ x
     from movie_pipeline import full_workflow as fw
 
     original_run_pipeline = fw.run_pipeline
+    captured = {}
 
     def fake_run_pipeline(*, srt_path, video_path, pipeline_options, settings):
+        captured["frame_pool_manifest"] = settings.frame_pool_manifest
         return original_run_pipeline(
             srt_path=srt_path,
             video_path=video_path,
@@ -647,6 +626,7 @@ x
 
     saved = full_workflow_module.run_pipeline
     full_workflow_module.run_pipeline = fake_run_pipeline
+
     try:
         payload = run_full_workflow(
             video_path=str(video),
@@ -660,3 +640,4 @@ x
     assert payload["workflowArtifacts"]["framePoolManifest"] == str(pool_dir / "manifest.jsonl")
     assert payload["workflowArtifacts"]["subtitleContextIndexDir"] == str(ctx_dir)
     assert payload["narratedSegments"][0]["text"] == "narration"
+    assert captured["frame_pool_manifest"] == str(pool_dir / "manifest.jsonl")

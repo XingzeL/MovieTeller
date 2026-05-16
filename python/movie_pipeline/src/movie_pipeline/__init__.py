@@ -6,7 +6,6 @@ from movie_pipeline.full_workflow import (
     workflow_options_from_settings,
 )
 from movie_pipeline.pipeline import (
-    analyze_and_narrate,
     narrate_analysis_candidates,
     run_pipeline,
 )
@@ -25,7 +24,6 @@ __all__ = [
     "NarratedSegment",
     "NarrationPolishDetails",
     "NarrationSpeechDetails",
-    "analyze_and_narrate",
     "narrate_analysis_candidates",
     "parse_product_request",
     "run_full_workflow",

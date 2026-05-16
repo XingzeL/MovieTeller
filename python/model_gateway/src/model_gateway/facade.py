@@ -9,6 +9,9 @@ from model_gateway.adapters.openai_compatible import (
 from model_gateway.adapters.openai_compatible import (
     generate_chat as _generate_chat_via_openai_compatible,
 )
+from model_gateway.adapters.volcengine_tts import (
+    synthesize_speech as _synthesize_speech_via_volcengine,
+)
 from model_gateway.errors import GatewayConfigError, GatewayUnsupportedCapabilityError
 from model_gateway.policies import execute_with_retry, limited
 from model_gateway.router import (
@@ -121,18 +124,32 @@ def synthesize_speech(
     communicator_factory: Callable[..., Any] | None = None,
 ) -> SpeechResult:
     endpoint = resolve_speech_endpoint(request, settings)
-    if endpoint.adapter != "edge_tts":
+    if endpoint.adapter == "edge_tts":
+
+        def _run_edge() -> SpeechResult:
+            with limited(endpoint.adapter):
+                return _synthesize_speech_via_edge_tts(
+                    request,
+                    endpoint,
+                    communicator_factory_override=communicator_factory,
+                )
+
+        result, retry_count = execute_with_retry(_run_edge)
+    elif endpoint.adapter == "volcengine_tts":
+
+        def _run_volc() -> SpeechResult:
+            with limited(endpoint.adapter):
+                return _synthesize_speech_via_volcengine(
+                    request,
+                    endpoint,
+                    client_factory=communicator_factory,
+                )
+
+        result, retry_count = execute_with_retry(_run_volc)
+    else:
         raise GatewayUnsupportedCapabilityError(
-            f"Unsupported speech adapter '{endpoint.adapter}'"
+            f"Unsupported speech provider '{endpoint.provider}' via adapter '{endpoint.adapter}'"
         )
-    def _run() -> SpeechResult:
-        with limited(endpoint.adapter):
-            return _synthesize_speech_via_edge_tts(
-                request,
-                endpoint,
-                communicator_factory_override=communicator_factory,
-            )
-    result, retry_count = execute_with_retry(_run)
     emit_gateway_event(
         "speech",
         provider=endpoint.provider,

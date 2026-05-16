@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from movieteller_config.schema import settings_from_dict
 
+from model_gateway.errors import GatewayConfigError
 from model_gateway.facade import embed_texts, generate_chat, synthesize_speech
 from model_gateway.types import ChatRequest, EmbeddingRequest, SpeechRequest
 
@@ -65,3 +66,69 @@ def test_facade_synthesize_speech_routes_through_edge_tts_adapter(tmp_path):
         communicator_factory=lambda *args, **kwargs: FakeCommunicate(),
     )
     assert result.audio_path.endswith(".mp3")
+
+
+def test_facade_synthesize_speech_routes_through_volcengine_adapter(tmp_path):
+    class FakeSpeechApi:
+        def create(self, **kwargs):
+            assert kwargs["model"] == "volcengine-tts-standard"
+            assert kwargs["voice"] == "zh_female_shuangkuaisisi_moon_bigtts"
+            assert kwargs["input"] == "hello"
+
+            class R:
+                def write_to_file(self, p):
+                    from pathlib import Path
+
+                    Path(p).write_bytes(b"mp3")
+
+            return R()
+
+    class FakeClient:
+        def __init__(self):
+            self.audio = SimpleNamespace(speech=FakeSpeechApi())
+
+    settings = settings_from_dict(
+        {
+            "api_keys": {"volcengine": "sk-volc"},
+            "api_base_urls": {"volcengine": "https://ark.cn-beijing.volces.com/api/v3"},
+        }
+    )
+    result = synthesize_speech(
+        SpeechRequest(
+            provider="volcengine",
+            voice="zh_female_shuangkuaisisi_moon_bigtts",
+            text="hello",
+            model="volcengine-tts-standard",
+            output_path=str(tmp_path / "out.mp3"),
+            metadata_path=str(tmp_path / "meta.json"),
+        ),
+        settings=settings,
+        communicator_factory=lambda _k, _b: FakeClient(),
+    )
+    assert result.audio_path.endswith(".mp3")
+    assert result.meta is not None
+    assert result.meta.model == "volcengine-tts-standard"
+
+
+def test_facade_synthesize_speech_rejects_openspeech_base_url_for_openai_style_tts(tmp_path):
+    settings = settings_from_dict(
+        {
+            "api_keys": {"volcengine_tts": "sk-vtts"},
+            "api_base_urls": {"volcengine_tts": "https://openspeech.bytedance.com"},
+        }
+    )
+    try:
+        synthesize_speech(
+            SpeechRequest(
+                provider="volcengine_tts",
+                voice="zh_female_shuangkuaisisi_moon_bigtts",
+                text="hello",
+                model="volcengine-tts-standard",
+                output_path=str(tmp_path / "out.mp3"),
+            ),
+            settings=settings,
+        )
+        assert False, "expected GatewayConfigError"
+    except GatewayConfigError as exc:
+        assert "OpenAI-compatible audio.speech" in str(exc)
+        assert "ark.cn-beijing.volces.com/api/v3" in str(exc)

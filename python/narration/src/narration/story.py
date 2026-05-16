@@ -36,7 +36,11 @@ def generate_narration(
     """
     slug = _resolve_provider_slug(settings, provider_slug)
     print(
-        f"[narration] slug={slug!r} model={model!r} base_url={settings.get_api_base_url(slug)!r}",
+        "[narration.api] "
+        f"slug={slug!r} "
+        f"model={model!r} "
+        f"base_url={settings.get_api_base_url(slug)!r} "
+        f"frames={len(frames_base64_png)}",
         file=sys.stderr,
     )
     content: list[dict[str, Any]] = [{"type": "text", "text": user_text}]

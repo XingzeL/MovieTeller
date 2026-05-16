@@ -50,6 +50,7 @@ def main() -> int:
     _ensure_paths()
 
     from movieteller_config import load_settings
+    from frame_source import FrameSourceOptions
     from narration.frames import (
         extract_frames_base64,
         ffprobe_path_for,
@@ -93,12 +94,21 @@ def main() -> int:
 
         timings: dict[str, Any] = {}
         t0 = time.perf_counter()
+        narration_options = settings.narration_options(model=args.model)
+        frame_source_options = FrameSourceOptions(
+            ffmpeg_bin=settings.ffmpeg_path,
+            max_frames_per_segment=settings.max_frames_per_segment,
+            max_edge_pixels=settings.narration_frame_max_edge,
+            pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
+            allow_uniform_fallback=True,
+        )
         text, duration = narrate_segment_with_duration(
             str(video),
             start,
             end,
+            options=narration_options,
+            frame_source_options=frame_source_options,
             settings=settings,
-            image_model=args.model,
             timings_out=timings,
         )
         wall_total = time.perf_counter() - t0

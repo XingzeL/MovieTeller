@@ -6,14 +6,14 @@ openai_base_url: null
 narration_image_model: gpt-4o-mini
 max_frames_per_segment: 24
 # Narration: longest side after ffmpeg scale (fits inside edge×edge box, any aspect ratio)
-narration_frame_max_edge: 768
+narration_frame_max_edge: 512
 ffmpeg_path: ffmpeg
 default_prompt_style: documentary
 frame_pool_manifest: null
 pool_frames_per_shot_min: 1
 pool_frames_per_shot_max: 3
 pool_frames_per_shot_rate: null
-pool_miss_uniform_max_frames: 24
+pool_miss_uniform_max_frames: 4
 dialogue_overlap_threshold: 0.05
 pyscenedetect_merge_sec: 0.25
 subtitle_context_embedding_provider: null
@@ -62,6 +62,13 @@ narration_speech_rate: +0%
 narration_speech_volume: +0%
 narration_speech_pitch: +0Hz
 narration_speech_boundary: SentenceBoundary
+# New TTS-scoped provider/model config. Prefer these over narration_speech_* for
+# provider/model selection; narration_speech_* remains as a fallback for the
+# current edge-tts-oriented execution path.
+narration_tts_provider: edge_tts
+narration_tts_model: null
+narration_tts_model_index: 0
+tts_provider_model_catalog: {}
 # Final video mix defaults when embedding narration back into the source video.
 narration_video_background_audio_volume: 0.35
 narration_video_speech_audio_volume: 1.0

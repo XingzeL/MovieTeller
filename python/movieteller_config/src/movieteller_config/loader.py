@@ -346,6 +346,20 @@ def _env_overrides() -> dict[str, Any]:
         out["narration_speech_pitch"] = v
     if v := os.environ.get("NARRATION_SPEECH_BOUNDARY", "").strip():
         out["narration_speech_boundary"] = v
+    if v := os.environ.get("NARRATION_TTS_PROVIDER", "").strip():
+        out["narration_tts_provider"] = v.lower()
+    if v := os.environ.get("NARRATION_TTS_MODEL", "").strip():
+        out["narration_tts_model"] = v
+    if v := os.environ.get("NARRATION_TTS_MODEL_INDEX", "").strip():
+        try:
+            out["narration_tts_model_index"] = max(0, int(v))
+        except ValueError:
+            pass
+    if v := os.environ.get("NARRATION_TTS_VOICE", "").strip():
+        out["narration_tts_voice"] = v
+    tts_cat = _collect_model_catalog_from_env("TTS_PROVIDER_MODEL_CATALOG_JSON")
+    if tts_cat:
+        out["tts_provider_model_catalog"] = tts_cat
     if v := os.environ.get("NARRATION_VIDEO_BACKGROUND_AUDIO_VOLUME", "").strip():
         try:
             out["narration_video_background_audio_volume"] = float(v)

@@ -27,6 +27,14 @@ def _resolve_adapter(provider: str) -> str:
     return "openai_compatible"
 
 
+def _resolve_speech_adapter(provider: str) -> str:
+    if provider == "edge_tts":
+        return "edge_tts"
+    if provider in {"volcengine", "volcengine_tts"}:
+        return "volcengine_tts"
+    return "unsupported_speech"
+
+
 def resolve_chat_endpoint(request: ChatRequest, settings) -> ResolvedEndpoint:
     provider = str(request.provider).strip().lower() or "openai"
     model = str(request.model).strip()
@@ -55,10 +63,17 @@ def resolve_embedding_endpoint(request: EmbeddingRequest, settings) -> ResolvedE
 
 def resolve_speech_endpoint(request: SpeechRequest, settings) -> ResolvedEndpoint:
     provider = str(request.provider).strip().lower() or "edge_tts"
+    adapter = _resolve_speech_adapter(provider)
+    model = str(getattr(request, "model", None) or "").strip()
+    base_url = _resolve_base_url(settings, provider)
+    if adapter == "edge_tts":
+        api_key = settings.get_api_key(provider) if hasattr(settings, "get_api_key") else None
+    else:
+        api_key = settings.require_api_key(provider)
     return ResolvedEndpoint(
         provider=provider,
-        model="",
-        base_url=_resolve_base_url(settings, provider),
-        api_key=(settings.get_api_key(provider) if hasattr(settings, "get_api_key") else None),
-        adapter=_resolve_adapter(provider),
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        adapter=adapter,
     )

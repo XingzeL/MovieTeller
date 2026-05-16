@@ -103,38 +103,21 @@ def polish_narration_text(
     text: str,
     duration_sec: float,
     *,
-    options: NarrationPolishOptions | None = None,
-    prompt_style: str | None = None,
-    target_wpm: int | None = None,
-    cefr_level: str | None = None,
-    strength: str | None = None,
-    safety_margin_sec: float | None = None,
-    provider_slug: str | None = None,
-    model: str | None = None,
-    settings: "Settings | None" = None,
+    options: NarrationPolishOptions,
+    settings: "Settings",
     client_factory: Callable[..., Any] | None = None,
 ) -> NarrationPolishResult:
     raw_text = _normalize_text(text)
     if not raw_text:
         raise ValueError("narration text is empty")
 
-    cfg = settings if settings is not None else load_settings()
-    resolved_options = options or cfg.narration_polish_options(
-        provider_slug=provider_slug,
-        model=model,
-        prompt_style=prompt_style,
-        target_wpm=target_wpm,
-        cefr_level=cefr_level,
-        strength=strength,
-        safety_margin_sec=safety_margin_sec,
-    )
-    resolved_target_wpm = resolved_options.target_wpm
-    resolved_cefr_level = resolved_options.cefr_level
-    resolved_strength = resolved_options.strength
-    resolved_safety_margin_sec = resolved_options.safety_margin_sec
-    resolved_prompt_style = resolved_options.prompt_style
-    resolved_provider = resolved_options.provider_slug
-    resolved_model = resolved_options.model
+    resolved_target_wpm = options.target_wpm
+    resolved_cefr_level = options.cefr_level
+    resolved_strength = options.strength
+    resolved_safety_margin_sec = options.safety_margin_sec
+    resolved_prompt_style = options.prompt_style
+    resolved_provider = options.provider_slug
+    resolved_model = options.model
     target_duration_sec = compute_target_duration_sec(
         duration_sec, resolved_safety_margin_sec
     )
@@ -173,7 +156,7 @@ def polish_narration_text(
                 },
             ],
         ),
-        settings=cfg,
+        settings=settings,
         client_factory=client_factory,
     )
     t1 = time.perf_counter()

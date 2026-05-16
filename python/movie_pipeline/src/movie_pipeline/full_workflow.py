@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -256,6 +256,15 @@ def run_full_workflow(
             settings=resolved_settings,
         )
 
+    pipeline_settings = resolved_settings
+    if frame_pool_manifest.is_file():
+        manifest_value = str(frame_pool_manifest)
+        if resolved_settings.frame_pool_manifest != manifest_value:
+            pipeline_settings = replace(
+                resolved_settings,
+                frame_pool_manifest=manifest_value,
+            )
+
     subtitle_context_index_dir: str | None = None
     if resolved_options.build_subtitle_context:
         if not subtitle_context_index_is_complete(subtitle_context_dir):
@@ -263,12 +272,12 @@ def run_full_workflow(
                 srt_path=str(srt_path),
                 output_dir=str(subtitle_context_dir),
                 options=resolved_options.subtitle_context_build_options,
-                settings=resolved_settings,
+                settings=pipeline_settings,
             )
         subtitle_context_index_dir = str(subtitle_context_dir)
 
     base_pipeline_options = resolved_options.movie_pipeline_options or workflow_options_from_settings(
-        resolved_settings,
+        pipeline_settings,
         output_root=str(output_root),
     ).movie_pipeline_options
     if base_pipeline_options is None:
@@ -313,7 +322,7 @@ def run_full_workflow(
         srt_path=str(srt_path),
         video_path=str(source_video),
         pipeline_options=pipeline_options,
-        settings=resolved_settings,
+        settings=pipeline_settings,
     )
     payload["workflowArtifacts"] = {
         "videoPath": str(source_video),

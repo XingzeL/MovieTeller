@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from frame_source import FrameSourceOptions
 from narration.frames import (
     extract_frames_base64,
     ffprobe_path_for,
@@ -119,10 +120,21 @@ def test_example_mp4_first_5s_narration_api(example_video: Path) -> None:
 
     from narration import narrate_segment
 
+    narration_options = settings_lite.narration_options()
+    frame_source_options = FrameSourceOptions(
+        ffmpeg_bin=settings_lite.ffmpeg_path,
+        max_frames_per_segment=settings_lite.max_frames_per_segment,
+        max_edge_pixels=settings_lite.narration_frame_max_edge,
+        pool_miss_uniform_max_frames=settings_lite.pool_miss_uniform_max_frames,
+        allow_uniform_fallback=True,
+    )
+
     text = narrate_segment(
         str(example_video),
         0.0,
         5.0,
+        options=narration_options,
+        frame_source_options=frame_source_options,
         settings=settings_lite,
     )
     assert isinstance(text, str)

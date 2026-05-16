@@ -61,6 +61,8 @@ class NarrationPolishOptions:
 class NarrationSpeechOptions:
     provider_slug: str
     voice: str
+    """TTS model for OpenAI-compatible ``audio.speech`` (e.g. volcengine Ark). None for edge-tts."""
+    model: str | None
     rate: str
     volume: str
     pitch: str
@@ -166,6 +168,11 @@ class Settings:
     narration_speech_volume: str
     narration_speech_pitch: str
     narration_speech_boundary: str
+    narration_tts_provider: str
+    narration_tts_model: str | None
+    narration_tts_model_index: int
+    narration_tts_voice: str | None
+    tts_provider_model_catalog: Mapping[str, tuple[str, ...]]
     narration_video_background_audio_volume: float
     narration_video_speech_audio_volume: float
 
@@ -374,15 +381,30 @@ class Settings:
         pitch: str | None = None,
         boundary: str | None = None,
     ) -> NarrationSpeechOptions:
+        resolved_provider = (
+            str(provider_slug or self.narration_tts_provider or self.narration_speech_provider)
+            .strip()
+            .lower()
+            or "edge_tts"
+        )
+        resolved_voice = (
+            str(voice).strip()
+            if voice is not None
+            else str(self.narration_tts_voice or self.narration_speech_voice).strip()
+        )
+        if not resolved_voice:
+            catalog = self.tts_provider_model_catalog.get(resolved_provider)
+            if catalog:
+                resolved_voice = str(catalog[max(0, min(self.narration_tts_model_index, len(catalog) - 1))]).strip()
+        if not resolved_voice and self.narration_tts_model:
+            resolved_voice = str(self.narration_tts_model).strip()
+        tts_model = (
+            str(self.narration_tts_model).strip() if self.narration_tts_model else ""
+        ) or None
         return NarrationSpeechOptions(
-            provider_slug=(
-                str(provider_slug or self.narration_speech_provider).strip().lower()
-                or "edge_tts"
-            ),
-            voice=(
-                str(voice or self.narration_speech_voice).strip()
-                or "en-US-EmmaMultilingualNeural"
-            ),
+            provider_slug=resolved_provider,
+            voice=(resolved_voice or "en-US-EmmaMultilingualNeural"),
+            model=tts_model,
             rate=str(rate or self.narration_speech_rate).strip() or "+0%",
             volume=str(volume or self.narration_speech_volume).strip() or "+0%",
             pitch=str(pitch or self.narration_speech_pitch).strip() or "+0Hz",
@@ -673,6 +695,9 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
     narration_polish_provider_catalog = _normalize_provider_model_catalog(
         {"provider_model_catalog": data.get("narration_polish_provider_model_catalog")}
     )
+    tts_provider_catalog = _normalize_provider_model_catalog(
+        {"provider_model_catalog": data.get("tts_provider_model_catalog")}
+    )
     idx_raw = data.get("narration_model_index")
     try:
         narration_model_index = max(0, int(idx_raw)) if idx_raw is not None else 0
@@ -817,6 +842,20 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
             str(data.get("narration_speech_boundary") or "SentenceBoundary").strip()
             or "SentenceBoundary"
         ),
+        narration_tts_provider=(
+            str(
+                data.get("narration_tts_provider")
+                or data.get("narration_speech_provider")
+                or "edge_tts"
+            ).strip().lower()
+            or "edge_tts"
+        ),
+        narration_tts_model=_expand_optional_env_str(data.get("narration_tts_model")),
+        narration_tts_model_index=max(
+            0, _coerce_int(data.get("narration_tts_model_index"), 0)
+        ),
+        narration_tts_voice=_expand_optional_env_str(data.get("narration_tts_voice")),
+        tts_provider_model_catalog=MappingProxyType(dict(tts_provider_catalog)),
         narration_video_background_audio_volume=max(
             0.0,
             _coerce_float(data.get("narration_video_background_audio_volume"), 0.35),

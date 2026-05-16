@@ -10,6 +10,7 @@ T = TypeVar("T")
 _DEFAULT_LIMITS: dict[str, int] = {
     "openai_compatible": 4,
     "edge_tts": 2,
+    "volcengine_tts": 2,
 }
 _LOCK = threading.Lock()
 _LIMITERS: dict[str, threading.BoundedSemaphore] = {}

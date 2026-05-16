@@ -20,7 +20,7 @@ python -m pip install -e ./python/narration_polish -e ./python/narration_speech 
 python -m pip install videocaptioner pytest
 ```
 
-后端的字幕提取链路现在会**优先使用仓库根目录 `.venv/bin/python3`**；手动 smoke 也应先激活 `.venv`，再运行 `python` / `python3`。
+后端的字幕提取链路现在会**优先使用仓库根目录 `.venv/bin/python3`**；手动 smoke 也应先激活 `.venv`，再运行 `python` / `python3`。若未 `source` 激活，请显式使用 **`.venv/bin/python`** 或 **`.venv/bin/pytest`**，避免误用系统自带的 `python3`。
 
 ### 1. 后端（Express）
 

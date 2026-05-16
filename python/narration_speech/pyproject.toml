@@ -25,4 +25,4 @@ narration_speech = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "../movieteller_config/src", "../media_utils/src", "../model_gateway/src"]

@@ -107,89 +107,25 @@ def narrate_analysis_candidates(
     video_path: str,
     subtitle_context_index_dir: str | None = None,
     max_candidates: int | None = None,
-    narration_options: NarrationOptions | None = None,
-    frame_source_options: FrameSourceOptions | None = None,
+    narration_options: NarrationOptions,
+    frame_source_options: FrameSourceOptions,
     subtitle_context_retrieve_options: SubtitleContextRetrieveOptions | None = None,
     polish_options: NarrationPolishOptions | None = None,
     speech_options: NarrationSpeechOptions | None = None,
-    prompt_style: str | None = None,
-    custom_prompt: str = "",
-    image_model: str | None = None,
-    provider_slug: str | None = None,
-    frame_pool_manifest: str | None = None,
-    polish: bool | None = None,
-    polish_provider_slug: str | None = None,
-    polish_model: str | None = None,
-    polish_model_index: int | None = None,
-    polish_target_wpm: int | None = None,
-    polish_cefr_level: str | None = None,
-    polish_strength: str | None = None,
-    polish_safety_margin_sec: float | None = None,
-    speech: bool | None = None,
-    speech_provider_slug: str | None = None,
-    speech_voice: str | None = None,
-    speech_rate: str | None = None,
-    speech_volume: str | None = None,
-    speech_pitch: str | None = None,
-    speech_boundary: str | None = None,
     speech_output_dir: str | None = None,
-    settings: Settings | None = None,
+    settings: Settings,
     narrator: Callable[..., tuple[str, float]] | None = None,
     polisher: Callable[..., object] | None = None,
     synthesizer: Callable[..., object] | None = None,
 ) -> tuple[NarratedSegment, ...]:
-    resolved_settings: Settings = (
-        settings
-        if settings is not None
-        else _resolve_pipeline_settings(
-            provider_slug,
-            frame_pool_manifest_override=frame_pool_manifest,
-            polish_model_index_override=polish_model_index,
-        )
-    )
-    resolved_narration_options = narration_options or resolved_settings.narration_options(
-        provider_slug=provider_slug,
-        model=image_model,
-        prompt_style=prompt_style,
-        custom_prompt=custom_prompt,
-    )
     call_narrator = narrator or narrate_segment_with_duration
-    polish_enabled = (
-        bool(polish)
-        if polish is not None
-        else (polish_options is not None or bool(getattr(resolved_settings, "narration_polish_enabled", False)))
-    )
-    resolved_polish_options = polish_options if polish_enabled else None
-    if polish_enabled and resolved_polish_options is None:
-        resolved_polish_options = resolved_settings.narration_polish_options(
-            provider_slug=polish_provider_slug,
-            model=polish_model,
-            prompt_style=resolved_narration_options.prompt_style,
-            target_wpm=polish_target_wpm,
-            cefr_level=polish_cefr_level,
-            strength=polish_strength,
-            safety_margin_sec=polish_safety_margin_sec,
-        )
+    polish_enabled = polish_options is not None
     call_polisher: Callable[..., object] | None = polisher
     if polish_enabled and call_polisher is None:
         from narration_polish import polish_narration_text as _default_polisher
 
         call_polisher = _default_polisher
-    speech_enabled = (
-        bool(speech)
-        if speech is not None
-        else (speech_options is not None or bool(getattr(resolved_settings, "narration_speech_enabled", False)))
-    )
-    resolved_speech_options = speech_options if speech_enabled else None
-    if speech_enabled and resolved_speech_options is None:
-        resolved_speech_options = resolved_settings.narration_speech_options(
-            provider_slug=speech_provider_slug,
-            voice=speech_voice,
-            rate=speech_rate,
-            volume=speech_volume,
-            pitch=speech_pitch,
-            boundary=speech_boundary,
-        )
+    speech_enabled = speech_options is not None
     call_synthesizer: Callable[..., object] | None = synthesizer
     if speech_enabled and call_synthesizer is None:
         from narration_speech import synthesize_narration_text as _default_synthesizer
@@ -215,7 +151,7 @@ def narrate_analysis_candidates(
                 subtitle_context_index_dir=subtitle_context_index_dir,
                 segment_start_sec=seg.start_sec,
                 query_text=seg.prev_subtitle_text,
-                settings=resolved_settings,
+                settings=settings,
                 retrieve_options=subtitle_context_retrieve_options,
             ),
         )
@@ -223,13 +159,9 @@ def narrate_analysis_candidates(
             video_path,
             seg.start_sec,
             seg.end_sec,
-            options=resolved_narration_options,
+            options=narration_options,
             frame_source_options=frame_source_options,
-            prompt_style=resolved_narration_options.prompt_style,
-            custom_prompt=resolved_narration_options.custom_prompt,
-            image_model=resolved_narration_options.model,
-            provider_slug=resolved_narration_options.provider_slug,
-            settings=resolved_settings,
+            settings=settings,
             timings_out=timings,
             narration_context=narration_context,
         )
@@ -242,8 +174,8 @@ def narrate_analysis_candidates(
             polished = call_polisher(
                 text,
                 seg.duration_sec,
-                options=resolved_polish_options,
-                settings=resolved_settings,
+                options=polish_options,
+                settings=settings,
             )
             speech_text = str(getattr(polished, "polished_text"))
             polish_details = NarrationPolishDetails(
@@ -294,8 +226,8 @@ def narrate_analysis_candidates(
                 output_path=str(audio_path),
                 metadata_path=str(metadata_path),
                 target_duration_sec=target_duration_sec,
-                options=resolved_speech_options,
-                settings=resolved_settings,
+                options=speech_options,
+                settings=settings,
             )
             speech_details = NarrationSpeechDetails(
                 text=str(getattr(spoken, "text")),
@@ -484,8 +416,9 @@ def run_pipeline(
         frame_source_options=resolved_frame_source_options,
         subtitle_context_retrieve_options=pipeline_options.subtitle_context_retrieve_options,
         polish_options=pipeline_options.polish_options,
-        speech_options=pipeline_options.speech_options,
-        speech=speech_requested,
+        speech_options=(
+            pipeline_options.speech_options if speech_requested else None
+        ),
         speech_output_dir=resolved_speech_output_dir,
         settings=resolved_settings,
         narrator=narrator,
@@ -541,154 +474,3 @@ def run_pipeline(
     else:
         payload["renderedVideo"] = None
     return payload
-
-
-def analyze_and_narrate(
-    *,
-    srt_path: str,
-    video_path: str,
-    subtitle_context_index_dir: str | None = None,
-    video_duration_sec: float | None = None,
-    min_gap_sec: float = 1.0,
-    subtitle_guard_sec: float = 0.25,
-    ffprobe_bin: str = "ffprobe",
-    max_candidates: int | None = None,
-    prompt_style: str | None = None,
-    custom_prompt: str = "",
-    image_model: str | None = None,
-    provider_slug: str | None = None,
-    frame_pool_manifest: str | None = None,
-    build_subtitle_context: bool = False,
-    subtitle_context_history_window_sec: float | None = None,
-    subtitle_context_top_k: int | None = None,
-    subtitle_context_chunk_cue_count: int | None = None,
-    subtitle_context_chunk_stride: int | None = None,
-    polish: bool | None = None,
-    polish_provider_slug: str | None = None,
-    polish_model: str | None = None,
-    polish_model_index: int | None = None,
-    polish_target_wpm: int | None = None,
-    polish_cefr_level: str | None = None,
-    polish_strength: str | None = None,
-    polish_safety_margin_sec: float | None = None,
-    speech: bool | None = None,
-    speech_provider_slug: str | None = None,
-    speech_voice: str | None = None,
-    speech_rate: str | None = None,
-    speech_volume: str | None = None,
-    speech_pitch: str | None = None,
-    speech_boundary: str | None = None,
-    speech_output_dir: str | None = None,
-    embed_video: bool = False,
-    embed_output_path: str | None = None,
-    background_audio_volume: float | None = None,
-    narration_audio_volume: float | None = None,
-    settings: Settings | None = None,
-    narrator: Callable[..., tuple[str, float]] | None = None,
-    polisher: Callable[..., object] | None = None,
-    synthesizer: Callable[..., object] | None = None,
-    video_renderer: Callable[..., object] | None = None,
-) -> dict[str, object]:
-    """
-    Compatibility wrapper around ``run_pipeline(...)``.
-
-    Prefer constructing ``MoviePipelineOptions`` explicitly and calling
-    ``run_pipeline(...)`` in new code.
-    """
-    resolved_settings = (
-        settings
-        if settings is not None
-        else _resolve_pipeline_settings(
-            provider_slug,
-            frame_pool_manifest_override=frame_pool_manifest,
-        )
-    )
-    narration_options = resolved_settings.narration_options(
-        provider_slug=provider_slug,
-        model=image_model,
-        prompt_style=prompt_style,
-        custom_prompt=custom_prompt,
-    )
-    polish_enabled = (
-        bool(polish)
-        if polish is not None
-        else bool(getattr(resolved_settings, "narration_polish_enabled", False))
-    )
-    speech_enabled = bool(embed_video) or (
-        bool(speech)
-        if speech is not None
-        else bool(getattr(resolved_settings, "narration_speech_enabled", False))
-    )
-    pipeline_options = MoviePipelineOptions(
-        video_duration_sec=video_duration_sec,
-        min_gap_sec=min_gap_sec,
-        subtitle_guard_sec=subtitle_guard_sec,
-        ffprobe_bin=ffprobe_bin,
-        max_candidates=max_candidates,
-        subtitle_context_index_dir=subtitle_context_index_dir,
-        build_subtitle_context=build_subtitle_context,
-        speech_output_dir=speech_output_dir,
-        embed_video=embed_video,
-        embed_output_path=embed_output_path,
-        narration_options=narration_options,
-        frame_source_options=FrameSourceOptions(
-            ffmpeg_bin=resolved_settings.ffmpeg_path,
-            max_frames_per_segment=resolved_settings.max_frames_per_segment,
-            max_edge_pixels=resolved_settings.narration_frame_max_edge,
-            pool_miss_uniform_max_frames=resolved_settings.pool_miss_uniform_max_frames,
-            allow_uniform_fallback=True,
-        ),
-        subtitle_context_build_options=resolved_settings.subtitle_context_build_options(
-            chunk_cue_count=subtitle_context_chunk_cue_count,
-            chunk_stride=subtitle_context_chunk_stride,
-        ),
-        subtitle_context_retrieve_options=resolved_settings.subtitle_context_retrieve_options(
-            history_window_sec=subtitle_context_history_window_sec,
-            top_k=subtitle_context_top_k,
-        ),
-        polish_options=(
-            resolved_settings.narration_polish_options(
-                provider_slug=polish_provider_slug,
-                model=polish_model,
-                prompt_style=narration_options.prompt_style,
-                target_wpm=polish_target_wpm,
-                cefr_level=polish_cefr_level,
-                strength=polish_strength,
-                safety_margin_sec=polish_safety_margin_sec,
-            )
-            if polish_enabled
-            else None
-        ),
-        speech_options=(
-            resolved_settings.narration_speech_options(
-                provider_slug=speech_provider_slug,
-                voice=speech_voice,
-                rate=speech_rate,
-                volume=speech_volume,
-                pitch=speech_pitch,
-                boundary=speech_boundary,
-            )
-            if speech_enabled
-            else None
-        ),
-        video_options=(
-            resolved_settings.narration_video_options(
-                background_audio_volume=background_audio_volume,
-                speech_audio_volume=narration_audio_volume,
-            )
-            if embed_video
-            else None
-        ),
-    )
-    if pipeline_options.polish_options is not None and hasattr(resolved_settings, "require_api_key"):
-        resolved_settings.require_api_key(pipeline_options.polish_options.provider_slug)
-    return run_pipeline(
-        srt_path=srt_path,
-        video_path=video_path,
-        pipeline_options=pipeline_options,
-        settings=resolved_settings,
-        narrator=narrator,
-        polisher=polisher,
-        synthesizer=synthesizer,
-        video_renderer=video_renderer,
-    )

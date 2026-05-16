@@ -5,6 +5,7 @@ import json
 import sys
 from typing import Any
 
+from frame_source import FrameSourceOptions
 from movieteller_config import load_settings
 from movieteller_config.loader import load_flat_dict
 from movieteller_config.schema import settings_from_dict
@@ -69,6 +70,13 @@ def main(argv: list[str] | None = None) -> int:
         prompt_style=args.prompt_style,
         custom_prompt=args.custom_prompt,
     )
+    frame_source_options = FrameSourceOptions(
+        ffmpeg_bin=settings.ffmpeg_path,
+        max_frames_per_segment=settings.max_frames_per_segment,
+        max_edge_pixels=settings.narration_frame_max_edge,
+        pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
+        allow_uniform_fallback=True,
+    )
 
     try:
         text, duration_sec = narrate_segment_with_duration(
@@ -76,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
             args.start,
             args.end,
             options=narration_options,
+            frame_source_options=frame_source_options,
             settings=settings,
         )
     except Exception as e:

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from movieteller_config.schema import settings_from_dict
 from movieteller_config.schema import NarrationSpeechOptions
 
 from narration_speech.speech import _atempo_filter_for_speed, synthesize_narration_text
@@ -25,6 +26,7 @@ def test_synthesize_narration_without_fit(monkeypatch, tmp_path):
         return next(durations)
 
     monkeypatch.setattr("narration_speech.speech._probe_media_duration_sec", fake_probe)
+    settings = settings_from_dict({})
     result = synthesize_narration_text(
         "hello world",
         2.0,
@@ -32,12 +34,14 @@ def test_synthesize_narration_without_fit(monkeypatch, tmp_path):
         options=NarrationSpeechOptions(
             provider_slug="edge_tts",
             voice="en-US-EmmaMultilingualNeural",
+            model=None,
             rate="+0%",
             volume="+0%",
             pitch="+0Hz",
             boundary="SentenceBoundary",
             ffmpeg_bin="ffmpeg",
         ),
+        settings=settings,
         communicator_factory=lambda *args, **kwargs: FakeCommunicate(),
     )
     assert Path(result.audio_path).is_file()
@@ -56,6 +60,7 @@ def test_synthesize_narration_with_fit(monkeypatch, tmp_path):
 
     monkeypatch.setattr("narration_speech.speech._probe_media_duration_sec", fake_probe)
     monkeypatch.setattr("narration_speech.speech._fit_audio_speedup", fake_fit)
+    settings = settings_from_dict({})
     result = synthesize_narration_text(
         "hello world",
         2.0,
@@ -63,12 +68,14 @@ def test_synthesize_narration_with_fit(monkeypatch, tmp_path):
         options=NarrationSpeechOptions(
             provider_slug="edge_tts",
             voice="en-US-EmmaMultilingualNeural",
+            model=None,
             rate="+0%",
             volume="+0%",
             pitch="+0Hz",
             boundary="SentenceBoundary",
             ffmpeg_bin="ffmpeg",
         ),
+        settings=settings,
         communicator_factory=lambda *args, **kwargs: FakeCommunicate(),
     )
     assert result.fit_applied is True

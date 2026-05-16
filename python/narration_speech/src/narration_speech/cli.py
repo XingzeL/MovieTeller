@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from movieteller_config import load_settings
 from narration_speech.speech import synthesize_narration_text
 
 
@@ -38,18 +39,24 @@ def main() -> int:
     ap.add_argument("--json", action="store_true", help="Print JSON payload")
     args = ap.parse_args()
 
-    result = synthesize_narration_text(
-        args.text,
-        args.duration_sec,
-        output_path=args.output,
-        metadata_path=args.metadata,
-        target_duration_sec=args.target_duration_sec,
+    settings = load_settings()
+    options = settings.narration_speech_options(
         provider_slug=args.provider,
         voice=args.voice,
         rate=args.rate,
         volume=args.volume,
         pitch=args.pitch,
         boundary=args.boundary,
+    )
+
+    result = synthesize_narration_text(
+        args.text,
+        args.duration_sec,
+        output_path=args.output,
+        metadata_path=args.metadata,
+        target_duration_sec=args.target_duration_sec,
+        options=options,
+        settings=settings,
     )
     payload = {
         "text": result.text,

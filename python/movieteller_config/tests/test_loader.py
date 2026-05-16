@@ -154,6 +154,11 @@ ffmpeg_path: /usr/bin/ffmpeg
         self.assertEqual(s.narration_speech_volume, "+0%")
         self.assertEqual(s.narration_speech_pitch, "+0Hz")
         self.assertEqual(s.narration_speech_boundary, "SentenceBoundary")
+        self.assertEqual(s.narration_tts_provider, "edge_tts")
+        self.assertIsNone(s.narration_tts_model)
+        self.assertEqual(s.narration_tts_model_index, 0)
+        self.assertIsNone(s.narration_tts_voice)
+        self.assertEqual(dict(s.tts_provider_model_catalog), {})
         self.assertEqual(s.narration_video_background_audio_volume, 0.35)
         self.assertEqual(s.narration_video_speech_audio_volume, 1.0)
         self.assertEqual(len(s.narration_provider_models), 0)
@@ -477,6 +482,53 @@ ffmpeg_path: /usr/bin/ffmpeg
             self.assertEqual(s.narration_speech_boundary, "WordBoundary")
             self.assertEqual(s.narration_video_background_audio_volume, 0.2)
             self.assertEqual(s.narration_video_speech_audio_volume, 1.3)
+
+    def test_narration_tts_env_overrides_and_preferred_in_speech_options(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NARRATION_TTS_PROVIDER": "VOLCENGINE",
+                "NARRATION_TTS_MODEL": "volcengine-tts-standard",
+                "NARRATION_TTS_MODEL_INDEX": "1",
+                "TTS_PROVIDER_MODEL_CATALOG_JSON": '{"volcengine":["voice-a","voice-b"]}',
+            },
+            clear=False,
+        ):
+            s = load_settings()
+            self.assertEqual(s.narration_tts_provider, "volcengine")
+            self.assertEqual(s.narration_tts_model, "volcengine-tts-standard")
+            self.assertEqual(s.narration_tts_model_index, 1)
+            self.assertEqual(dict(s.tts_provider_model_catalog)["volcengine"], ("voice-a", "voice-b"))
+            speech_options = s.narration_speech_options()
+            self.assertEqual(speech_options.provider_slug, "volcengine")
+            self.assertEqual(speech_options.model, "volcengine-tts-standard")
+
+    def test_narration_tts_voice_preferred_in_speech_options(self):
+        s = settings_from_dict(
+            {
+                "narration_tts_provider": "volcengine_tts",
+                "narration_tts_model": "volcengine-tts-standard",
+                "narration_tts_voice": "zh_female_shuangkuaisisi_moon_bigtts",
+            }
+        )
+        options = s.narration_speech_options()
+        self.assertEqual(options.provider_slug, "volcengine_tts")
+        self.assertEqual(options.voice, "zh_female_shuangkuaisisi_moon_bigtts")
+
+    def test_narration_speech_options_can_pick_tts_catalog_voice_when_voice_empty(self):
+        s = settings_from_dict(
+            {
+                "narration_tts_provider": "volcengine",
+                "narration_tts_model_index": 1,
+                "tts_provider_model_catalog": {
+                    "volcengine": ["voice-a", "voice-b"]
+                },
+                "narration_speech_voice": "",
+            }
+        )
+        options = s.narration_speech_options(voice="")
+        self.assertEqual(options.provider_slug, "volcengine")
+        self.assertEqual(options.voice, "voice-b")
 
     def test_scoped_model_catalog_env_overrides(self):
         with mock.patch("movieteller_config.loader._load_repo_dotenv", lambda: None):

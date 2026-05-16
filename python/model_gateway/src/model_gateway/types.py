@@ -57,6 +57,8 @@ class SpeechRequest:
     provider: str
     voice: str
     text: str
+    """TTS model id for OpenAI-compatible ``audio.speech`` (e.g. Ark). Ignored by edge-tts."""
+    model: str | None = None
     rate: str | None = None
     volume: str | None = None
     pitch: str | None = None
