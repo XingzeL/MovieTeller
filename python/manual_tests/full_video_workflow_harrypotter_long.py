@@ -147,6 +147,7 @@ def _render_video_from_payload(
     payload: dict[str, object],
     video_path: Path,
     output_path: Path,
+    subtitle_srt_path: Path | None,
     settings,
 ) -> dict[str, object]:
     from narration_video import render_narrated_video
@@ -178,6 +179,7 @@ def _render_video_from_payload(
         str(video_path),
         audio_segments,
         output_path=str(output_path),
+        subtitle_srt_path=(str(subtitle_srt_path) if subtitle_srt_path is not None else None),
         options=settings.narration_video_options(),
         settings=settings,
     )
@@ -188,6 +190,7 @@ def _render_video_from_payload(
         "videoDurationSec": float(render_result.video_duration_sec),
         "backgroundAudioVolume": float(render_result.background_audio_volume),
         "speechAudioVolume": float(render_result.speech_audio_volume),
+        "subtitleSrtPath": render_result.subtitle_srt_path,
         "timingRenderSec": (
             float(render_result.timing_render_sec)
             if render_result.timing_render_sec is not None
@@ -262,16 +265,38 @@ def main() -> int:
         return 0
 
     try:
+        from narration_video import build_subtitled_narration_srt
+
         payload = json.loads(json.dumps(text_payload, ensure_ascii=False))
         payload = _synthesize_speech_from_payload(
             payload=payload,
             audio_output_dir=output_root / f"{stem}.narration_audio",
             settings=settings,
         )
+        speech_json_path = output_root / f"{stem}.manual.pipeline.speech_video.json"
+        speech_json_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        source_srt_path = output_root / f"{stem}.extracted.srt"
+        final_srt_path = output_root / f"{stem}.final.subtitled.srt"
+        subtitle_result = build_subtitled_narration_srt(
+            speech_video_json_path=str(speech_json_path),
+            source_srt_path=str(source_srt_path),
+            output_srt_path=str(final_srt_path),
+        )
+        payload["subtitleMerge"] = {
+            "sourceSrtPath": subtitle_result.source_srt_path,
+            "speechVideoJsonPath": subtitle_result.speech_video_json_path,
+            "outputSrtPath": subtitle_result.output_srt_path,
+            "insertedCueCount": subtitle_result.inserted_cue_count,
+            "totalCueCount": subtitle_result.total_cue_count,
+        }
         payload = _render_video_from_payload(
             payload=payload,
             video_path=video_path,
             output_path=output_root / f"{stem}.narrated.mp4",
+            subtitle_srt_path=final_srt_path,
             settings=settings,
         )
     except Exception as exc:
@@ -293,7 +318,6 @@ def main() -> int:
         )
         return 2
 
-    speech_json_path = output_root / f"{stem}.manual.pipeline.speech_video.json"
     speech_json_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",

@@ -44,6 +44,7 @@ def render_narrated_video(
     segments: Sequence[NarrationAudioSegment],
     *,
     output_path: str,
+    subtitle_srt_path: str | None = None,
     options: NarrationVideoOptions | None = None,
     background_audio_volume: float | None = None,
     speech_audio_volume: float | None = None,
@@ -71,6 +72,9 @@ def render_narrated_video(
 
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
+    subtitle_path = Path(subtitle_srt_path) if subtitle_srt_path is not None else None
+    if subtitle_path is not None and not subtitle_path.is_file():
+        raise FileNotFoundError(f"Subtitle file not found: {subtitle_path}")
     resolved_background_audio_volume = resolved_options.background_audio_volume
     resolved_speech_audio_volume = resolved_options.speech_audio_volume
 
@@ -89,6 +93,10 @@ def render_narrated_video(
         if not audio.is_file():
             raise FileNotFoundError(f"Narration audio not found: {audio}")
         cmd.extend(["-i", str(audio)])
+    subtitle_input_index: int | None = None
+    if subtitle_path is not None:
+        subtitle_input_index = len(segments) + 1
+        cmd.extend(["-i", str(subtitle_path)])
 
     filter_parts: list[str] = []
     if has_audio:
@@ -129,9 +137,19 @@ def render_narrated_video(
             "aac",
             "-movflags",
             "+faststart",
-            str(out),
         ]
     )
+    if subtitle_path is not None:
+        assert subtitle_input_index is not None
+        cmd.extend(
+            [
+                "-map",
+                f"{subtitle_input_index}:0",
+                "-c:s",
+                "mov_text",
+            ]
+        )
+    cmd.append(str(out))
     t0 = time.perf_counter()
     proc = subprocess_run(cmd, capture_output=True, text=True, check=False)
     timing_render_sec = time.perf_counter() - t0
@@ -146,5 +164,6 @@ def render_narrated_video(
         video_duration_sec=video_duration_sec,
         background_audio_volume=resolved_background_audio_volume,
         speech_audio_volume=resolved_speech_audio_volume,
+        subtitle_srt_path=(str(subtitle_path) if subtitle_path is not None else None),
         timing_render_sec=timing_render_sec,
     )

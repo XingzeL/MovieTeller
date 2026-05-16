@@ -21,4 +21,4 @@ narration_video = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "../media_utils/src", "../pipeline_types/src", "../subtitle_extraction/src"]
