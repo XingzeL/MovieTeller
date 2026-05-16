@@ -3,18 +3,10 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING, Any, Callable
 
-from model_gateway import generate_chat
-from model_gateway.types import ChatRequest
+from model_gateway import generate_narration as gateway_generate_narration
 
 if TYPE_CHECKING:
     from movieteller_config.schema import Settings
-
-
-def _resolve_provider_slug(
-    settings: "Settings", provider_slug: str | None
-) -> str:
-    slug = (provider_slug or settings.narration_provider).strip().lower()
-    return slug or "openai"
 
 
 def generate_narration(
@@ -28,18 +20,15 @@ def generate_narration(
     client_factory: Callable[..., Any] | None = None,
 ) -> str:
     """
-    Call chat completions (OpenAI-compatible SDK) with text + inline PNG images.
-
-    Provider comes from ``provider_slug`` or ``settings.narration_provider`` (must match
-    ``api_keys`` / ``api_base_urls`` / ``narration_provider_models`` /
-    ``narration_provider_model_catalog`` slugs in movieteller_config).
+    Generate narration through the gateway narration capability.
     """
-    slug = _resolve_provider_slug(settings, provider_slug)
+    default_provider = settings.default_provider()
+    default_model = settings.default_model_for_capability("narration")
     print(
         "[narration.api] "
-        f"slug={slug!r} "
-        f"model={model!r} "
-        f"base_url={settings.get_api_base_url(slug)!r} "
+        f"slug={default_provider!r} "
+        f"model={default_model!r} "
+        f"base_url={settings.get_api_base_url(default_provider)!r} "
         f"frames={len(frames_base64_png)}",
         file=sys.stderr,
     )
@@ -52,15 +41,12 @@ def generate_narration(
             }
         )
 
-    result = generate_chat(
-        ChatRequest(
-            provider=slug,
-            model=model,
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": content},
-            ],
-        ),
+    messages = [
+        {"role": "system", "content": system_message},
+        {"role": "user", "content": content},
+    ]
+    result = gateway_generate_narration(
+        messages=messages,
         settings=settings,
         client_factory=client_factory,
     )

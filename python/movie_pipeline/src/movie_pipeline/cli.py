@@ -14,29 +14,14 @@ from movie_pipeline.types import MoviePipelineOptions
 
 def _resolve_cli_settings(args):
     if (
-        args.provider is None
-        and args.frame_pool_manifest is None
-        and args.polish_provider is None
-        and args.polish_model is None
-        and args.polish_model_index is None
-        and args.speech_provider is None
+        args.frame_pool_manifest is None
     ):
         return load_settings(require_narration=True)
     flat = load_flat_dict()
-    if args.provider is not None:
-        flat["narration_provider"] = args.provider.strip().lower()
     if args.frame_pool_manifest is not None:
         flat["frame_pool_manifest"] = args.frame_pool_manifest.strip()
-    if args.polish_provider is not None:
-        flat["narration_polish_provider"] = args.polish_provider.strip().lower()
-    if args.polish_model is not None:
-        flat["narration_polish_model"] = args.polish_model.strip()
-    if args.polish_model_index is not None:
-        flat["narration_polish_model_index"] = int(args.polish_model_index)
-    if args.speech_provider is not None:
-        flat["narration_speech_provider"] = args.speech_provider.strip().lower()
     settings = settings_from_dict(flat)
-    settings.require_api_key(settings.narration_provider)
+    settings.require_api_key(settings.default_provider())
     return settings
 
 
@@ -82,12 +67,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Prompt style for narration (default: movieteller_config default_prompt_style)",
     )
     ap.add_argument("--custom-prompt", default="", help="Extra instructions for narration")
-    ap.add_argument("--model", default=None, help="Override narration model id")
-    ap.add_argument(
-        "--provider",
-        default=None,
-        help="Override narration provider slug for the pipeline run",
-    )
     ap.add_argument(
         "--frame-pool-manifest",
         default=None,
@@ -133,22 +112,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Rewrite narration to better fit TTS duration constraints",
     )
     ap.add_argument(
-        "--polish-provider",
-        default=None,
-        help="Override narration polish provider slug for the pipeline run",
-    )
-    ap.add_argument(
-        "--polish-model",
-        default=None,
-        help="Override narration polish model id",
-    )
-    ap.add_argument(
-        "--polish-model-index",
-        type=int,
-        default=None,
-        help="Override narration polish model catalog index when --polish-model is unset",
-    )
-    ap.add_argument(
         "--polish-target-wpm",
         type=int,
         default=None,
@@ -176,11 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Synthesize speech audio for each narration segment",
     )
     ap.add_argument(
-        "--speech-provider",
-        default=None,
-        help="Override narration speech provider slug for the pipeline run",
-    )
-    ap.add_argument("--speech-voice", default=None, help="Override TTS voice")
+        "--speech-voice", default=None, help="Override TTS voice")
     ap.add_argument("--speech-rate", default=None, help="Override TTS rate, e.g. +5%%")
     ap.add_argument("--speech-volume", default=None, help="Override TTS volume, e.g. +0%%")
     ap.add_argument("--speech-pitch", default=None, help="Override TTS pitch, e.g. +0Hz")
@@ -226,8 +185,6 @@ def main() -> int:
 
     settings = _resolve_cli_settings(args)
     narration_options = settings.narration_options(
-        provider_slug=args.provider,
-        model=args.model,
         prompt_style=args.prompt_style,
         custom_prompt=args.custom_prompt,
     )
@@ -261,8 +218,6 @@ def main() -> int:
         ),
         polish_options=(
             settings.narration_polish_options(
-                provider_slug=args.polish_provider,
-                model=args.polish_model,
                 prompt_style=narration_options.prompt_style,
                 target_wpm=args.polish_target_wpm,
                 cefr_level=args.polish_cefr_level,
@@ -274,7 +229,6 @@ def main() -> int:
         ),
         speech_options=(
             settings.narration_speech_options(
-                provider_slug=args.speech_provider,
                 voice=args.speech_voice,
                 rate=args.speech_rate,
                 volume=args.speech_volume,

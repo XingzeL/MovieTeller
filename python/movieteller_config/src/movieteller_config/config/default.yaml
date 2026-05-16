@@ -1,14 +1,18 @@
 # See movieteller_config README and repository root .env.example.
-# api_keys / api_base_urls: arbitrary provider slugs — no code whitelist required.
-# Env: PREFIX_API_KEY -> slug prefix (lowercase); PREFIX_BASE_URL -> same; plus API_KEYS_JSON / API_BASE_URLS_JSON.
+# api_keys / api_providers: arbitrary provider slugs. Env supports PREFIX_API_KEY,
+# PREFIX_BASE_URL, API_KEYS_JSON, API_PROVIDERS_JSON.
 
 openai_base_url: null
-narration_image_model: gpt-4o-mini
 max_frames_per_segment: 24
-# Narration: longest side after ffmpeg scale (fits inside edge×edge box, any aspect ratio)
 narration_frame_max_edge: 512
 ffmpeg_path: ffmpeg
 default_prompt_style: documentary
+
+gateway_default_provider: newapi
+api_providers: {}
+model_catalog: []
+model_defaults: {}
+
 frame_pool_manifest: null
 pool_frames_per_shot_min: 1
 pool_frames_per_shot_max: 3
@@ -16,59 +20,32 @@ pool_frames_per_shot_rate: null
 pool_miss_uniform_max_frames: 4
 dialogue_overlap_threshold: 0.05
 pyscenedetect_merge_sec: 0.25
-subtitle_context_embedding_provider: null
-subtitle_context_embedding_model: null
+
 subtitle_context_chunk_cue_count: 5
 subtitle_context_chunk_stride: 3
 subtitle_context_history_window_sec: 600
 subtitle_context_top_k: 6
 subtitle_context_summary_enabled: false
+
 videocaptioner_bin: null
-# VideoCaptioner transcribe: ASR engine (CLI --asr choices).
 videocaptioner_asr: bijian
-# ISO 639-1 code or "auto"
 videocaptioner_language: auto
-# Milliseconds; omit or null for no subprocess timeout
 videocaptioner_transcribe_timeout_ms: null
-narration_api_url: null
-# Which provider slug the narration module calls (OpenAI-compatible SDK).
-narration_provider: glm
-# Narration-scoped model pools.
-narration_provider_models: {}
-narration_provider_model_catalog: {}
-# Optional narration post-process step before TTS.
+
 narration_polish_enabled: false
-# Optional dedicated provider/model for polishing. Omit to reuse narration provider/model.
-narration_polish_provider: null
-narration_polish_model: null
-# Catalog index for ``narration_polish_provider`` when ``narration_polish_model`` unset.
-narration_polish_model_index: 0
-# Polish-scoped model pools.
-narration_polish_provider_models: {}
-narration_polish_provider_model_catalog: {}
-# Speaking-rate target for downstream TTS fit checks.
+narration_tts_enabled: false
 narration_polish_target_wpm: 150
-# Requested CEFR-like language level for rewritten narration (A1, B1, C1, ...).
 narration_polish_cefr_level: B1
-# How aggressively to rewrite: light / medium / strong.
 narration_polish_strength: medium
-# Reserve this many seconds inside the segment so TTS has a small buffer.
 narration_polish_safety_margin_sec: 0.2
-# Optional text-to-speech step after narration_polish.
-narration_speech_enabled: false
-narration_speech_provider: edge_tts
-narration_speech_voice: en-US-EmmaMultilingualNeural
-narration_speech_rate: +0%
-narration_speech_volume: +0%
-narration_speech_pitch: +0Hz
-narration_speech_boundary: SentenceBoundary
-# New TTS-scoped provider/model config. Prefer these over narration_speech_* for
-# provider/model selection; narration_speech_* remains as a fallback for the
-# current edge-tts-oriented execution path.
-narration_tts_provider: edge_tts
-narration_tts_model: null
-narration_tts_model_index: 0
-tts_provider_model_catalog: {}
-# Final video mix defaults when embedding narration back into the source video.
+
+tts_default_voice: en-US-EmmaMultilingualNeural
+tts_default_rate: +0%
+tts_default_volume: +0%
+tts_default_pitch: +0Hz
+tts_default_boundary: SentenceBoundary
+
+video_default_background_audio_volume: 0.35
+video_default_speech_audio_volume: 1.0
 narration_video_background_audio_volume: 0.35
 narration_video_speech_audio_volume: 1.0

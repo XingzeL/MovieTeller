@@ -496,17 +496,15 @@ Gateway integration:
 
 ## Settings and Configuration
 
-Phase 1 should reuse existing config:
+Current gateway config should use:
 
+- `gateway.default_provider`
+- `api_providers`
 - `api_keys`
-- `api_base_urls`
-- `narration_provider`
-- `narration_polish_provider`
-- `subtitle_context_embedding_provider`
-- `narration_speech_provider`
-- per-capability model resolution already provided by `Settings`
-
-No config migration is required for initial gateway adoption.
+- `model_catalog`
+- `model_defaults`
+- `tts_defaults`
+- `video_defaults`
 
 ## Future Gateway-Specific Config
 

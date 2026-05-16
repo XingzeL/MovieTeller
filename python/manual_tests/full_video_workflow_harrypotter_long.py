@@ -16,6 +16,9 @@ Behavior:
 2. Then try TTS + embed video.
 
 If TTS fails, the text JSON is still preserved on disk.
+
+Routing comes from the shared gateway config. If text JSON already exists, the
+script skips the second visual-understanding pass and continues from speech/video.
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ from pathlib import Path
 
 
 VIDEO_PATH = "test_artifacts/harrypotter_long.mp4"
-OUTPUT_ROOT = "test_artifacts/harrypotter_long_manual_05160020"
+OUTPUT_ROOT = "test_artifacts/harrypotter_long_manual_05162145"
 ENABLE_SPEECH_AND_VIDEO = True
 
 

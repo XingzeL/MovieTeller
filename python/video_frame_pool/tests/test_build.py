@@ -37,7 +37,6 @@ hello
 
     settings = settings_from_dict(
         {
-            "narration_image_model": "x",
             "pool_frames_per_shot_min": 1,
             "pool_frames_per_shot_max": 2,
             "dialogue_overlap_threshold": 0.05,

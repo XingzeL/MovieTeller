@@ -1,8 +1,11 @@
 from movieteller_config.schema import settings_from_dict
 
 from model_gateway.router import (
+    resolve_default_model,
     resolve_chat_endpoint,
     resolve_embedding_endpoint,
+    resolve_model_endpoint,
+    resolve_model_provider,
     resolve_speech_endpoint,
 )
 from model_gateway.types import ChatRequest, EmbeddingRequest, SpeechRequest
@@ -12,7 +15,7 @@ def test_resolve_chat_endpoint_uses_provider_key_and_base_url():
     settings = settings_from_dict(
         {
             "api_keys": {"dashscope": "k1"},
-            "api_base_urls": {"dashscope": "https://dash.example/v1"},
+            "api_providers": {"dashscope": "https://dash.example/v1"},
         }
     )
     endpoint = resolve_chat_endpoint(
@@ -44,7 +47,7 @@ def test_resolve_speech_endpoint_volcengine_requires_key_and_model():
     settings = settings_from_dict(
         {
             "api_keys": {"volcengine": "sk-v"},
-            "api_base_urls": {"volcengine": "https://ark.cn-beijing.volces.com/api/v3"},
+            "api_providers": {"volcengine": "https://ark.cn-beijing.volces.com/api/v3"},
         }
     )
     endpoint = resolve_speech_endpoint(
@@ -67,7 +70,7 @@ def test_resolve_speech_endpoint_volcengine_tts_alias_uses_volcengine_adapter():
     settings = settings_from_dict(
         {
             "api_keys": {"volcengine_tts": "sk-vtts"},
-            "api_base_urls": {"volcengine_tts": "https://openspeech.bytedance.com"},
+            "api_providers": {"volcengine_tts": "https://openspeech.bytedance.com"},
         }
     )
     endpoint = resolve_speech_endpoint(
@@ -94,3 +97,99 @@ def test_resolve_speech_endpoint_edge_tts_does_not_require_api_key():
     )
     assert endpoint.adapter == "edge_tts"
     assert endpoint.api_key is None
+
+
+def test_resolve_speech_endpoint_dashscope_uses_dashscope_adapter():
+    settings = settings_from_dict(
+        {
+            "api_keys": {"dashscope": "sk-dash"},
+            "api_providers": {"dashscope": "https://dashscope.aliyuncs.com/compatible-mode"},
+        }
+    )
+    endpoint = resolve_speech_endpoint(
+        SpeechRequest(
+            provider="dashscope",
+            voice="Cherry",
+            text="x",
+            model="qwen3-tts-flash",
+        ),
+        settings,
+    )
+    assert endpoint.provider == "dashscope"
+    assert endpoint.adapter == "dashscope_tts"
+    assert endpoint.api_key == "sk-dash"
+    assert endpoint.base_url == "https://dashscope.aliyuncs.com/compatible-mode"
+    assert endpoint.model == "qwen3-tts-flash"
+
+
+def test_resolve_default_model_uses_new_schema_defaults():
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "newapi"},
+            "api_providers": {"newapi": "http://127.0.0.1:3000/v1"},
+            "api_keys": {"newapi": "sk-new"},
+            "model_catalog": [
+                "vision-default",
+                "text-default",
+                "tts-default",
+                "embed-default",
+            ],
+            "model_defaults": {
+                "narration": "vision-default",
+                "polish": "text-default",
+                "tts": "tts-default",
+                "embedding": "embed-default",
+            },
+        }
+    )
+    assert resolve_default_model("narration", settings) == "vision-default"
+    assert resolve_default_model("polish", settings) == "text-default"
+    assert resolve_default_model("tts", settings) == "tts-default"
+    assert resolve_default_model("embedding", settings) == "embed-default"
+
+
+def test_resolve_model_provider_uses_default_provider_and_catalog_whitelist():
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "newapi"},
+            "api_providers": {"newapi": "http://127.0.0.1:3000/v1"},
+            "api_keys": {"newapi": "sk-new"},
+            "model_catalog": ["vision-default"],
+        }
+    )
+    assert resolve_model_provider("vision-default", settings) == "newapi"
+
+
+def test_resolve_model_endpoint_for_tts_uses_newapi_openai_style_speech():
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "newapi"},
+            "api_providers": {"newapi": "http://127.0.0.1:3000/v1"},
+            "api_keys": {"newapi": "sk-new"},
+            "model_catalog": ["qwen3-tts-flash"],
+        }
+    )
+    endpoint = resolve_model_endpoint("qwen3-tts-flash", "tts", settings)
+    assert endpoint.provider == "newapi"
+    assert endpoint.adapter == "volcengine_tts"
+    assert endpoint.base_url == "http://127.0.0.1:3000/v1"
+    assert endpoint.model == "qwen3-tts-flash"
+
+
+def test_resolve_model_endpoint_for_tts_uses_tts_provider_override():
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "newapi", "tts_provider": "dashscope"},
+            "api_providers": {
+                "newapi": "http://127.0.0.1:3000/v1",
+                "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            },
+            "api_keys": {"newapi": "sk-new", "dashscope": "sk-dash"},
+            "model_catalog": ["qwen3-tts-flash"],
+        }
+    )
+    endpoint = resolve_model_endpoint("qwen3-tts-flash", "tts", settings)
+    assert endpoint.provider == "dashscope"
+    assert endpoint.adapter == "dashscope_tts"
+    assert endpoint.base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    assert endpoint.model == "qwen3-tts-flash"

@@ -1,14 +1,15 @@
 # narration_speech
 
-Generate TTS audio for MovieTeller narration text. The current implementation uses
-`edge-tts` and is designed to run after `narration_polish`.
+Generate TTS audio for MovieTeller narration text. The runtime now routes speech
+through `model_gateway` TTS capability by default. It can target OpenAI-compatible
+`audio.speech` backends exposed behind your configured gateway, and still keeps
+`edge_tts` as a compatibility path.
 
 ## Setup
 
 ```bash
 source .venv/bin/activate
 python -m pip install -e python/movieteller_config -e python/narration -e python/narration_speech
-python -m pip install edge-tts
 ```
 
 ## CLI
@@ -27,12 +28,15 @@ ffmpeg `atempo` to speed it up enough to fit.
 
 ## Config
 
-Shared settings live in `movieteller_config`:
+Recommended shared settings in `movieteller_config`:
 
-- `narration_speech_enabled`
-- `narration_speech_provider`
-- `narration_speech_voice`
-- `narration_speech_rate`
-- `narration_speech_volume`
-- `narration_speech_pitch`
-- `narration_speech_boundary`
+- `narration_tts_enabled`
+- `gateway.default_provider`
+- `api_providers`
+- `api_keys`
+- `model_defaults.tts`
+- `tts_defaults.voice`
+- `tts_defaults.rate`
+- `tts_defaults.volume`
+- `tts_defaults.pitch`
+- `tts_defaults.boundary`

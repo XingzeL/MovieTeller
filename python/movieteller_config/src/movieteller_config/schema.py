@@ -4,7 +4,7 @@ import os
 import re
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
 
 _ENV_REF_BRACE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
 _ENV_REF_DOLLAR = re.compile(r"^\$\$([A-Za-z_][A-Za-z0-9_]*)$")
@@ -14,10 +14,6 @@ _FALSE_VALUES = {"0", "false", "no", "off"}
 
 
 def expand_env_placeholder(value: str) -> str:
-    """
-    If ``value`` is exactly ``${VAR}``, ``$$VAR``, or ``$VAR``, replace with
-    ``os.environ.get(VAR,'')``. Otherwise return the trimmed literal string.
-    """
     s = value.strip()
     m = _ENV_REF_BRACE.match(s) or _ENV_REF_DOLLAR.match(s) or _ENV_REF_SINGLE.match(s)
     if not m:
@@ -36,6 +32,47 @@ def _expand_optional_env_str(value: Any) -> str | None:
     if value is None:
         return None
     return _none_if_empty(expand_env_placeholder(str(value)))
+
+
+def _looks_like_explicit_nested_tts_defaults(data: dict[str, Any]) -> bool:
+    cfg = data.get("tts_defaults")
+    if not isinstance(cfg, dict):
+        return False
+    return any(cfg.get(key) is not None for key in ("voice", "rate", "volume", "pitch", "boundary"))
+
+
+def _looks_like_explicit_nested_video_defaults(data: dict[str, Any]) -> bool:
+    cfg = data.get("video_defaults")
+    if not isinstance(cfg, dict):
+        return False
+    return any(cfg.get(key) is not None for key in ("background_audio_volume", "speech_audio_volume"))
+
+
+def _coerce_int(value: Any, fallback: int) -> int:
+    if value is None or str(value).strip() == "":
+        return fallback
+    return int(value)
+
+
+def _coerce_float(value: Any, fallback: float) -> float:
+    if value is None or str(value).strip() == "":
+        return fallback
+    return float(value)
+
+
+def _coerce_bool(value: Any, fallback: bool) -> bool:
+    if value is None:
+        return fallback
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    if not s:
+        return fallback
+    if s in _TRUE_VALUES:
+        return True
+    if s in _FALSE_VALUES:
+        return False
+    return fallback
 
 
 @dataclass(frozen=True)
@@ -61,8 +98,7 @@ class NarrationPolishOptions:
 class NarrationSpeechOptions:
     provider_slug: str
     voice: str
-    """TTS model for OpenAI-compatible ``audio.speech`` (e.g. volcengine Ark). None for edge-tts."""
-    model: str | None
+    model: str
     rate: str
     volume: str
     pitch: str
@@ -110,11 +146,8 @@ class FramePoolBuildOptions:
 
 @dataclass(frozen=True)
 class Settings:
-    """Resolved configuration for MovieTeller Python components."""
-
     openai_api_key: str | None
     openai_base_url: str | None
-    narration_image_model: str
     max_frames_per_segment: int
     narration_frame_max_edge: int
     ffmpeg_path: str
@@ -126,8 +159,6 @@ class Settings:
     pool_miss_uniform_max_frames: int
     dialogue_overlap_threshold: float
     pyscenedetect_merge_sec: float
-    subtitle_context_embedding_provider: str | None
-    subtitle_context_embedding_model: str | None
     subtitle_context_chunk_cue_count: int
     subtitle_context_chunk_stride: int
     subtitle_context_history_window_sec: float
@@ -137,157 +168,102 @@ class Settings:
     videocaptioner_asr: str
     videocaptioner_language: str
     videocaptioner_transcribe_timeout_ms: int | None
-    narration_api_url: str | None
-    narration_provider: str
     api_keys: Mapping[str, str]
-    api_base_urls: Mapping[str, str]
-    # Narration-scoped single model per slug.
-    narration_provider_models: Mapping[str, str]
-    # Narration-scoped slug -> ordered model ids.
-    narration_provider_model_catalog: Mapping[str, tuple[str, ...]]
-    # Narration-polish-scoped single model per slug.
-    narration_polish_provider_models: Mapping[str, str]
-    # Narration-polish-scoped slug -> ordered model ids.
-    narration_polish_provider_model_catalog: Mapping[str, tuple[str, ...]]
-    # When set, overrides model for narration_provider only (NARRATION_MODEL).
-    narration_model: str | None
-    # Catalog index for narration_provider when narration_model unset (NARRATION_MODEL_INDEX).
-    narration_model_index: int
+    api_providers: Mapping[str, str]
+    gateway_default_provider: str
+    gateway_tts_provider: str | None
+    model_catalog: tuple[str, ...]
+    model_defaults: Mapping[str, str]
     narration_polish_enabled: bool
-    narration_polish_provider: str | None
-    narration_polish_model: str | None
-    narration_polish_model_index: int
+    narration_tts_enabled: bool
     narration_polish_target_wpm: int
     narration_polish_cefr_level: str
     narration_polish_strength: str
     narration_polish_safety_margin_sec: float
-    narration_speech_enabled: bool
-    narration_speech_provider: str
-    narration_speech_voice: str
-    narration_speech_rate: str
-    narration_speech_volume: str
-    narration_speech_pitch: str
-    narration_speech_boundary: str
-    narration_tts_provider: str
-    narration_tts_model: str | None
-    narration_tts_model_index: int
-    narration_tts_voice: str | None
-    tts_provider_model_catalog: Mapping[str, tuple[str, ...]]
+    tts_default_voice: str
+    tts_default_rate: str
+    tts_default_volume: str
+    tts_default_pitch: str
+    tts_default_boundary: str
+    video_default_background_audio_volume: float
+    video_default_speech_audio_volume: float
     narration_video_background_audio_volume: float
     narration_video_speech_audio_volume: float
 
     def get_api_key(self, provider: str) -> str | None:
-        """Return key for a provider slug (e.g. \"openai\", \"anthropic\", \"gemini\")."""
-        k = provider.strip().lower()
-        if not k:
+        key = str(provider or "").strip().lower()
+        if not key:
             return None
-        v = self.api_keys.get(k)
-        return v.strip() if v else None
+        value = self.api_keys.get(key)
+        return value.strip() if value else None
 
     def require_api_key(self, provider: str) -> str:
-        v = self.get_api_key(provider)
-        if not v:
+        value = self.get_api_key(provider)
+        if not value:
             raise ValueError(
                 f"API key for provider '{provider}' is not configured. "
                 "Use API_KEYS_JSON, OPENAI_API_KEY, ANTHROPIC_API_KEY, etc., or api_keys in YAML."
             )
-        return v
+        return value
 
     def require_openai(self) -> str:
-        """Backward-compatible alias for OpenAI."""
         return self.require_api_key("openai")
 
     def get_api_base_url(self, provider: str) -> str | None:
-        """Chat/inference base URL for a provider (e.g. OpenAI-compatible root ending in /v1)."""
-        k = provider.strip().lower()
-        if not k:
+        key = str(provider or "").strip().lower()
+        if not key:
             return None
-        v = self.api_base_urls.get(k)
-        return v.strip() if v else None
+        value = self.api_providers.get(key)
+        if value:
+            return value.strip()
+        if key == "openai" and self.openai_base_url:
+            return self.openai_base_url.strip()
+        return None
 
-    def _resolve_model_from_sources(
-        self,
-        *,
-        provider: str,
-        primary_model_override: str | None,
-        primary_provider: str,
-        primary_index: int,
-        scoped_models: Mapping[str, str],
-        scoped_catalog: Mapping[str, tuple[str, ...]],
-    ) -> str:
-        slug = provider.strip().lower()
-        if not slug:
-            return self.narration_image_model
-        if slug == primary_provider:
-            if m := _none_if_empty(primary_model_override):
-                return m
-        if m := scoped_models.get(slug):
-            s = m.strip()
-            if s:
-                return s
-        cat = scoped_catalog.get(slug)
-        if cat:
-            idx = primary_index if slug == primary_provider else 0
-            if idx < 0:
-                idx = 0
-            if idx < len(cat):
-                return cat[idx]
-            return cat[0]
-        return self.narration_image_model
-
-    def model_for_provider(self, provider: str) -> str:
-        """
-        Resolve model id for ``provider``.
-
-        Narration-scoped resolver.
-
-        Order:
-        1. ``NARRATION_MODEL`` when ``provider`` equals ``narration_provider``
-        2. ``narration_provider_models`` / ``narration_provider_model_catalog``
-        3. ``narration_image_model`` fallback
-        """
-        return self._resolve_model_from_sources(
-            provider=provider,
-            primary_model_override=self.narration_model,
-            primary_provider=self.narration_provider.strip().lower() or "openai",
-            primary_index=self.narration_model_index,
-            scoped_models=self.narration_provider_models,
-            scoped_catalog=self.narration_provider_model_catalog,
-        )
-
-    def polish_provider(self) -> str:
-        slug = _none_if_empty(self.narration_polish_provider)
+    def default_provider(self) -> str:
+        slug = _none_if_empty(self.gateway_default_provider)
         if slug:
             return slug.strip().lower()
-        np = self.narration_provider.strip().lower()
-        return np or "openai"
+        if len(self.api_providers) == 1:
+            return next(iter(self.api_providers.keys()))
+        return "newapi"
 
-    def polish_model_for_provider(self, provider: str | None = None) -> str:
-        slug = (provider or self.polish_provider()).strip().lower()
-        return self._resolve_model_from_sources(
-            provider=slug,
-            primary_model_override=self.narration_polish_model,
-            primary_provider=self.polish_provider(),
-            primary_index=self.narration_polish_model_index,
-            scoped_models=self.narration_polish_provider_models,
-            scoped_catalog=self.narration_polish_provider_model_catalog,
-        )
+    def provider_for_capability(self, capability: str) -> str:
+        cap = str(capability or "").strip().lower()
+        if not cap:
+            raise ValueError("capability is empty")
+        if cap in {"tts", "speech"}:
+            slug = _none_if_empty(self.gateway_tts_provider)
+            if slug:
+                return slug.strip().lower()
+        return self.default_provider()
 
-    def subtitle_context_provider(self) -> str:
-        slug = _none_if_empty(self.subtitle_context_embedding_provider)
-        if slug:
-            return slug.strip().lower()
-        np = self.narration_provider.strip().lower()
-        return np or "openai"
-
-    def require_subtitle_context_embedding_model(self) -> str:
-        model = _none_if_empty(self.subtitle_context_embedding_model)
-        if model:
-            return model
+    def default_model_for_capability(self, capability: str) -> str:
+        cap = str(capability or "").strip().lower()
+        if not cap:
+            raise ValueError("capability is empty")
+        value = self.model_defaults.get(cap)
+        if value and value.strip():
+            return value.strip()
         raise ValueError(
-            "subtitle_context_embedding_model is not configured. "
-            "Set SUBTITLE_CONTEXT_EMBEDDING_MODEL or subtitle_context_embedding_model in YAML."
+            f"default model for capability '{cap}' is not configured. "
+            "Set model_defaults in YAML or MODEL_DEFAULTS_JSON."
         )
+
+    def default_tts_voice(self) -> str:
+        return self.tts_default_voice.strip() or "en-US-EmmaMultilingualNeural"
+
+    def default_tts_rate(self) -> str:
+        return self.tts_default_rate.strip() or "+0%"
+
+    def default_tts_volume(self) -> str:
+        return self.tts_default_volume.strip() or "+0%"
+
+    def default_tts_pitch(self) -> str:
+        return self.tts_default_pitch.strip() or "+0Hz"
+
+    def default_tts_boundary(self) -> str:
+        return self.tts_default_boundary.strip() or "SentenceBoundary"
 
     def narration_options(
         self,
@@ -297,15 +273,18 @@ class Settings:
         prompt_style: str | None = None,
         custom_prompt: str = "",
     ) -> NarrationOptions:
-        slug = (provider_slug or self.narration_provider).strip().lower() or "openai"
-        resolved_model = str(model or self.model_for_provider(slug)).strip()
+        resolved_provider = (
+            str(provider_slug or self.provider_for_capability("narration")).strip().lower()
+            or self.provider_for_capability("narration")
+        )
+        resolved_model = str(model or self.default_model_for_capability("narration")).strip()
         if not resolved_model:
-            raise ValueError(f"narration model is empty for provider '{slug}'")
+            raise ValueError("narration model is empty")
         resolved_prompt_style = (
             str(prompt_style or self.default_prompt_style).strip() or "documentary"
         )
         return NarrationOptions(
-            provider_slug=slug,
+            provider_slug=resolved_provider,
             model=resolved_model,
             prompt_style=resolved_prompt_style,
             custom_prompt=str(custom_prompt or ""),
@@ -322,15 +301,18 @@ class Settings:
         strength: str | None = None,
         safety_margin_sec: float | None = None,
     ) -> NarrationPolishOptions:
-        slug = (provider_slug or self.polish_provider()).strip().lower() or "openai"
-        resolved_model = str(model or self.polish_model_for_provider(slug)).strip()
+        resolved_provider = (
+            str(provider_slug or self.provider_for_capability("polish")).strip().lower()
+            or self.provider_for_capability("polish")
+        )
+        resolved_model = str(model or self.default_model_for_capability("polish")).strip()
         if not resolved_model:
-            raise ValueError(f"narration polish model is empty for provider '{slug}'")
+            raise ValueError("narration polish model is empty")
         resolved_prompt_style = (
             str(prompt_style or self.default_prompt_style).strip() or "documentary"
         )
         return NarrationPolishOptions(
-            provider_slug=slug,
+            provider_slug=resolved_provider,
             model=resolved_model,
             prompt_style=resolved_prompt_style,
             target_wpm=max(
@@ -346,9 +328,7 @@ class Settings:
                     cefr_level
                     if cefr_level is not None
                     else self.narration_polish_cefr_level
-                )
-                .strip()
-                .upper()
+                ).strip().upper()
                 or "B1"
             ),
             strength=(
@@ -356,9 +336,7 @@ class Settings:
                     strength
                     if strength is not None
                     else self.narration_polish_strength
-                )
-                .strip()
-                .lower()
+                ).strip().lower()
                 or "medium"
             ),
             safety_margin_sec=max(
@@ -382,36 +360,23 @@ class Settings:
         boundary: str | None = None,
     ) -> NarrationSpeechOptions:
         resolved_provider = (
-            str(provider_slug or self.narration_tts_provider or self.narration_speech_provider)
-            .strip()
-            .lower()
-            or "edge_tts"
+            str(provider_slug or self.provider_for_capability("tts")).strip().lower()
+            or self.provider_for_capability("tts")
         )
+        resolved_model = str(self.default_model_for_capability("tts")).strip()
         resolved_voice = (
             str(voice).strip()
             if voice is not None
-            else str(self.narration_tts_voice or self.narration_speech_voice).strip()
-        )
-        if not resolved_voice:
-            catalog = self.tts_provider_model_catalog.get(resolved_provider)
-            if catalog:
-                resolved_voice = str(catalog[max(0, min(self.narration_tts_model_index, len(catalog) - 1))]).strip()
-        if not resolved_voice and self.narration_tts_model:
-            resolved_voice = str(self.narration_tts_model).strip()
-        tts_model = (
-            str(self.narration_tts_model).strip() if self.narration_tts_model else ""
-        ) or None
+            else self.default_tts_voice()
+        ) or self.default_tts_voice()
         return NarrationSpeechOptions(
             provider_slug=resolved_provider,
-            voice=(resolved_voice or "en-US-EmmaMultilingualNeural"),
-            model=tts_model,
-            rate=str(rate or self.narration_speech_rate).strip() or "+0%",
-            volume=str(volume or self.narration_speech_volume).strip() or "+0%",
-            pitch=str(pitch or self.narration_speech_pitch).strip() or "+0Hz",
-            boundary=(
-                str(boundary or self.narration_speech_boundary).strip()
-                or "SentenceBoundary"
-            ),
+            voice=resolved_voice,
+            model=resolved_model,
+            rate=str(rate or self.default_tts_rate()).strip() or self.default_tts_rate(),
+            volume=str(volume or self.default_tts_volume()).strip() or self.default_tts_volume(),
+            pitch=str(pitch or self.default_tts_pitch()).strip() or self.default_tts_pitch(),
+            boundary=str(boundary or self.default_tts_boundary()).strip() or self.default_tts_boundary(),
             ffmpeg_bin=self.ffmpeg_path,
         )
 
@@ -576,35 +541,7 @@ class Settings:
         )
 
 
-def _coerce_int(value: Any, fallback: int) -> int:
-    if value is None:
-        return fallback
-    return int(value)
-
-
-def _coerce_float(value: Any, fallback: float) -> float:
-    if value is None:
-        return fallback
-    return float(value)
-
-
-def _coerce_bool(value: Any, fallback: bool) -> bool:
-    if value is None:
-        return fallback
-    if isinstance(value, bool):
-        return value
-    s = str(value).strip().lower()
-    if not s:
-        return fallback
-    if s in _TRUE_VALUES:
-        return True
-    if s in _FALSE_VALUES:
-        return False
-    return fallback
-
-
 def _normalize_api_keys_dict(data: dict[str, Any]) -> dict[str, str]:
-    """Build lowercase provider -> secret string from yaml/env merged dict."""
     raw: dict[str, str] = {}
     nested = data.get("api_keys")
     if isinstance(nested, dict):
@@ -612,111 +549,91 @@ def _normalize_api_keys_dict(data: dict[str, Any]) -> dict[str, str]:
             if v is None:
                 continue
             expanded = expand_env_placeholder(str(v))
-            if not expanded:
-                continue
-            raw[str(k).strip().lower()] = expanded
+            if expanded:
+                raw[str(k).strip().lower()] = expanded
     if v := _expand_optional_env_str(data.get("openai_api_key")):
         raw.setdefault("openai", v)
     return raw
 
 
-def _normalize_api_base_urls(data: dict[str, Any]) -> dict[str, str]:
-    """Provider slug -> base URL (OpenAI SDK usually expects .../v1 without /chat/completions)."""
+def _normalize_api_providers(data: dict[str, Any]) -> dict[str, str]:
     raw: dict[str, str] = {}
-    nested = data.get("api_base_urls")
+    nested = data.get("api_providers")
     if isinstance(nested, dict):
         for k, v in nested.items():
             if v is None:
                 continue
             expanded = expand_env_placeholder(str(v))
-            if not expanded:
-                continue
-            raw[str(k).strip().lower()] = expanded
+            if expanded:
+                raw[str(k).strip().lower()] = expanded
     if v := _expand_optional_env_str(data.get("openai_base_url")):
         raw.setdefault("openai", v)
     return raw
 
 
-def _normalize_provider_models(data: dict[str, Any]) -> dict[str, str]:
-    """Provider slug -> model id (e.g. openai -> gpt-4o-mini, modelscope -> qwen/Qwen-VL-Max)."""
+def _normalize_model_catalog(data: dict[str, Any]) -> tuple[str, ...]:
+    raw: list[str] = []
+    seen: set[str] = set()
+    nested = data.get("model_catalog")
+    if isinstance(nested, (list, tuple)):
+        for item in nested:
+            if item is None:
+                continue
+            model = expand_env_placeholder(str(item))
+            if model and model not in seen:
+                raw.append(model)
+                seen.add(model)
+    return tuple(raw)
+
+
+def _normalize_model_defaults(data: dict[str, Any]) -> dict[str, str]:
     raw: dict[str, str] = {}
-    nested = data.get("provider_models")
+    nested = data.get("model_defaults")
     if isinstance(nested, dict):
         for k, v in nested.items():
             if v is None:
                 continue
             expanded = expand_env_placeholder(str(v))
-            if not expanded:
-                continue
-            raw[str(k).strip().lower()] = expanded
-    return raw
-
-
-def _normalize_provider_model_catalog(data: dict[str, Any]) -> dict[str, tuple[str, ...]]:
-    """Provider slug -> ordered model ids (OpenAI ``model`` field values)."""
-    raw: dict[str, tuple[str, ...]] = {}
-    nested = data.get("provider_model_catalog")
-    if isinstance(nested, dict):
-        for k, v in nested.items():
-            slug = str(k).strip().lower()
-            if not slug:
-                continue
-            seq: Sequence[Any]
-            if isinstance(v, list):
-                seq = v
-            elif isinstance(v, tuple):
-                seq = v
-            else:
-                continue
-            ids: list[str] = []
-            for item in seq:
-                if item is None:
-                    continue
-                expanded = expand_env_placeholder(str(item))
-                if expanded:
-                    ids.append(expanded)
-            if ids:
-                raw[slug] = tuple(ids)
+            if expanded:
+                raw[str(k).strip().lower()] = expanded
     return raw
 
 
 def settings_from_dict(data: dict[str, Any]) -> Settings:
+    gateway_cfg = data.get("gateway") if isinstance(data.get("gateway"), dict) else {}
+    tts_defaults_cfg = (
+        data.get("tts_defaults") if isinstance(data.get("tts_defaults"), dict) else {}
+    )
+    video_defaults_cfg = (
+        data.get("video_defaults") if isinstance(data.get("video_defaults"), dict) else {}
+    )
     api_keys = _normalize_api_keys_dict(data)
-    api_base_urls = _normalize_api_base_urls(data)
-    narration_provider_models = _normalize_provider_models(
-        {"provider_models": data.get("narration_provider_models")}
+    api_providers = _normalize_api_providers(data)
+    gateway_default_provider = (
+        str(
+            data.get("gateway_default_provider")
+            or gateway_cfg.get("default_provider")
+            or "newapi"
+        ).strip().lower()
+        or "newapi"
     )
-    narration_provider_catalog = _normalize_provider_model_catalog(
-        {"provider_model_catalog": data.get("narration_provider_model_catalog")}
+    gateway_tts_provider = _none_if_empty(
+        str(
+            data.get("gateway_tts_provider")
+            or gateway_cfg.get("tts_provider")
+            or ""
+        ).strip().lower()
     )
-    narration_polish_provider_models = _normalize_provider_models(
-        {"provider_models": data.get("narration_polish_provider_models")}
-    )
-    narration_polish_provider_catalog = _normalize_provider_model_catalog(
-        {"provider_model_catalog": data.get("narration_polish_provider_model_catalog")}
-    )
-    tts_provider_catalog = _normalize_provider_model_catalog(
-        {"provider_model_catalog": data.get("tts_provider_model_catalog")}
-    )
-    idx_raw = data.get("narration_model_index")
-    try:
-        narration_model_index = max(0, int(idx_raw)) if idx_raw is not None else 0
-    except (TypeError, ValueError):
-        narration_model_index = 0
-    polish_idx_raw = data.get("narration_polish_model_index")
-    try:
-        narration_polish_model_index = (
-            max(0, int(polish_idx_raw)) if polish_idx_raw is not None else 0
-        )
-    except (TypeError, ValueError):
-        narration_polish_model_index = 0
+    model_catalog = _normalize_model_catalog(data)
+    model_defaults = _normalize_model_defaults(data)
+    explicit_nested_tts_defaults = _looks_like_explicit_nested_tts_defaults(data)
+    explicit_nested_video_defaults = _looks_like_explicit_nested_video_defaults(data)
     pool_min = max(1, _coerce_int(data.get("pool_frames_per_shot_min"), 1))
     pool_max = max(pool_min, _coerce_int(data.get("pool_frames_per_shot_max"), 3))
     openai = api_keys.get("openai") or _expand_optional_env_str(data.get("openai_api_key"))
     return Settings(
         openai_api_key=openai,
         openai_base_url=_expand_optional_env_str(data.get("openai_base_url")),
-        narration_image_model=str(data.get("narration_image_model") or "gpt-4o-mini"),
         max_frames_per_segment=_coerce_int(data.get("max_frames_per_segment"), 24),
         narration_frame_max_edge=_coerce_int(data.get("narration_frame_max_edge"), 768),
         ffmpeg_path=str(data.get("ffmpeg_path") or "ffmpeg"),
@@ -740,12 +657,6 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
         ),
         pyscenedetect_merge_sec=max(
             0.0, _coerce_float(data.get("pyscenedetect_merge_sec"), 0.25)
-        ),
-        subtitle_context_embedding_provider=_none_if_empty(
-            _expand_optional_env_str(data.get("subtitle_context_embedding_provider"))
-        ),
-        subtitle_context_embedding_model=_expand_optional_env_str(
-            data.get("subtitle_context_embedding_model")
         ),
         subtitle_context_chunk_cue_count=max(
             1, _coerce_int(data.get("subtitle_context_chunk_cue_count"), 5)
@@ -773,33 +684,18 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
             and str(data.get("videocaptioner_transcribe_timeout_ms")).strip() != ""
             else None
         ),
-        narration_api_url=_none_if_empty(data.get("narration_api_url")),
-        narration_provider=str(data.get("narration_provider") or "openai").strip().lower()
-        or "openai",
         api_keys=MappingProxyType(dict(api_keys)),
-        api_base_urls=MappingProxyType(dict(api_base_urls)),
-        narration_provider_models=MappingProxyType(dict(narration_provider_models)),
-        narration_provider_model_catalog=MappingProxyType(
-            dict(narration_provider_catalog)
-        ),
-        narration_polish_provider_models=MappingProxyType(
-            dict(narration_polish_provider_models)
-        ),
-        narration_polish_provider_model_catalog=MappingProxyType(
-            dict(narration_polish_provider_catalog)
-        ),
-        narration_model=_expand_optional_env_str(data.get("narration_model")),
-        narration_model_index=narration_model_index,
+        api_providers=MappingProxyType(dict(api_providers)),
+        gateway_default_provider=gateway_default_provider,
+        gateway_tts_provider=gateway_tts_provider,
+        model_catalog=tuple(model_catalog),
+        model_defaults=MappingProxyType(dict(model_defaults)),
         narration_polish_enabled=_coerce_bool(
             data.get("narration_polish_enabled"), False
         ),
-        narration_polish_provider=_none_if_empty(
-            _expand_optional_env_str(data.get("narration_polish_provider"))
+        narration_tts_enabled=_coerce_bool(
+            data.get("narration_tts_enabled"), False
         ),
-        narration_polish_model=_expand_optional_env_str(
-            data.get("narration_polish_model")
-        ),
-        narration_polish_model_index=narration_polish_model_index,
         narration_polish_target_wpm=max(
             1, _coerce_int(data.get("narration_polish_target_wpm"), 150)
         ),
@@ -815,53 +711,156 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
             0.0,
             _coerce_float(data.get("narration_polish_safety_margin_sec"), 0.2),
         ),
-        narration_speech_enabled=_coerce_bool(
-            data.get("narration_speech_enabled"), False
-        ),
-        narration_speech_provider=(
-            str(data.get("narration_speech_provider") or "edge_tts").strip().lower()
-            or "edge_tts"
-        ),
-        narration_speech_voice=(
+        tts_default_voice=(
             str(
-                data.get("narration_speech_voice")
+                (
+                    tts_defaults_cfg.get("voice")
+                    if explicit_nested_tts_defaults
+                    else data.get("tts_default_voice")
+                )
+                or (
+                    data.get("tts_default_voice")
+                    if explicit_nested_tts_defaults
+                    else tts_defaults_cfg.get("voice")
+                )
                 or "en-US-EmmaMultilingualNeural"
             ).strip()
             or "en-US-EmmaMultilingualNeural"
         ),
-        narration_speech_rate=(
-            str(data.get("narration_speech_rate") or "+0%").strip() or "+0%"
+        tts_default_rate=(
+            str(
+                (
+                    tts_defaults_cfg.get("rate")
+                    if explicit_nested_tts_defaults
+                    else data.get("tts_default_rate")
+                )
+                or (
+                    data.get("tts_default_rate")
+                    if explicit_nested_tts_defaults
+                    else tts_defaults_cfg.get("rate")
+                )
+                or "+0%"
+            ).strip()
+            or "+0%"
         ),
-        narration_speech_volume=(
-            str(data.get("narration_speech_volume") or "+0%").strip() or "+0%"
+        tts_default_volume=(
+            str(
+                (
+                    tts_defaults_cfg.get("volume")
+                    if explicit_nested_tts_defaults
+                    else data.get("tts_default_volume")
+                )
+                or (
+                    data.get("tts_default_volume")
+                    if explicit_nested_tts_defaults
+                    else tts_defaults_cfg.get("volume")
+                )
+                or "+0%"
+            ).strip()
+            or "+0%"
         ),
-        narration_speech_pitch=(
-            str(data.get("narration_speech_pitch") or "+0Hz").strip() or "+0Hz"
+        tts_default_pitch=(
+            str(
+                (
+                    tts_defaults_cfg.get("pitch")
+                    if explicit_nested_tts_defaults
+                    else data.get("tts_default_pitch")
+                )
+                or (
+                    data.get("tts_default_pitch")
+                    if explicit_nested_tts_defaults
+                    else tts_defaults_cfg.get("pitch")
+                )
+                or "+0Hz"
+            ).strip()
+            or "+0Hz"
         ),
-        narration_speech_boundary=(
-            str(data.get("narration_speech_boundary") or "SentenceBoundary").strip()
+        tts_default_boundary=(
+            str(
+                (
+                    tts_defaults_cfg.get("boundary")
+                    if explicit_nested_tts_defaults
+                    else data.get("tts_default_boundary")
+                )
+                or (
+                    data.get("tts_default_boundary")
+                    if explicit_nested_tts_defaults
+                    else tts_defaults_cfg.get("boundary")
+                )
+                or "SentenceBoundary"
+            ).strip()
             or "SentenceBoundary"
         ),
-        narration_tts_provider=(
-            str(
-                data.get("narration_tts_provider")
-                or data.get("narration_speech_provider")
-                or "edge_tts"
-            ).strip().lower()
-            or "edge_tts"
+        video_default_background_audio_volume=max(
+            0.0,
+            _coerce_float(
+                (
+                    video_defaults_cfg.get("background_audio_volume")
+                    if explicit_nested_video_defaults
+                    else data.get("video_default_background_audio_volume")
+                )
+                if (
+                    (
+                        video_defaults_cfg.get("background_audio_volume")
+                        if explicit_nested_video_defaults
+                        else data.get("video_default_background_audio_volume")
+                    )
+                    is not None
+                )
+                else (
+                    data.get("video_default_background_audio_volume")
+                    if explicit_nested_video_defaults
+                    else video_defaults_cfg.get("background_audio_volume")
+                ),
+                0.35,
+            ),
         ),
-        narration_tts_model=_expand_optional_env_str(data.get("narration_tts_model")),
-        narration_tts_model_index=max(
-            0, _coerce_int(data.get("narration_tts_model_index"), 0)
+        video_default_speech_audio_volume=max(
+            0.0,
+            _coerce_float(
+                (
+                    video_defaults_cfg.get("speech_audio_volume")
+                    if explicit_nested_video_defaults
+                    else data.get("video_default_speech_audio_volume")
+                )
+                if (
+                    (
+                        video_defaults_cfg.get("speech_audio_volume")
+                        if explicit_nested_video_defaults
+                        else data.get("video_default_speech_audio_volume")
+                    )
+                    is not None
+                )
+                else (
+                    data.get("video_default_speech_audio_volume")
+                    if explicit_nested_video_defaults
+                    else video_defaults_cfg.get("speech_audio_volume")
+                ),
+                1.0,
+            ),
         ),
-        narration_tts_voice=_expand_optional_env_str(data.get("narration_tts_voice")),
-        tts_provider_model_catalog=MappingProxyType(dict(tts_provider_catalog)),
         narration_video_background_audio_volume=max(
             0.0,
-            _coerce_float(data.get("narration_video_background_audio_volume"), 0.35),
+            _coerce_float(
+                data.get("narration_video_background_audio_volume"),
+                _coerce_float(
+                    data.get("video_default_background_audio_volume")
+                    if data.get("video_default_background_audio_volume") is not None
+                    else video_defaults_cfg.get("background_audio_volume"),
+                    0.35,
+                ),
+            ),
         ),
         narration_video_speech_audio_volume=max(
             0.0,
-            _coerce_float(data.get("narration_video_speech_audio_volume"), 1.0),
+            _coerce_float(
+                data.get("narration_video_speech_audio_volume"),
+                _coerce_float(
+                    data.get("video_default_speech_audio_volume")
+                    if data.get("video_default_speech_audio_volume") is not None
+                    else video_defaults_cfg.get("speech_audio_volume"),
+                    1.0,
+                ),
+            ),
         ),
     )

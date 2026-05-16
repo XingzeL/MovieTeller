@@ -2,7 +2,7 @@
 需仓库根目录存在 ``example.mp4`` 且系统有 ``ffmpeg``；用于本地验证前 5s 抽帧。
 
 集成用例 ``test_example_mp4_first_5s_narration_api`` 会请求真实多模态 API（计费），
-默认 **skip**；需已为 ``narration_provider`` 所选的 slug 配置 Key / Base URL（见 movieteller_config）。
+默认 **skip**；需已为 ``gateway.default_provider`` 配置 Key / Base URL，并设置 `model_defaults.narration`（见 movieteller_config）。
 
 CI 无样例视频时会自动 skip，不失败。
 """
@@ -90,7 +90,7 @@ def test_example_mp4_first_5s_narration_api(example_video: Path) -> None:
 
     - 仓库根目录存在 ``example.mp4``（fixture 已处理）
     - ``RUN_NARRATION_API_TEST=1``（防止误跑扣费）
-    - ``movieteller_config`` 能为 ``narration_provider`` 对应的 slug 解析出 API Key（见 ``NARRATION_PROVIDER``）
+    - ``movieteller_config`` 能为 ``gateway.default_provider`` 解析出 API Key
 
     运行示例::
 
@@ -109,8 +109,8 @@ def test_example_mp4_first_5s_narration_api(example_video: Path) -> None:
         load_settings(require_narration=True)
     except ValueError as e:
         pytest.skip(
-            f"{e} — 检查 `{env_path}` 与 NARRATION_PROVIDER、API_KEYS_JSON、*_API_KEY；"
-            f" Base URL：API_BASE_URLS_JSON / *_BASE_URL。cwd={os.getcwd()}"
+            f"{e} — 检查 `{env_path}` 与 gateway.default_provider、model_defaults.narration、API_KEYS_JSON、*_API_KEY；"
+            f" Base URL：API_PROVIDERS_JSON / *_BASE_URL。cwd={os.getcwd()}"
         )
 
     # 复用同一份合并结果，只把「每段最多抽几帧」压到 8，省一点调用费用（不改密钥与其它项）

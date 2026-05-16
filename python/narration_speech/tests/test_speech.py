@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from movieteller_config.schema import settings_from_dict
 from movieteller_config.schema import NarrationSpeechOptions
@@ -6,13 +7,18 @@ from movieteller_config.schema import NarrationSpeechOptions
 from narration_speech.speech import _atempo_filter_for_speed, synthesize_narration_text
 
 
-class FakeCommunicate:
-    def __init__(self, *args, **kwargs):
-        pass
+class FakeSpeechApi:
+    def create(self, **kwargs):
+        class Response:
+            def write_to_file(self, output_path):
+                Path(output_path).write_bytes(b"fake-audio")
 
-    async def save(self, audio_path, metadata_path):
-        Path(audio_path).write_bytes(b"fake-audio")
-        Path(metadata_path).write_text("{}", encoding="utf-8")
+        return Response()
+
+
+class FakeTtsClient:
+    def __init__(self, *args, **kwargs):
+        self.audio = SimpleNamespace(speech=FakeSpeechApi())
 
 
 def test_atempo_filter_for_speed_chains_large_values():
@@ -26,15 +32,23 @@ def test_synthesize_narration_without_fit(monkeypatch, tmp_path):
         return next(durations)
 
     monkeypatch.setattr("narration_speech.speech._probe_media_duration_sec", fake_probe)
-    settings = settings_from_dict({})
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "newapi"},
+            "api_keys": {"newapi": "dummy"},
+            "api_providers": {"newapi": "https://example.com/v1"},
+            "model_defaults": {"tts": "qwen3-tts-flash"},
+            "tts_defaults": {"voice": "en-US-EmmaMultilingualNeural"},
+        }
+    )
     result = synthesize_narration_text(
         "hello world",
         2.0,
         output_path=str(tmp_path / "out.mp3"),
         options=NarrationSpeechOptions(
-            provider_slug="edge_tts",
+            provider_slug="newapi",
             voice="en-US-EmmaMultilingualNeural",
-            model=None,
+            model="qwen3-tts-flash",
             rate="+0%",
             volume="+0%",
             pitch="+0Hz",
@@ -42,7 +56,7 @@ def test_synthesize_narration_without_fit(monkeypatch, tmp_path):
             ffmpeg_bin="ffmpeg",
         ),
         settings=settings,
-        communicator_factory=lambda *args, **kwargs: FakeCommunicate(),
+        communicator_factory=lambda *args, **kwargs: FakeTtsClient(),
     )
     assert Path(result.audio_path).is_file()
     assert result.fit_applied is False
@@ -60,15 +74,23 @@ def test_synthesize_narration_with_fit(monkeypatch, tmp_path):
 
     monkeypatch.setattr("narration_speech.speech._probe_media_duration_sec", fake_probe)
     monkeypatch.setattr("narration_speech.speech._fit_audio_speedup", fake_fit)
-    settings = settings_from_dict({})
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "newapi"},
+            "api_keys": {"newapi": "dummy"},
+            "api_providers": {"newapi": "https://example.com/v1"},
+            "model_defaults": {"tts": "qwen3-tts-flash"},
+            "tts_defaults": {"voice": "en-US-EmmaMultilingualNeural"},
+        }
+    )
     result = synthesize_narration_text(
         "hello world",
         2.0,
         output_path=str(tmp_path / "out.mp3"),
         options=NarrationSpeechOptions(
-            provider_slug="edge_tts",
+            provider_slug="newapi",
             voice="en-US-EmmaMultilingualNeural",
-            model=None,
+            model="qwen3-tts-flash",
             rate="+0%",
             volume="+0%",
             pitch="+0Hz",
@@ -76,7 +98,7 @@ def test_synthesize_narration_with_fit(monkeypatch, tmp_path):
             ffmpeg_bin="ffmpeg",
         ),
         settings=settings,
-        communicator_factory=lambda *args, **kwargs: FakeCommunicate(),
+        communicator_factory=lambda *args, **kwargs: FakeTtsClient(),
     )
     assert result.fit_applied is True
     assert result.audio_duration_sec == 1.9

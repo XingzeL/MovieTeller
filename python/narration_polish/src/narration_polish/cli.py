@@ -14,19 +14,13 @@ from narration_polish.polish import polish_narration_text
 
 
 def _resolve_cli_settings(
-    provider_override: str | None,
-    model_override: str | None,
-    model_index_override: int | None,
     target_wpm_override: int | None,
     cefr_level_override: str | None,
     strength_override: str | None,
     safety_margin_sec_override: float | None,
 ):
     if (
-        provider_override is None
-        and model_override is None
-        and model_index_override is None
-        and target_wpm_override is None
+        target_wpm_override is None
         and cefr_level_override is None
         and strength_override is None
         and safety_margin_sec_override is None
@@ -34,12 +28,6 @@ def _resolve_cli_settings(
         settings = load_settings()
     else:
         flat = load_flat_dict()
-        if provider_override is not None:
-            flat["narration_polish_provider"] = provider_override.strip().lower()
-        if model_override is not None:
-            flat["narration_polish_model"] = model_override.strip()
-        if model_index_override is not None:
-            flat["narration_polish_model_index"] = int(model_index_override)
         if target_wpm_override is not None:
             flat["narration_polish_target_wpm"] = int(target_wpm_override)
         if cefr_level_override is not None:
@@ -49,7 +37,7 @@ def _resolve_cli_settings(
         if safety_margin_sec_override is not None:
             flat["narration_polish_safety_margin_sec"] = float(safety_margin_sec_override)
         settings = settings_from_dict(flat)
-    settings.require_api_key(settings.polish_provider())
+    settings.require_api_key(settings.default_provider())
     return settings
 
 
@@ -74,18 +62,10 @@ def main(argv: list[str] | None = None) -> int:
         type=float,
         help="Segment duration in seconds",
     )
-    p.add_argument("--provider", default=None, help="Override polish provider slug")
-    p.add_argument("--model", default=None, help="Override polish model id")
     p.add_argument(
         "--style",
         default=None,
         help="Narration style hint to preserve during polish (e.g. documentary, movie_commentary)",
-    )
-    p.add_argument(
-        "--model-index",
-        type=int,
-        default=None,
-        help="Override polish model catalog index when --model is unset",
     )
     p.add_argument("--target-wpm", type=int, default=None, help="Target speaking rate")
     p.add_argument(
@@ -115,17 +95,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         raw_text = _read_text(args.text, args.text_file)
         settings = _resolve_cli_settings(
-            args.provider,
-            args.model,
-            args.model_index,
             args.target_wpm,
             args.cefr_level,
             args.strength,
             args.safety_margin_sec,
         )
         options = settings.narration_polish_options(
-            provider_slug=args.provider,
-            model=args.model,
             prompt_style=args.style,
             target_wpm=args.target_wpm,
             cefr_level=args.cefr_level,

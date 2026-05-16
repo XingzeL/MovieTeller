@@ -44,31 +44,6 @@ def _resolve_subtitle_context_index_dir(
     return None
 
 
-def _resolve_pipeline_settings(
-    provider_override: str | None,
-    *,
-    frame_pool_manifest_override: str | None = None,
-    polish_model_index_override: int | None = None,
-):
-    if (
-        provider_override is None
-        and frame_pool_manifest_override is None
-        and polish_model_index_override is None
-    ):
-        settings = load_settings(require_narration=True)
-        return settings
-    flat = load_flat_dict()
-    if provider_override is not None:
-        flat["narration_provider"] = provider_override.strip().lower()
-    if frame_pool_manifest_override is not None:
-        flat["frame_pool_manifest"] = frame_pool_manifest_override.strip()
-    if polish_model_index_override is not None:
-        flat["narration_polish_model_index"] = int(polish_model_index_override)
-    settings = settings_from_dict(flat)
-    settings.require_api_key(settings.narration_provider)
-    return settings
-
-
 def _retrieve_context_texts_for_segment(
     *,
     subtitle_context_index_dir: str | None,

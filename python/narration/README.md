@@ -1,6 +1,6 @@
 # Narration（视频片段旁白）
 
-独立 Python 包：对本地视频按 **时间区间** 用 ffmpeg 抽帧（`-ss` / `-t`），再通过 **OpenAI 兼容** 的多模态 Chat API（`openai` Python 包）生成旁白。具体调用哪家由 **`narration_provider`**（slug）决定，密钥与 Base URL 与 MovieTeller 其它模块一样来自 **`movieteller_config`**（``api_keys`` / ``api_base_urls`` / ``narration_provider_models`` / ``narration_provider_model_catalog``）。
+独立 Python 包：对本地视频按 **时间区间** 用 ffmpeg 抽帧（`-ss` / `-t`），再通过 `model_gateway` 的 narration capability 生成旁白。默认路由由 `movieteller_config` 中的 `gateway.default_provider`、`model_defaults.narration`、`api_providers`、`api_keys` 决定。
 
 ## 安装
 
@@ -16,14 +16,13 @@ python -m pip install -e "./python/narration[dev]"
 
 ## 环境变量
 
-与 MovieTeller 共用约定，见仓库根目录 [.env.example](../../.env.example)。常用项：
+与 MovieTeller 共用约定，见仓库根目录 [.env.example](../../.env.example)。当前推荐配置：
 
-- **`NARRATION_PROVIDER`**：旁白使用的 **provider slug**（如 `openai`、`modelscope`），须与 ``API_KEYS_JSON`` / ``*_API_KEY`` 中的 slug 一致。
-- `API_KEYS_JSON`、`API_BASE_URLS_JSON`
-- `NARRATION_PROVIDER_MODELS_JSON`、`NARRATION_PROVIDER_MODEL_CATALOG_JSON`（旁白专用模型池）
-- **`NARRATION_MODEL`** / **`NARRATION_MODEL_INDEX`**：覆盖当前 `narration_provider` 使用的模型（见 movieteller_config；也可用 ``narrate_segment(..., image_model=...)``）
-- `NARRATION_IMAGE_MODEL` / `IMAGE_MODEL`（未命中 narration 专用模型池时的回退）
-- `OPENAI_API_KEY` / `OPENAI_BASE_URL`（仅当 ``narration_provider`` 为 **openai** 时常用；仍写入 ``api_keys.openai``）
+- `GATEWAY_DEFAULT_PROVIDER`
+- `API_PROVIDERS_JSON`
+- `API_KEYS_JSON`
+- `MODEL_DEFAULTS_JSON` 中的 `narration`
+- `MODEL_CATALOG_JSON`（模型白名单）
 - `MAX_FRAMES_PER_SEGMENT`
 - `NARRATION_FRAME_MAX_EDGE`（抽帧后缩放：画面装进「边长为该值的正方形」内，横竖屏通用）
 - `FFMPEG_PATH`
@@ -49,7 +48,6 @@ text = narrate_segment("/path/to/short.mp4")
 
 ```bash
 python -m narration --video /path/to.mp4 --start 12.5 --end 45 --json
-python -m narration ... --provider modelscope   # 单次覆盖 narration_provider
 ```
 
 stdout 为 JSON：`{"text": "...", "duration_sec": 32.5}`。
@@ -74,7 +72,7 @@ python python/manual_tests/narration_example_first_5s_smoke.py --json
 python python/manual_tests/narration_example_first_5s_smoke.py --narrate   # 需 API
 ```
 
-若仍 **skipped**：请确认 ``NARRATION_PROVIDER`` 与 ``API_KEYS_JSON``（或 ``MODELSCOPE_API_KEY_FREE`` 等）里的 **slug 一致**，且 ``API_BASE_URLS_JSON`` / ``*_BASE_URL`` 已为该 slug 配置网关。
+若仍 **skipped**：请确认 `gateway.default_provider`（或 `GATEWAY_DEFAULT_PROVIDER`）对应的 key/base URL 已配置，且 `model_defaults.narration` 指向可用模型。
 
 ```bash
 RUN_NARRATION_API_TEST=1 PYTHONPATH=python/movieteller_config/src:python/narration/src \\

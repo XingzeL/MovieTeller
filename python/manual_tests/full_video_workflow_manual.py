@@ -11,6 +11,9 @@ Workflow:
 2. video_frame_pool build
 3. subtitle_context build
 4. movie_pipeline narration + optional polish/speech/render
+
+Model/provider routing is read from the shared gateway-oriented config stack
+(`gateway.default_provider`, `api_providers`, `api_keys`, `model_defaults`).
 """
 
 from __future__ import annotations

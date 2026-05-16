@@ -3,7 +3,7 @@
 本地冒烟：使用仓库根目录的 ``example.mp4``，只处理前 **5 秒** 区间（0s–5s）。
 
 - 默认：校验片段时长、用 ffmpeg 抽若干帧（不落盘，仅统计），**不调用**大模型。
-- 加 ``--narrate``：再调用旁白生成（需配置所选 ``narration_provider`` 对应密钥与 Base URL，见 movieteller_config）。
+- 加 ``--narrate``：再调用旁白生成（需配置 gateway 默认 provider、对应 key/base URL 和 narration 默认模型，见 movieteller_config）。
 
 在仓库根目录执行（与 movieteller_config 加载方式一致，cwd 建议为根目录）::
 

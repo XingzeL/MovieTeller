@@ -43,18 +43,14 @@ The module returns:
 
 ## Config
 
-Shared settings live in `movieteller_config`:
+Shared settings now route through `model_gateway` capability defaults. Recommended fields in `movieteller_config`:
 
-- `narration_provider_models`
-- `narration_provider_model_catalog`
-- `narration_model`
-- `narration_model_index`
+- `gateway.default_provider`
+- `api_providers`
+- `api_keys`
+- `model_defaults.polish`
+- `model_catalog`
 - `narration_polish_enabled`
-- `narration_polish_provider`
-- `narration_polish_model`
-- `narration_polish_model_index`
-- `narration_polish_provider_models`
-- `narration_polish_provider_model_catalog`
 - `narration_polish_target_wpm`
 - `narration_polish_cefr_level`
 - `narration_polish_strength`

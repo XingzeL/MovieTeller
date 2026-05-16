@@ -8,8 +8,10 @@ from narration.story import generate_narration
 def test_generate_narration_uses_injected_client():
     settings = settings_from_dict(
         {
-            "openai_api_key": "sk-test",
-            "narration_image_model": "gpt-4o-mini",
+            "gateway": {"default_provider": "newapi"},
+            "api_keys": {"newapi": "sk-test"},
+            "api_providers": {"newapi": "https://example.test/v1"},
+            "model_defaults": {"narration": "gpt-4o-mini"},
         }
     )
     fake_client = MagicMock()

@@ -14,6 +14,17 @@ from subtitle_context.index import (
 from subtitle_context.types import SubtitleContextChunk
 
 
+def make_settings(**overrides):
+    base = {
+        "gateway": {"default_provider": "newapi"},
+        "api_keys": {"newapi": "sk-test"},
+        "api_providers": {"newapi": "https://example.test/v1"},
+        "model_defaults": {"embedding": "text-embedding-v4"},
+    }
+    base.update(overrides)
+    return settings_from_dict(base)
+
+
 def test_build_subtitle_context_index_writes_local_files(tmp_path):
     srt = tmp_path / "demo.srt"
     srt.write_text(
@@ -32,7 +43,7 @@ world
         assert texts == ["hello world"]
         return np.asarray([[1.0, 0.0]], dtype=np.float32)
 
-    settings = settings_from_dict({"narration_image_model": "x"})
+    settings = make_settings()
     result = build_subtitle_context_index(
         srt_path=str(srt),
         output_dir=str(tmp_path / "index"),
@@ -60,7 +71,7 @@ hello
     def failing_embedder(_texts):
         raise RuntimeError("embedding failed")
 
-    settings = settings_from_dict({"narration_image_model": "x"})
+    settings = make_settings()
     with pytest.raises(RuntimeError, match="embedding failed"):
         build_subtitle_context_index(
             srt_path=str(srt),
@@ -98,14 +109,11 @@ hagrid appears
     def fake_embedder(texts):
         return np.asarray([mapping[text] for text in texts], dtype=np.float32)
 
-    settings = settings_from_dict(
-        {
-            "narration_image_model": "x",
-            "subtitle_context_chunk_cue_count": 2,
-            "subtitle_context_chunk_stride": 2,
-            "subtitle_context_history_window_sec": 10,
-            "subtitle_context_top_k": 4,
-        }
+    settings = make_settings(
+        subtitle_context_chunk_cue_count=2,
+        subtitle_context_chunk_stride=2,
+        subtitle_context_history_window_sec=10,
+        subtitle_context_top_k=4,
     )
     index_dir = tmp_path / "index"
     build_subtitle_context_index(
@@ -171,12 +179,9 @@ def test_retrieve_past_subtitle_context_uses_mmr_to_reduce_duplicates(tmp_path):
         assert texts == ["letter fight"]
         return np.asarray([[1.0, 0.0]], dtype=np.float32)
 
-    settings = settings_from_dict(
-        {
-            "narration_image_model": "x",
-            "subtitle_context_history_window_sec": 20,
-            "subtitle_context_top_k": 2,
-        }
+    settings = make_settings(
+        subtitle_context_history_window_sec=20,
+        subtitle_context_top_k=2,
     )
     result = retrieve_past_subtitle_context(
         index_dir=str(index_dir),

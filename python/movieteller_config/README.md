@@ -14,41 +14,23 @@ pip install -e ./python/movieteller_config
 from movieteller_config import load_settings
 
 s = load_settings()
-print(s.narration_image_model, s.ffmpeg_path)
-
-# Before calling OpenAI:
-key = s.require_openai()
+print(s.ffmpeg_path)
+print(s.default_provider(), s.default_model_for_capability("narration"))
 ```
 
 ## Keys
 
 See repository root `.env.example` and comments in `src/movieteller_config/config/default.yaml`.
 
-Narration polishing keys used before future TTS:
+Recommended capability-first keys:
 
-- `narration_provider_models`
-- `narration_provider_model_catalog`
-- `narration_model`
-- `narration_model_index`
-- `narration_polish_enabled`
-- `narration_polish_provider`
-- `narration_polish_model`
-- `narration_polish_model_index`
-- `narration_polish_provider_models`
-- `narration_polish_provider_model_catalog`
-- `narration_polish_target_wpm`
-- `narration_polish_cefr_level`
-- `narration_polish_strength`
-- `narration_polish_safety_margin_sec`
-- `narration_speech_enabled`
-- `narration_speech_provider`
-- `narration_speech_voice`
-- `narration_speech_rate`
-- `narration_speech_volume`
-- `narration_speech_pitch`
-- `narration_speech_boundary`
-- `narration_video_background_audio_volume`
-- `narration_video_speech_audio_volume`
+- `gateway.default_provider`
+- `api_providers`
+- `api_keys`
+- `model_catalog`
+- `model_defaults`
+- `tts_defaults`
+- `video_defaults`
 
 ## Tests
 

@@ -79,11 +79,12 @@ def build_subtitle_context_index(
     embeddings_path = temp_dir / "embeddings.npy"
     write_chunks(chunks_path, chunks)
     write_embeddings(embeddings_path, embeddings)
+    embedding_model = str(cfg.default_model_for_capability("embedding"))
     build_config = {
         "chunkCueCount": resolved_options.chunk_cue_count,
         "chunkStride": resolved_options.chunk_stride,
-        "embeddingProvider": str(getattr(cfg, "subtitle_context_embedding_provider", "") or ""),
-        "embeddingModel": str(getattr(cfg, "subtitle_context_embedding_model", "") or ""),
+        "embeddingProvider": str(cfg.default_provider()),
+        "embeddingModel": embedding_model,
     }
     (temp_dir / "build_config.json").write_text(
         json.dumps(build_config, ensure_ascii=False, indent=2),

@@ -57,13 +57,13 @@ def synthesize_speech(
     model = (str(request.model or "").strip() or str(endpoint.model or "").strip()).strip()
     if not model:
         raise GatewayConfigError(
-            "Volcengine TTS requires narration_tts_model (YAML / env NARRATION_TTS_MODEL) "
-            "so the gateway can pass ``model`` to audio.speech."
+            "TTS model is not configured. "
+            "Set model_defaults.tts so the gateway can pass ``model`` to audio.speech."
         )
     _validate_openai_compatible_tts_base_url(endpoint)
     voice = str(request.voice or "").strip()
     if not voice:
-        raise GatewayConfigError("speech voice is empty (set narration_speech_voice or tts_provider_model_catalog)")
+        raise GatewayConfigError("speech voice is empty (set tts_defaults.voice or pass voice explicitly)")
 
     kwargs: dict[str, Any] = {
         "model": model,

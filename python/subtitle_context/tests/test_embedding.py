@@ -27,11 +27,10 @@ def test_embed_texts_batches_requests_for_provider_limits():
 
     settings = settings_from_dict(
         {
-            "narration_image_model": "x",
-            "subtitle_context_embedding_provider": "dashscope",
-            "subtitle_context_embedding_model": "text-embedding-v4",
-            "api_keys": {"dashscope": "dummy"},
-            "api_base_urls": {"dashscope": "https://example.com/v1"},
+            "gateway": {"default_provider": "newapi"},
+            "model_defaults": {"embedding": "text-embedding-v4"},
+            "api_keys": {"newapi": "dummy"},
+            "api_providers": {"newapi": "https://example.com/v1"},
         }
     )
 

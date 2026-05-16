@@ -13,20 +13,13 @@ from movieteller_config.schema import settings_from_dict
 from narration.narrate import narrate_segment_with_duration
 
 
-def _resolve_cli_settings(
-    provider_override: str | None,
-    frame_pool_manifest_override: str | None,
-):
-    """Apply optional ``--provider`` without mutating frozen Settings in place."""
-    if provider_override is None and frame_pool_manifest_override is None:
+def _resolve_cli_settings(frame_pool_manifest_override: str | None):
+    if frame_pool_manifest_override is None:
         return load_settings(require_narration=True)
     flat = load_flat_dict()
-    if provider_override is not None:
-        flat["narration_provider"] = provider_override.strip().lower()
-    if frame_pool_manifest_override is not None:
-        flat["frame_pool_manifest"] = frame_pool_manifest_override.strip()
+    flat["frame_pool_manifest"] = frame_pool_manifest_override.strip()
     s = settings_from_dict(flat)
-    s.require_api_key(s.narration_provider)
+    s.require_api_key(s.default_provider())
     return s
 
 
@@ -44,12 +37,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Prompt style (default: from movieteller_config default_prompt_style)",
     )
     p.add_argument("--custom-prompt", default="", help="Extra instructions appended to system")
-    p.add_argument("--model", default=None, help="Override vision/chat model id")
-    p.add_argument(
-        "--provider",
-        default=None,
-        help="Override narration_provider slug (e.g. openai, modelscope); default from config",
-    )
     p.add_argument(
         "--frame-pool-manifest",
         default=None,
@@ -63,10 +50,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = p.parse_args(argv)
 
-    settings = _resolve_cli_settings(args.provider, args.frame_pool_manifest)
+    settings = _resolve_cli_settings(args.frame_pool_manifest)
     narration_options = settings.narration_options(
-        provider_slug=args.provider,
-        model=args.model,
         prompt_style=args.prompt_style,
         custom_prompt=args.custom_prompt,
     )

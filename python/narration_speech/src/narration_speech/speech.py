@@ -8,8 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from media_utils import ffprobe_path_for, probe_duration_sec
-from model_gateway import synthesize_speech
-from model_gateway.types import SpeechRequest
+from model_gateway import synthesize_speech_for_capability
 from movieteller_config.schema import NarrationSpeechOptions
 
 from narration_speech.types import NarrationSpeechResult
@@ -119,20 +118,16 @@ def synthesize_narration_text(
     with tempfile.TemporaryDirectory(prefix="narration_speech_") as tmpdir:
         raw_audio_path = Path(tmpdir) / final_audio_path.name
         t0 = time.perf_counter()
-        synthesize_speech(
-            SpeechRequest(
-                provider=resolved_provider,
-                voice=resolved_voice,
-                text=raw_text,
-                model=options.model,
-                rate=resolved_rate,
-                volume=resolved_volume,
-                pitch=resolved_pitch,
-                boundary=resolved_boundary,
-                output_path=str(raw_audio_path),
-                metadata_path=str(metadata_file),
-            ),
+        synthesize_speech_for_capability(
+            text=raw_text,
             settings=settings,
+            voice=resolved_voice,
+            rate=resolved_rate,
+            volume=resolved_volume,
+            pitch=resolved_pitch,
+            boundary=resolved_boundary,
+            output_path=str(raw_audio_path),
+            metadata_path=str(metadata_file),
             communicator_factory=communicator_factory,
         )
         t1 = time.perf_counter()
@@ -171,7 +166,7 @@ def synthesize_narration_text(
         metadata_path=str(metadata_file),
         raw_duration_sec=raw_duration_sec,
         audio_duration_sec=audio_duration_sec,
-        provider=resolved_provider,
+        provider=settings.default_provider(),
         voice=resolved_voice,
         rate=resolved_rate,
         volume=resolved_volume,

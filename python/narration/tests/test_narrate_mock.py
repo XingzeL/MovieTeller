@@ -7,17 +7,23 @@ from movieteller_config.schema import settings_from_dict
 from narration.narrate import narrate_from_frames, narrate_segment_with_duration
 
 
+def make_settings(**overrides):
+    base = {
+        "gateway": {"default_provider": "newapi"},
+        "api_keys": {"newapi": "sk-test"},
+        "api_providers": {"newapi": "https://example.test/v1"},
+        "model_defaults": {"narration": "gpt-4o-mini"},
+        "max_frames_per_segment": 4,
+        "ffmpeg_path": "/bin/ffmpeg",
+    }
+    base.update(overrides)
+    return settings_from_dict(base)
+
+
 def test_narrate_segment_with_duration_end_to_end_mocked(
     tmp_path, fake_concat_png_stdout
 ):
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_image_model": "gpt-4o-mini",
-            "max_frames_per_segment": 4,
-            "ffmpeg_path": "/bin/ffmpeg",
-        }
-    )
+    settings = make_settings()
     vid = tmp_path / "seg.mp4"
     vid.write_bytes(b"x")
 
@@ -59,15 +65,7 @@ def test_narrate_segment_with_duration_end_to_end_mocked(
 
 
 def test_narrate_segment_uses_frame_pool_when_manifest_configured(tmp_path):
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_image_model": "gpt-4o-mini",
-            "max_frames_per_segment": 4,
-            "ffmpeg_path": "/bin/ffmpeg",
-            "frame_pool_manifest": str(tmp_path / "pool" / "manifest.jsonl"),
-        }
-    )
+    settings = make_settings(frame_pool_manifest=str(tmp_path / "pool" / "manifest.jsonl"))
     pool = tmp_path / "pool"
     images = pool / "images"
     images.mkdir(parents=True)
@@ -123,15 +121,9 @@ def test_narrate_segment_uses_frame_pool_when_manifest_configured(tmp_path):
 def test_narrate_segment_falls_back_to_uniform_on_pool_window_miss(
     tmp_path, fake_concat_png_stdout
 ):
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_image_model": "gpt-4o-mini",
-            "max_frames_per_segment": 4,
-            "pool_miss_uniform_max_frames": 2,
-            "ffmpeg_path": "/bin/ffmpeg",
-            "frame_pool_manifest": str(tmp_path / "pool" / "manifest.jsonl"),
-        }
+    settings = make_settings(
+        pool_miss_uniform_max_frames=2,
+        frame_pool_manifest=str(tmp_path / "pool" / "manifest.jsonl"),
     )
     pool = tmp_path / "pool"
     images = pool / "images"
@@ -193,14 +185,7 @@ def test_narrate_segment_falls_back_to_uniform_on_pool_window_miss(
 def test_narrate_segment_includes_subtitle_context_in_prompt(
     tmp_path, fake_concat_png_stdout
 ):
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_image_model": "gpt-4o-mini",
-            "max_frames_per_segment": 4,
-            "ffmpeg_path": "/bin/ffmpeg",
-        }
-    )
+    settings = make_settings()
     vid = tmp_path / "seg.mp4"
     vid.write_bytes(b"x")
     captured: dict[str, object] = {}
@@ -261,14 +246,7 @@ def test_narrate_segment_includes_subtitle_context_in_prompt(
 
 
 def test_narrate_from_frames_is_pure_generation_interface():
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_image_model": "gpt-4o-mini",
-            "max_frames_per_segment": 4,
-            "ffmpeg_path": "/bin/ffmpeg",
-        }
-    )
+    settings = make_settings()
     captured: dict[str, object] = {}
 
     def fake_client_factory(_k, _b):

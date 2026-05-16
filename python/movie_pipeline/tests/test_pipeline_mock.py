@@ -24,6 +24,26 @@ def settings_to_frame_source_options(settings):
     )
 
 
+def make_settings(**overrides):
+    base = {
+        "gateway": {"default_provider": "openai"},
+        "api_keys": {"openai": "sk-test"},
+        "model_defaults": {
+            "narration": "gpt-4o-mini",
+            "polish": "gpt-4.1-mini",
+            "tts": "qwen3-tts-flash",
+            "embedding": "text-embedding-3-small",
+        },
+        "ffmpeg_path": "ffmpeg",
+        "max_frames_per_segment": 4,
+        "narration_frame_max_edge": 768,
+        "pool_miss_uniform_max_frames": 2,
+        "tts_defaults": {"voice": "en-US-EmmaMultilingualNeural"},
+    }
+    base.update(overrides)
+    return settings_from_dict(base)
+
+
 def test_narrate_analysis_candidates_uses_selected_gaps():
     raw = """1
 00:00:00,000 --> 00:00:01,000
@@ -39,17 +59,7 @@ b
         min_gap_sec=1.0,
         subtitle_guard_sec=0.25,
     )
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_provider": "openai",
-            "narration_image_model": "gpt-4o-mini",
-            "ffmpeg_path": "ffmpeg",
-            "max_frames_per_segment": 4,
-            "narration_frame_max_edge": 768,
-            "pool_miss_uniform_max_frames": 2,
-        }
-    )
+    settings = make_settings()
     frame_source_options = settings_to_frame_source_options(settings)
 
     calls = []
@@ -93,17 +103,7 @@ b
         min_gap_sec=1.0,
         subtitle_guard_sec=0.25,
     )
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_provider": "openai",
-            "narration_image_model": "gpt-4o-mini",
-            "ffmpeg_path": "ffmpeg",
-            "max_frames_per_segment": 4,
-            "narration_frame_max_edge": 768,
-            "pool_miss_uniform_max_frames": 2,
-        }
-    )
+    settings = make_settings()
     frame_source_options = settings_to_frame_source_options(settings)
     calls = []
 
@@ -137,17 +137,7 @@ x
         return ("narration", end_sec - start_sec)
 
     from tempfile import TemporaryDirectory
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_provider": "openai",
-            "narration_image_model": "gpt-4o-mini",
-            "ffmpeg_path": "ffmpeg",
-            "max_frames_per_segment": 4,
-            "narration_frame_max_edge": 768,
-            "pool_miss_uniform_max_frames": 2,
-        }
-    )
+    settings = make_settings()
     pipeline_options = MoviePipelineOptions(
         video_duration_sec=4.0,
         min_gap_sec=0.5,
@@ -182,17 +172,7 @@ x
         return ("narration", end_sec - start_sec)
 
     from tempfile import TemporaryDirectory
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_provider": "openai",
-            "narration_image_model": "gpt-4o-mini",
-            "ffmpeg_path": "ffmpeg",
-            "max_frames_per_segment": 4,
-            "narration_frame_max_edge": 768,
-            "pool_miss_uniform_max_frames": 2,
-        }
-    )
+    settings = make_settings()
     pipeline_options = MoviePipelineOptions(
         video_duration_sec=4.0,
         min_gap_sec=0.5,
@@ -230,17 +210,7 @@ x
         return ("narration", end_sec - start_sec)
 
     from tempfile import TemporaryDirectory
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_provider": "openai",
-            "narration_image_model": "gpt-4o-mini",
-            "ffmpeg_path": "ffmpeg",
-            "max_frames_per_segment": 4,
-            "narration_frame_max_edge": 768,
-            "pool_miss_uniform_max_frames": 2,
-        }
-    )
+    settings = make_settings()
     pipeline_options = MoviePipelineOptions(
         video_duration_sec=4.0,
         min_gap_sec=0.5,
@@ -297,18 +267,7 @@ x
         return FakePolishResult()
 
     from tempfile import TemporaryDirectory
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_provider": "openai",
-            "narration_image_model": "gpt-4o-mini",
-            "ffmpeg_path": "ffmpeg",
-            "max_frames_per_segment": 4,
-            "narration_frame_max_edge": 768,
-            "pool_miss_uniform_max_frames": 2,
-            "narration_polish_enabled": True,
-        }
-    )
+    settings = make_settings(narration_polish_enabled=True)
     pipeline_options = MoviePipelineOptions(
         video_duration_sec=4.0,
         min_gap_sec=0.5,
@@ -367,21 +326,17 @@ x
         assert text == "short line"
         assert duration_sec == 1.0
         assert kwargs["target_duration_sec"] == 1.0
-        assert kwargs["options"].provider_slug == "edge_tts"
+        assert kwargs["options"].provider_slug == "newapi"
         return FakeSpeechResult()
 
     from tempfile import TemporaryDirectory
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_provider": "openai",
-            "narration_image_model": "gpt-4o-mini",
-            "ffmpeg_path": "ffmpeg",
-            "max_frames_per_segment": 4,
-            "narration_frame_max_edge": 768,
-            "pool_miss_uniform_max_frames": 2,
-            "narration_speech_enabled": True,
-        }
+    settings = make_settings(
+        gateway={"default_provider": "newapi"},
+        api_keys={"newapi": "sk-test"},
+        api_providers={"newapi": "https://example.test/v1"},
+        model_defaults={"narration": "gpt-4o-mini", "tts": "qwen3-tts-flash"},
+        narration_tts_enabled=True,
+        tts_defaults={"voice": "en-US-EmmaMultilingualNeural"},
     )
 
     with TemporaryDirectory() as tmp:
@@ -456,19 +411,10 @@ x
         return FakeRenderResult()
 
     from tempfile import TemporaryDirectory
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_provider": "openai",
-            "narration_image_model": "gpt-4o-mini",
-            "ffmpeg_path": "ffmpeg",
-            "max_frames_per_segment": 4,
-            "narration_frame_max_edge": 768,
-            "pool_miss_uniform_max_frames": 2,
-            "narration_speech_enabled": True,
-            "narration_video_background_audio_volume": 0.35,
-            "narration_video_speech_audio_volume": 1.0,
-        }
+    settings = make_settings(
+        narration_tts_enabled=True,
+        narration_video_background_audio_volume=0.35,
+        narration_video_speech_audio_volume=1.0,
     )
 
     with TemporaryDirectory() as tmp:
@@ -497,22 +443,7 @@ x
 
 
 def test_translate_product_request_to_workflow_options_applies_level_defaults():
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_provider": "openai",
-            "narration_image_model": "gpt-4o-mini",
-            "default_prompt_style": "documentary",
-            "ffmpeg_path": "ffmpeg",
-            "max_frames_per_segment": 4,
-            "narration_frame_max_edge": 768,
-            "pool_miss_uniform_max_frames": 2,
-            "subtitle_context_embedding_provider": "openai",
-            "subtitle_context_embedding_model": "text-embedding-3-small",
-            "narration_polish_provider": "openai",
-            "narration_polish_model": "gpt-4.1-mini",
-        }
-    )
+    settings = make_settings(default_prompt_style="documentary")
     req = parse_product_request(
         {
             "level": "pro",
@@ -556,17 +487,7 @@ x
 
     np.save(ctx_dir / "embeddings.npy", np.zeros((0, 0), dtype=np.float32))
 
-    settings = settings_from_dict(
-        {
-            "openai_api_key": "sk-test",
-            "narration_provider": "openai",
-            "narration_image_model": "gpt-4o-mini",
-            "ffmpeg_path": "ffmpeg",
-            "max_frames_per_segment": 4,
-            "narration_frame_max_edge": 768,
-            "pool_miss_uniform_max_frames": 2,
-        }
-    )
+    settings = make_settings()
 
     from movie_pipeline.full_workflow import workflow_options_from_settings
 

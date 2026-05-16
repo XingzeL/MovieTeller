@@ -5,8 +5,7 @@ import re
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
-from model_gateway import generate_chat
-from model_gateway.types import ChatRequest
+from model_gateway import polish_text as gateway_polish_text
 from movieteller_config import load_settings
 from movieteller_config.schema import NarrationPolishOptions
 
@@ -47,11 +46,6 @@ def compute_target_word_count(
 
 def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
-
-
-def _resolve_provider_slug(settings: "Settings", provider_slug: str | None) -> str:
-    slug = (provider_slug or settings.polish_provider()).strip().lower()
-    return slug or "openai"
 
 
 def _truncate_to_word_budget(text: str, target_word_count: int) -> str:
@@ -128,34 +122,31 @@ def polish_narration_text(
     estimated_original_duration_sec = estimate_speech_duration_sec(
         raw_text, resolved_target_wpm
     )
+    messages = [
+        {
+            "role": "system",
+            "content": build_system_message(
+                cefr_level=resolved_cefr_level,
+                strength=resolved_strength,
+                style=resolved_prompt_style,
+            ),
+        },
+        {
+            "role": "user",
+            "content": build_user_message(
+                text=raw_text,
+                segment_duration_sec=duration_sec,
+                target_duration_sec=target_duration_sec,
+                target_wpm=resolved_target_wpm,
+                target_word_count=target_word_count,
+                strength=resolved_strength,
+            ),
+        },
+    ]
 
     t0 = time.perf_counter()
-    result = generate_chat(
-        ChatRequest(
-            provider=resolved_provider,
-            model=resolved_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": build_system_message(
-                        cefr_level=resolved_cefr_level,
-                        strength=resolved_strength,
-                        style=resolved_prompt_style,
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": build_user_message(
-                        text=raw_text,
-                        segment_duration_sec=duration_sec,
-                        target_duration_sec=target_duration_sec,
-                        target_wpm=resolved_target_wpm,
-                        target_word_count=target_word_count,
-                        strength=resolved_strength,
-                    ),
-                },
-            ],
-        ),
+    result = gateway_polish_text(
+        messages=messages,
         settings=settings,
         client_factory=client_factory,
     )
@@ -183,7 +174,7 @@ def polish_narration_text(
         estimated_polished_duration_sec=estimated_polished_duration_sec,
         cefr_level=resolved_cefr_level,
         strength=resolved_strength,
-        provider=resolved_provider,
-        model=resolved_model,
+        provider=settings.default_provider(),
+        model=settings.default_model_for_capability("polish"),
         timing_api_sec=t1 - t0,
     )

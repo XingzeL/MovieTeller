@@ -40,7 +40,7 @@ def _chat_completions_url(base: str) -> str:
     """支持 ``.../v1``、``.../v1/chat/completions`` 或仅 host。"""
     b = base.strip().rstrip("/")
     if not b:
-        raise ValueError("modelscope api_base_urls 为空")
+        raise ValueError("modelscope api_providers 为空")
     if b.endswith("/chat/completions"):
         return b
     if b.endswith("/v1"):
@@ -54,11 +54,11 @@ def main() -> int:
     raw_base = s.get_api_base_url("modelscope")
     if not raw_base:
         print(
-            "错误: 未配置 modelscope 的 Base URL（api_base_urls.modelscope 或 MODELSCOPE_BASE_URL / API_BASE_URLS_JSON）。",
+            "错误: 未配置 modelscope 的 Base URL（api_providers.modelscope 或 MODELSCOPE_BASE_URL / API_PROVIDERS_JSON）。",
             file=sys.stderr,
         )
         return 1
-    model = s.model_for_provider("modelscope")
+    model = s.default_model_for_capability("narration")
     url = _chat_completions_url(raw_base)
 
     body = {

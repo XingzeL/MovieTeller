@@ -9,6 +9,7 @@ description = "Unified model request gateway for MovieTeller"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
+    "dashscope>=1.23.1",
     "movieteller_config",
     "openai>=1.30.0",
 ]
@@ -22,4 +23,3 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "../movieteller_config/src"]
-

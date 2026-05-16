@@ -8,7 +8,7 @@ Edit ``PIPELINE_JSON_PATH`` below, then run:
 
 This script does not rerun subtitle extraction, frame pooling, subtitle context,
 or narration. It only reads ``narratedSegments`` from an existing JSON file and
-generates speech audio for each segment.
+generates speech audio for each segment using the shared TTS capability config.
 """
 
 from __future__ import annotations

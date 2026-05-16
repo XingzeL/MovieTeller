@@ -103,7 +103,7 @@ def workflow_options_from_settings(
             ),
             speech_options=(
                 settings.narration_speech_options()
-                if settings.narration_speech_enabled
+                if settings.narration_tts_enabled
                 else None
             ),
         ),

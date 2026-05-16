@@ -19,7 +19,6 @@ except ImportError:
 
 from movieteller_config.schema import Settings, settings_from_dict
 
-# Env names that do not match ``{PREFIX}_API_KEY`` but should map to a slug (rare).
 _LEGACY_API_KEY_ALIASES: tuple[tuple[str, str], ...] = (
     ("ELEVEN_LABS_API", "elevenlabs"),
     ("MODELSCOPE_API_KEY_FREE", "modelscope"),
@@ -27,7 +26,6 @@ _LEGACY_API_KEY_ALIASES: tuple[tuple[str, str], ...] = (
 
 
 def _slug_from_api_key_env(env_name: str) -> str | None:
-    """``FOO_BAR_API_KEY`` -> ``foo_bar``. ``API_KEYS_JSON`` keys override these."""
     suf = "_API_KEY"
     if not env_name.endswith(suf):
         return None
@@ -38,7 +36,6 @@ def _slug_from_api_key_env(env_name: str) -> str | None:
 
 
 def _slug_from_base_url_env(env_name: str) -> str | None:
-    """``FOO_BASE_URL`` -> ``foo``. ``API_BASE_URLS_JSON`` overrides these."""
     suf = "_BASE_URL"
     if not env_name.endswith(suf):
         return None
@@ -71,13 +68,17 @@ def _package_default_yaml() -> Path:
 
 
 def _repo_root_config_paths() -> list[Path]:
-    """Optional repo-root config/local.yaml (MovieTeller/config/local.yaml)."""
     cwd = Path.cwd()
-    candidates = [
+    return [
         cwd / "config" / "local.yaml",
         cwd.parent / "config" / "local.yaml",
     ]
-    return candidates
+
+
+def _load_repo_dotenv() -> None:
+    path = find_dotenv(usecwd=True)
+    if path:
+        load_dotenv(path, override=False)
 
 
 def _collect_api_keys_from_env() -> dict[str, str]:
@@ -103,13 +104,13 @@ def _collect_api_keys_from_env() -> dict[str, str]:
     return keys
 
 
-def _collect_base_urls_from_env() -> dict[str, str]:
+def _collect_api_providers_from_env() -> dict[str, str]:
     urls: dict[str, str] = {}
     for env_name in sorted(os.environ.keys()):
         slug = _slug_from_base_url_env(env_name)
         if slug and (v := os.environ.get(env_name, "").strip()):
             urls.setdefault(slug, v)
-    raw_json = os.environ.get("API_BASE_URLS_JSON", "").strip()
+    raw_json = os.environ.get("API_PROVIDERS_JSON", "").strip()
     if raw_json:
         try:
             parsed = json.loads(raw_json)
@@ -126,57 +127,48 @@ def _collect_base_urls_from_env() -> dict[str, str]:
 def _collect_model_map_from_env(env_name: str) -> dict[str, str]:
     out: dict[str, str] = {}
     raw_json = os.environ.get(env_name, "").strip()
-    if raw_json:
-        try:
-            parsed = json.loads(raw_json)
-            if isinstance(parsed, dict):
-                for k, v in parsed.items():
-                    if v is None or str(v).strip() == "":
-                        continue
-                    out[str(k).strip().lower()] = str(v).strip()
-        except json.JSONDecodeError:
-            pass
-    return out
-
-
-def _collect_model_catalog_from_env(env_name: str) -> dict[str, list[str]]:
-    """Env JSON: slug -> list of model ids."""
-    out: dict[str, list[str]] = {}
-    raw_json = os.environ.get(env_name, "").strip()
     if not raw_json:
         return out
     try:
         parsed = json.loads(raw_json)
         if isinstance(parsed, dict):
             for k, v in parsed.items():
-                slug = str(k).strip().lower()
-                if not slug or not isinstance(v, list):
+                if v is None or str(v).strip() == "":
                     continue
-                ids: list[str] = []
-                for item in v:
-                    if item is None or str(item).strip() == "":
-                        continue
-                    ids.append(str(item).strip())
-                if ids:
-                    out[slug] = ids
+                out[str(k).strip().lower()] = str(v).strip()
     except json.JSONDecodeError:
         pass
     return out
-def _load_repo_dotenv() -> None:
-    """Load repo-root ``.env`` when present (same convention as Node ``loadConfig``)."""
-    path = find_dotenv(usecwd=True)
-    if path:
-        load_dotenv(path, override=False)
+
+
+def _collect_flat_model_catalog_from_env(env_name: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    raw_json = os.environ.get(env_name, "").strip()
+    if not raw_json:
+        return out
+    try:
+        parsed = json.loads(raw_json)
+        if isinstance(parsed, list):
+            for item in parsed:
+                if item is None or str(item).strip() == "":
+                    continue
+                model = str(item).strip()
+                if model and model not in seen:
+                    out.append(model)
+                    seen.add(model)
+        elif isinstance(parsed, dict):
+            for k, _v in parsed.items():
+                model = str(k).strip()
+                if model and model not in seen:
+                    out.append(model)
+                    seen.add(model)
+    except json.JSONDecodeError:
+        pass
+    return out
 
 
 def load_flat_dict() -> dict[str, Any]:
-    """
-    Merge priority (lowest wins last — last merge wins):
-    1. packaged default.yaml
-    2. MOVIE_TELLER_CONFIG file if set
-    3. first existing config/local.yaml from cwd walk hints
-    4. environment variables (highest priority)
-    """
     _load_repo_dotenv()
     merged: dict[str, Any] = _load_yaml_file(_package_default_yaml())
 
@@ -194,15 +186,13 @@ def load_flat_dict() -> dict[str, Any]:
 
 
 def _env_overrides() -> dict[str, Any]:
-    """Map env vars to flat keys used in YAML/settings."""
     out: dict[str, Any] = {}
+    tts_defaults_patch: dict[str, Any] = {}
+    video_defaults_patch: dict[str, Any] = {}
     if v := os.environ.get("OPENAI_API_KEY"):
         out["openai_api_key"] = v
     if v := os.environ.get("OPENAI_BASE_URL"):
         out["openai_base_url"] = v
-    model = os.environ.get("NARRATION_IMAGE_MODEL") or os.environ.get("IMAGE_MODEL")
-    if model:
-        out["narration_image_model"] = model
     if v := os.environ.get("MAX_FRAMES_PER_SEGMENT"):
         out["max_frames_per_segment"] = int(v)
     if v := os.environ.get("NARRATION_FRAME_MAX_EDGE"):
@@ -211,6 +201,10 @@ def _env_overrides() -> dict[str, Any]:
         out["ffmpeg_path"] = v
     if v := os.environ.get("DEFAULT_PROMPT_STYLE"):
         out["default_prompt_style"] = v
+    if v := os.environ.get("GATEWAY_DEFAULT_PROVIDER", "").strip():
+        out["gateway_default_provider"] = v.lower()
+    if v := os.environ.get("GATEWAY_TTS_PROVIDER", "").strip():
+        out["gateway_tts_provider"] = v.lower()
     if v := os.environ.get("FRAME_POOL_MANIFEST", "").strip():
         out["frame_pool_manifest"] = v
     if v := os.environ.get("POOL_FRAMES_PER_SHOT_MIN", "").strip():
@@ -243,10 +237,6 @@ def _env_overrides() -> dict[str, Any]:
             out["pyscenedetect_merge_sec"] = float(v)
         except ValueError:
             pass
-    if v := os.environ.get("SUBTITLE_CONTEXT_EMBEDDING_PROVIDER", "").strip():
-        out["subtitle_context_embedding_provider"] = v.lower()
-    if v := os.environ.get("SUBTITLE_CONTEXT_EMBEDDING_MODEL", "").strip():
-        out["subtitle_context_embedding_model"] = v
     if v := os.environ.get("SUBTITLE_CONTEXT_CHUNK_CUE_COUNT", "").strip():
         try:
             out["subtitle_context_chunk_cue_count"] = int(v)
@@ -280,44 +270,10 @@ def _env_overrides() -> dict[str, Any]:
             out["videocaptioner_transcribe_timeout_ms"] = int(v)
         except ValueError:
             pass
-    if v := os.environ.get("NARRATION_API_URL"):
-        out["narration_api_url"] = v
-    if v := os.environ.get("NARRATION_PROVIDER"):
-        out["narration_provider"] = str(v).strip().lower()
-    if v := os.environ.get("NARRATION_MODEL", "").strip():
-        out["narration_model"] = v
-    if (idx_raw := os.environ.get("NARRATION_MODEL_INDEX", "").strip()):
-        try:
-            out["narration_model_index"] = max(0, int(idx_raw))
-        except ValueError:
-            pass
-    narration_pm = _collect_model_map_from_env("NARRATION_PROVIDER_MODELS_JSON")
-    if narration_pm:
-        out["narration_provider_models"] = narration_pm
-    narration_cat = _collect_model_catalog_from_env(
-        "NARRATION_PROVIDER_MODEL_CATALOG_JSON"
-    )
-    if narration_cat:
-        out["narration_provider_model_catalog"] = narration_cat
     if v := os.environ.get("NARRATION_POLISH_ENABLED", "").strip():
         out["narration_polish_enabled"] = v
-    if v := os.environ.get("NARRATION_POLISH_PROVIDER", "").strip():
-        out["narration_polish_provider"] = v.lower()
-    if v := os.environ.get("NARRATION_POLISH_MODEL", "").strip():
-        out["narration_polish_model"] = v
-    if (idx_raw := os.environ.get("NARRATION_POLISH_MODEL_INDEX", "").strip()):
-        try:
-            out["narration_polish_model_index"] = max(0, int(idx_raw))
-        except ValueError:
-            pass
-    polish_pm = _collect_model_map_from_env("NARRATION_POLISH_PROVIDER_MODELS_JSON")
-    if polish_pm:
-        out["narration_polish_provider_models"] = polish_pm
-    polish_cat = _collect_model_catalog_from_env(
-        "NARRATION_POLISH_PROVIDER_MODEL_CATALOG_JSON"
-    )
-    if polish_cat:
-        out["narration_polish_provider_model_catalog"] = polish_cat
+    if v := os.environ.get("NARRATION_TTS_ENABLED", "").strip():
+        out["narration_tts_enabled"] = v
     if v := os.environ.get("NARRATION_POLISH_TARGET_WPM", "").strip():
         try:
             out["narration_polish_target_wpm"] = int(v)
@@ -332,34 +288,33 @@ def _env_overrides() -> dict[str, Any]:
             out["narration_polish_safety_margin_sec"] = float(v)
         except ValueError:
             pass
-    if v := os.environ.get("NARRATION_SPEECH_ENABLED", "").strip():
-        out["narration_speech_enabled"] = v
-    if v := os.environ.get("NARRATION_SPEECH_PROVIDER", "").strip():
-        out["narration_speech_provider"] = v.lower()
-    if v := os.environ.get("NARRATION_SPEECH_VOICE", "").strip():
-        out["narration_speech_voice"] = v
-    if v := os.environ.get("NARRATION_SPEECH_RATE", "").strip():
-        out["narration_speech_rate"] = v
-    if v := os.environ.get("NARRATION_SPEECH_VOLUME", "").strip():
-        out["narration_speech_volume"] = v
-    if v := os.environ.get("NARRATION_SPEECH_PITCH", "").strip():
-        out["narration_speech_pitch"] = v
-    if v := os.environ.get("NARRATION_SPEECH_BOUNDARY", "").strip():
-        out["narration_speech_boundary"] = v
-    if v := os.environ.get("NARRATION_TTS_PROVIDER", "").strip():
-        out["narration_tts_provider"] = v.lower()
-    if v := os.environ.get("NARRATION_TTS_MODEL", "").strip():
-        out["narration_tts_model"] = v
-    if v := os.environ.get("NARRATION_TTS_MODEL_INDEX", "").strip():
+    if v := os.environ.get("TTS_DEFAULT_VOICE", "").strip():
+        out["tts_default_voice"] = v
+        tts_defaults_patch["voice"] = v
+    if v := os.environ.get("TTS_DEFAULT_RATE", "").strip():
+        out["tts_default_rate"] = v
+        tts_defaults_patch["rate"] = v
+    if v := os.environ.get("TTS_DEFAULT_VOLUME", "").strip():
+        out["tts_default_volume"] = v
+        tts_defaults_patch["volume"] = v
+    if v := os.environ.get("TTS_DEFAULT_PITCH", "").strip():
+        out["tts_default_pitch"] = v
+        tts_defaults_patch["pitch"] = v
+    if v := os.environ.get("TTS_DEFAULT_BOUNDARY", "").strip():
+        out["tts_default_boundary"] = v
+        tts_defaults_patch["boundary"] = v
+    if v := os.environ.get("VIDEO_DEFAULT_BACKGROUND_AUDIO_VOLUME", "").strip():
         try:
-            out["narration_tts_model_index"] = max(0, int(v))
+            out["video_default_background_audio_volume"] = float(v)
+            video_defaults_patch["background_audio_volume"] = float(v)
         except ValueError:
             pass
-    if v := os.environ.get("NARRATION_TTS_VOICE", "").strip():
-        out["narration_tts_voice"] = v
-    tts_cat = _collect_model_catalog_from_env("TTS_PROVIDER_MODEL_CATALOG_JSON")
-    if tts_cat:
-        out["tts_provider_model_catalog"] = tts_cat
+    if v := os.environ.get("VIDEO_DEFAULT_SPEECH_AUDIO_VOLUME", "").strip():
+        try:
+            out["video_default_speech_audio_volume"] = float(v)
+            video_defaults_patch["speech_audio_volume"] = float(v)
+        except ValueError:
+            pass
     if v := os.environ.get("NARRATION_VIDEO_BACKGROUND_AUDIO_VOLUME", "").strip():
         try:
             out["narration_video_background_audio_volume"] = float(v)
@@ -371,66 +326,57 @@ def _env_overrides() -> dict[str, Any]:
         except ValueError:
             pass
 
-    url_patch = _collect_base_urls_from_env()
-    if url_patch:
-        existing_urls = out.get("api_base_urls")
-        if isinstance(existing_urls, dict):
-            out["api_base_urls"] = {**existing_urls, **url_patch}
+    provider_patch = _collect_api_providers_from_env()
+    if provider_patch:
+        existing_providers = out.get("api_providers")
+        if isinstance(existing_providers, dict):
+            out["api_providers"] = {**existing_providers, **provider_patch}
         else:
-            out["api_base_urls"] = url_patch
+            out["api_providers"] = provider_patch
 
     env_keys = _collect_api_keys_from_env()
     if env_keys:
         existing = out.get("api_keys")
         if isinstance(existing, dict):
-            merged_keys = {**existing, **env_keys}
+            out["api_keys"] = {**existing, **env_keys}
         else:
-            merged_keys = dict(env_keys)
-        out["api_keys"] = merged_keys
+            out["api_keys"] = dict(env_keys)
 
-    narration_pm_patch = _collect_model_map_from_env("NARRATION_PROVIDER_MODELS_JSON")
-    if narration_pm_patch:
-        existing = out.get("narration_provider_models")
-        if isinstance(existing, dict):
-            out["narration_provider_models"] = {**existing, **narration_pm_patch}
+    model_catalog_patch = _collect_flat_model_catalog_from_env("MODEL_CATALOG_JSON")
+    if model_catalog_patch:
+        existing = out.get("model_catalog")
+        if isinstance(existing, list):
+            merged: list[str] = []
+            seen: set[str] = set()
+            for model in [*existing, *model_catalog_patch]:
+                if model not in seen:
+                    merged.append(model)
+                    seen.add(model)
+            out["model_catalog"] = merged
         else:
-            out["narration_provider_models"] = narration_pm_patch
+            out["model_catalog"] = model_catalog_patch
 
-    narration_cat_patch = _collect_model_catalog_from_env(
-        "NARRATION_PROVIDER_MODEL_CATALOG_JSON"
-    )
-    if narration_cat_patch:
-        existing = out.get("narration_provider_model_catalog")
+    model_defaults_patch = _collect_model_map_from_env("MODEL_DEFAULTS_JSON")
+    if model_defaults_patch:
+        existing = out.get("model_defaults")
         if isinstance(existing, dict):
-            out["narration_provider_model_catalog"] = {
-                **existing,
-                **narration_cat_patch,
-            }
+            out["model_defaults"] = {**existing, **model_defaults_patch}
         else:
-            out["narration_provider_model_catalog"] = narration_cat_patch
+            out["model_defaults"] = model_defaults_patch
 
-    polish_pm_patch = _collect_model_map_from_env(
-        "NARRATION_POLISH_PROVIDER_MODELS_JSON"
-    )
-    if polish_pm_patch:
-        existing = out.get("narration_polish_provider_models")
+    if tts_defaults_patch:
+        existing = out.get("tts_defaults")
         if isinstance(existing, dict):
-            out["narration_polish_provider_models"] = {**existing, **polish_pm_patch}
+            out["tts_defaults"] = {**existing, **tts_defaults_patch}
         else:
-            out["narration_polish_provider_models"] = polish_pm_patch
+            out["tts_defaults"] = dict(tts_defaults_patch)
 
-    polish_cat_patch = _collect_model_catalog_from_env(
-        "NARRATION_POLISH_PROVIDER_MODEL_CATALOG_JSON"
-    )
-    if polish_cat_patch:
-        existing = out.get("narration_polish_provider_model_catalog")
+    if video_defaults_patch:
+        existing = out.get("video_defaults")
         if isinstance(existing, dict):
-            out["narration_polish_provider_model_catalog"] = {
-                **existing,
-                **polish_cat_patch,
-            }
+            out["video_defaults"] = {**existing, **video_defaults_patch}
         else:
-            out["narration_polish_provider_model_catalog"] = polish_cat_patch
+            out["video_defaults"] = dict(video_defaults_patch)
 
     return out
 
@@ -438,22 +384,14 @@ def _env_overrides() -> dict[str, Any]:
 def load_settings(
     *, require_openai: bool = False, require_narration: bool = False
 ) -> Settings:
-    """
-    Load merged Settings.
-
-    - ``require_openai``: raises when the ``openai`` provider key is missing (legacy).
-    - ``require_narration``: raises when the key for ``narration_provider`` is missing
-      (any slug in ``api_keys``, e.g. ``openai``, ``modelscope``).
-    """
     data = load_flat_dict()
     settings = settings_from_dict(data)
     if require_openai:
         settings.require_openai()
     if require_narration:
-        settings.require_api_key(settings.narration_provider)
+        settings.require_api_key(settings.default_provider())
     return settings
 
 
 def clear_settings_cache() -> None:
-    """Reserved for future caching; no-op for now."""
     return None

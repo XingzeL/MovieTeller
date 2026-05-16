@@ -83,12 +83,12 @@ api_keys:
   newapi: "$NEW_API_KEY_NARRATION_FREE"
 
 model_catalog:
-  Qwen/Qwen3-VL-30B-A3B-Instruct: {}
-  qwen2.5-7b-instruct: {}
-  deepseek-v4-flash: {}
-  qwen3-14b: {}
-  qwen3-tts-flash: {}
-  text-embedding-v4: {}
+  - Qwen/Qwen3-VL-30B-A3B-Instruct
+  - qwen2.5-7b-instruct
+  - deepseek-v4-flash
+  - qwen3-14b
+  - qwen3-tts-flash
+  - text-embedding-v4
 
 model_defaults:
   narration: "Qwen/Qwen3-VL-30B-A3B-Instruct"
@@ -118,40 +118,6 @@ model_catalog:
     provider: newapi
     capability: tts
 ```
-
----
-
-## Old Config To Deprecate
-
-以下旧字段应逐步淘汰：
-
-- `narration_provider`
-- `narration_polish_provider`
-- `subtitle_context_embedding_provider`
-- `narration_tts_provider`
-- `narration_speech_provider`
-- `narration_model`
-- `narration_model_index`
-- `narration_polish_model`
-- `narration_polish_model_index`
-- `narration_tts_model`
-- `narration_tts_model_index`
-- `narration_provider_models`
-- `narration_provider_model_catalog`
-- `narration_polish_provider_models`
-- `narration_polish_provider_model_catalog`
-- `tts_provider_model_catalog`
-- `subtitle_context_embedding_model`
-- `narration_speech_voice`
-- `narration_speech_rate`
-- `narration_speech_volume`
-- `narration_speech_pitch`
-- `narration_speech_boundary`
-
-注意：
-
-- 不要第一阶段就删除这些字段
-- 先新增新 schema，再迁移调用，再清理旧字段
 
 ---
 
@@ -249,7 +215,7 @@ model_catalog:
 
 - `gateway_default_provider: str`
 - `api_providers: Mapping[str, str]`
-- `model_catalog: Mapping[str, Mapping[str, Any]] | Mapping[str, Any]`
+- `model_catalog: Sequence[str]`
 - `model_defaults: Mapping[str, str]`
 - `tts_default_voice: str`
 - `tts_default_rate: str`
@@ -278,24 +244,10 @@ model_catalog:
 - `default_tts_pitch() -> str`
 - `default_tts_boundary() -> str`
 
-### Compatibility Rules
-
-在过渡期：
-
-- 若新字段存在，优先使用新字段
-- 若新字段缺失，回退旧字段
-
-例如：
-
-- `default_model_for_capability("narration")`
-  - 优先 `model_defaults.narration`
-  - 回退旧 `narration_provider` + `narration_model*` 体系
-
 ### Acceptance
 
 - 新 schema 可被 `load_settings()` 正确读取
-- 旧 schema 仍能运行
-- 测试中能覆盖“新优先、旧回退”
+- 测试覆盖 capability-first 默认模型解析
 
 ---
 
@@ -388,7 +340,6 @@ model_catalog:
 
 - gateway 可在不显式传 provider/model 的情况下完成 4 类能力调用
 - speech 支持 `newapi`
-- 旧 facade 接口先保留兼容
 
 ---
 
@@ -407,10 +358,7 @@ model_catalog:
 
 ### Current Problem
 
-当前 narration 路径依赖：
-
-- `settings.narration_provider`
-- `settings.narration_options()`
+当前 narration 路径需要从 `Settings` 读取 narration 业务参数与 capability 默认模型。
 
 ### Target
 
@@ -426,14 +374,13 @@ model_catalog:
 
 ### Tasks
 
-1. 移除 `settings.narration_options()` 在业务层的主要责任
-2. 将 `provider_slug` / `model` 从 narration 业务逻辑中抽走
-3. 保留 prompt style / custom prompt 作为 narration 业务参数
-4. 将 logging 中的 provider/model 来源改为 gateway 输出元信息
+1. 将 `provider_slug` / `model` 从 narration 业务逻辑中抽走
+2. 保留 prompt style / custom prompt 作为 narration 业务参数
+3. 将 logging 中的 provider/model 来源改为 gateway 输出元信息
 
 ### Acceptance
 
-- narration 在业务层不再读 `narration_provider`
+- narration 业务层不再自行解析 provider/model
 - narration 测试仍通过
 
 ---
@@ -452,11 +399,7 @@ model_catalog:
 
 ### Current Problem
 
-当前 polish 路径依赖：
-
-- `settings.narration_polish_options()`
-- `narration_polish_provider`
-- `narration_polish_model_index`
+当前 polish 路径仍需要从 `Settings` 读取业务默认值，并把模型解析交给 gateway。
 
 ### Tasks
 
@@ -486,16 +429,12 @@ embedding 调用不再从模块层读取 provider/model。
 
 ### Current Problem
 
-当前路径依赖：
-
-- `subtitle_context_embedding_provider`
-- `subtitle_context_embedding_model`
+当前路径应只依赖 embedding capability，不再单独维护模块级模型配置。
 
 ### Tasks
 
-1. 把 `require_subtitle_context_embedding_model()` 的职责迁移到 gateway
-2. `embedding.py` 改用 `gateway.embed_texts(...)`
-3. `index.py` 中记录实际使用的 model 作为 metadata，而不是从 config 直接读
+1. `embedding.py` 改用 `gateway.embed_texts(...)`
+2. `index.py` 中记录实际使用的 model 作为 metadata，而不是从 config 直接读
 
 ### Acceptance
 
@@ -520,10 +459,7 @@ TTS 模块只关心文本和合成参数，不再自己解析 provider/model。
 
 ### Current Problem
 
-当前 TTS 设计存在两个问题：
-
-1. `narration_speech_options()` 混合了解析 provider/model/voice
-2. `tts_provider_model_catalog` 实际被当成 voice catalog
+当前 TTS 设计需要彻底收口到 `model_defaults.tts` + `tts_defaults.*`。
 
 ### Tasks
 
@@ -539,7 +475,7 @@ TTS 模块只关心文本和合成参数，不再自己解析 provider/model。
 
 ### Acceptance
 
-- `narration_speech` 业务层不再依赖 `narration_tts_provider`
+- `narration_speech` 业务层不再依赖模块级 provider/model 配置
 - `newapi` TTS 可以走通
 - `edge_tts` 仍可作为兼容或 fallback 路径
 
@@ -789,4 +725,3 @@ pipeline 仍然从 `settings` 拉：
 - manual test `MODEL_OVERRIDE`
 
 但生产/常规代码路径不依赖这些 override。
-

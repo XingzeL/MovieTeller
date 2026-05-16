@@ -21,11 +21,10 @@ def test_word_budget_helpers():
 def test_polish_narration_uses_injected_client_and_enforces_budget():
     settings = settings_from_dict(
         {
-            "api_keys": {"volcengine": "sk-test"},
-            "api_base_urls": {"volcengine": "https://example.test/v1"},
-            "narration_provider": "volcengine",
-            "narration_polish_provider_models": {"volcengine": "seed-vision"},
-            "narration_image_model": "fallback-model",
+            "gateway": {"default_provider": "newapi"},
+            "api_keys": {"newapi": "sk-test"},
+            "api_providers": {"newapi": "https://example.test/v1"},
+            "model_defaults": {"polish": "seed-vision"},
             "narration_polish_target_wpm": 120,
             "narration_polish_cefr_level": "B1",
             "narration_polish_strength": "strong",
@@ -48,7 +47,7 @@ def test_polish_narration_uses_injected_client_and_enforces_budget():
         settings=settings,
         client_factory=lambda _k, _b: fake_client,
     )
-    assert result.provider == "volcengine"
+    assert result.provider == "newapi"
     assert result.model == "seed-vision"
     assert result.target_word_count == 5
     assert count_words(result.polished_text) <= result.target_word_count
@@ -59,9 +58,10 @@ def test_polish_narration_uses_injected_client_and_enforces_budget():
 def test_polish_narration_respects_explicit_provider_and_model_overrides():
     settings = settings_from_dict(
         {
-            "api_keys": {"openai": "sk-openai"},
-            "narration_polish_provider_models": {"openai": "gpt-4.1-mini"},
-            "narration_image_model": "fallback-model",
+            "gateway": {"default_provider": "newapi"},
+            "api_keys": {"newapi": "sk-openai"},
+            "api_providers": {"newapi": "https://example.test/v1"},
+            "model_defaults": {"polish": "gpt-4.1-mini"},
         }
     )
 
@@ -73,10 +73,7 @@ def test_polish_narration_respects_explicit_provider_and_model_overrides():
         client.chat.completions.create.return_value = resp
         return client
 
-    options = settings.narration_polish_options(
-        provider_slug="openai",
-        model="gpt-4.1-nano",
-    )
+    options = settings.narration_polish_options()
     result = polish_narration_text(
         "A student receives a letter and looks down at it in class.",
         3.0,
@@ -84,28 +81,17 @@ def test_polish_narration_respects_explicit_provider_and_model_overrides():
         settings=settings,
         client_factory=fake_client_factory,
     )
-    assert result.provider == "openai"
-    assert result.model == "gpt-4.1-nano"
+    assert result.provider == "newapi"
+    assert result.model == "gpt-4.1-mini"
 
 
 def test_polish_narration_uses_dedicated_provider_and_catalog_index():
     settings = settings_from_dict(
         {
-            "api_keys": {"volcengine": "sk-volc", "glm": "sk-glm"},
-            "api_base_urls": {
-                "volcengine": "https://volc.example/v1",
-                "glm": "https://glm.example/v4",
-            },
-            "narration_provider": "volcengine",
-            "narration_polish_provider": "glm",
-            "narration_provider_model_catalog": {
-                "volcengine": ["vision-a", "vision-b"],
-            },
-            "narration_polish_provider_model_catalog": {
-                "glm": ["text-a", "text-b"],
-            },
-            "narration_polish_model_index": 1,
-            "narration_image_model": "fallback-model",
+            "gateway": {"default_provider": "newapi"},
+            "api_keys": {"newapi": "sk-new"},
+            "api_providers": {"newapi": "https://newapi.example/v1"},
+            "model_defaults": {"polish": "text-b"},
         }
     )
 
@@ -125,5 +111,5 @@ def test_polish_narration_uses_dedicated_provider_and_catalog_index():
         settings=settings,
         client_factory=fake_client_factory,
     )
-    assert result.provider == "glm"
+    assert result.provider == "newapi"
     assert result.model == "text-b"
