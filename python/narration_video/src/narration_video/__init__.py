@@ -1,4 +1,4 @@
-from narration_video.render import render_narrated_video
+from narration_video.render import render_narrated_video, render_video_with_soft_subtitles
 from narration_video.subtitles import (
     NarrationSubtitleBuildResult,
     build_subtitled_narration_srt,
@@ -11,4 +11,5 @@ __all__ = [
     "NarrationVideoRenderResult",
     "build_subtitled_narration_srt",
     "render_narrated_video",
+    "render_video_with_soft_subtitles",
 ]

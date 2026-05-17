@@ -13,7 +13,10 @@ Run from the repo root:
 
 Behavior:
 1. Run narration/polish first and persist text JSON immediately.
-2. Then try TTS + embed video.
+2. Write a human-readable script (.manual.pipeline.script.txt) from that payload.
+3. Merge extracted SRT + narrated segments into ``{stem}.final.subtitled.srt``, then remux
+   ``{stem}.narration_softsubs.mp4`` with **mov_text** soft subtitles (no TTS; original audio kept).
+4. When ``ENABLE_SPEECH_AND_VIDEO`` is True: TTS + full narrated video as before.
 
 If TTS fails, the text JSON is still preserved on disk.
 
@@ -29,9 +32,9 @@ from dataclasses import replace
 from pathlib import Path
 
 
-VIDEO_PATH = "test_artifacts/harrypotter_long.mp4"
-OUTPUT_ROOT = "test_artifacts/harrypotter_long_manual_05162145"
-ENABLE_SPEECH_AND_VIDEO = True
+VIDEO_PATH = "test_artifacts/harrypotter_smoke1.mp4"
+OUTPUT_ROOT = "test_artifacts/harrypotter_long_manual_05171201"
+ENABLE_SPEECH_AND_VIDEO = False
 
 
 def _repo_root() -> Path:
@@ -54,6 +57,7 @@ def _ensure_paths() -> None:
         root / "python" / "narration_speech" / "src",
         root / "python" / "narration_video" / "src",
         root / "python" / "movie_pipeline" / "src",
+        root / "python" / "pipeline_transcript" / "src",
         root / "python" / "rerank" / "src",
     ):
         if sub.is_dir():
@@ -62,6 +66,21 @@ def _ensure_paths() -> None:
 
 def _slug_millis(value: float) -> str:
     return f"{int(round(float(value) * 1000.0)):08d}"
+
+
+def _write_readable_script_from_payload(
+    payload: dict[str, object],
+    output_path: Path,
+    *,
+    source_path: Path,
+) -> None:
+    """Write plain-text script (subtitle context + narration) via pipeline_transcript."""
+    from pipeline_transcript import build_readable_script
+
+    if not isinstance(payload.get("narratedSegments"), list) or not payload["narratedSegments"]:
+        return
+    body = build_readable_script(payload, source_path=source_path)
+    output_path.write_text(body, encoding="utf-8")
 
 
 def _load_existing_payload(text_json_path: Path) -> dict[str, object] | None:
@@ -248,20 +267,61 @@ def main() -> int:
             encoding="utf-8",
         )
 
+    text_script_path = output_root / f"{stem}.manual.pipeline.script.txt"
+    _write_readable_script_from_payload(
+        text_payload,
+        text_script_path,
+        source_path=text_json_path,
+    )
+
     if not ENABLE_SPEECH_AND_VIDEO:
-        print(
-            json.dumps(
-                {
-                    "video": str(video_path),
-                    "outputRoot": str(output_root),
-                    "textJsonPath": str(text_json_path),
-                    "narratedSegments": len(text_payload.get("narratedSegments", [])),
-                    "speechAttempted": False,
-                },
-                ensure_ascii=False,
-                indent=2,
+        softsubs_video_path = output_root / f"{stem}.narration_softsubs.mp4"
+        final_srt_path = output_root / f"{stem}.final.subtitled.srt"
+        source_srt_path = output_root / f"{stem}.extracted.srt"
+        subtitle_merge: dict[str, object] | None = None
+        softsubs_error: str | None = None
+        try:
+            from narration_video import build_subtitled_narration_srt, render_video_with_soft_subtitles
+
+            if not source_srt_path.is_file():
+                raise FileNotFoundError(f"Missing extracted subtitles: {source_srt_path}")
+            subtitle_result = build_subtitled_narration_srt(
+                speech_video_json_path=str(text_json_path),
+                source_srt_path=str(source_srt_path),
+                output_srt_path=str(final_srt_path),
             )
-        )
+            subtitle_merge = {
+                "sourceSrtPath": subtitle_result.source_srt_path,
+                "speechVideoJsonPath": subtitle_result.speech_video_json_path,
+                "outputSrtPath": subtitle_result.output_srt_path,
+                "insertedCueCount": subtitle_result.inserted_cue_count,
+                "totalCueCount": subtitle_result.total_cue_count,
+            }
+            render_video_with_soft_subtitles(
+                str(video_path),
+                subtitle_srt_path=str(final_srt_path),
+                output_path=str(softsubs_video_path),
+                settings=settings,
+            )
+        except Exception as exc:
+            softsubs_error = str(exc)
+
+        summary: dict[str, object] = {
+            "video": str(video_path),
+            "outputRoot": str(output_root),
+            "textJsonPath": str(text_json_path),
+            "textScriptPath": str(text_script_path),
+            "narratedSegments": len(text_payload.get("narratedSegments", [])),
+            "speechAttempted": False,
+            "extractedSrtPath": str(source_srt_path),
+            "finalSubtitledSrtPath": str(final_srt_path),
+            "softSubsVideoPath": str(softsubs_video_path),
+        }
+        if subtitle_merge is not None:
+            summary["subtitleMerge"] = subtitle_merge
+        if softsubs_error is not None:
+            summary["softSubsError"] = softsubs_error
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
         return 0
 
     try:
@@ -306,6 +366,7 @@ def main() -> int:
                     "video": str(video_path),
                     "outputRoot": str(output_root),
                     "textJsonPath": str(text_json_path),
+                    "textScriptPath": str(text_script_path),
                     "narratedSegments": len(text_payload.get("narratedSegments", [])),
                     "speechAttempted": True,
                     "speechSucceeded": False,
@@ -322,6 +383,12 @@ def main() -> int:
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    speech_video_script_path = output_root / f"{stem}.manual.pipeline.speech_video.script.txt"
+    _write_readable_script_from_payload(
+        payload,
+        speech_video_script_path,
+        source_path=speech_json_path,
+    )
 
     print(
         json.dumps(
@@ -329,7 +396,9 @@ def main() -> int:
                 "video": str(video_path),
                 "outputRoot": str(output_root),
                 "textJsonPath": str(text_json_path),
+                "textScriptPath": str(text_script_path),
                 "speechJsonPath": str(speech_json_path),
+                "speechVideoScriptPath": str(speech_video_script_path),
                 "audioDir": str(output_root / f"{stem}.narration_audio"),
                 "videoOutput": str(output_root / f"{stem}.narrated.mp4"),
                 "narratedSegments": len(payload.get("narratedSegments", [])),

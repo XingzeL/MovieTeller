@@ -61,27 +61,50 @@ def _build_narration_cues(payload: dict[str, Any]) -> list[SubtitleCue]:
     for seg in segments:
         if not isinstance(seg, dict):
             continue
-        speech = seg.get("speech")
-        if not isinstance(speech, dict):
+        built = _narration_segment_window_and_text(seg)
+        if built is None:
             continue
-        start_sec = float(seg["startSec"])
-        audio_duration_sec = float(
+        start_sec, duration_sec, text = built
+        cues.extend(
+            _split_segment_into_cues(text=text, start_sec=start_sec, duration_sec=duration_sec)
+        )
+    return cues
+
+
+def _narration_segment_window_and_text(seg: dict[str, Any]) -> tuple[float, float, str] | None:
+    """Segment time span and narration text for SRT cues (with or without synthesized speech)."""
+    start_sec = float(seg["startSec"])
+    speech = seg.get("speech")
+    if isinstance(speech, dict):
+        duration_sec = float(
             speech.get("audioDurationSec")
             or speech.get("targetDurationSec")
             or seg.get("durationSec")
             or max(0.0, float(seg["endSec"]) - start_sec)
         )
         text = str(speech.get("text") or seg.get("speechText") or seg.get("text") or "").strip()
-        if not text or audio_duration_sec <= 0:
-            continue
-        cues.extend(_split_segment_into_cues(text=text, start_sec=start_sec, duration_sec=audio_duration_sec))
-    return cues
+    else:
+        text = str(seg.get("speechText") or seg.get("text") or "").strip()
+        polish = seg.get("polish")
+        if isinstance(polish, dict) and polish.get("targetDurationSec") is not None:
+            duration_sec = float(polish["targetDurationSec"])
+        elif seg.get("durationSec") is not None:
+            duration_sec = float(seg["durationSec"])
+        else:
+            duration_sec = max(0.0, float(seg["endSec"]) - start_sec)
+    if not text or duration_sec <= 0:
+        return None
+    return (start_sec, duration_sec, text)
 
 
 def _split_segment_into_cues(*, text: str, start_sec: float, duration_sec: float) -> list[SubtitleCue]:
     parts = [part.strip() for part in _PUNCT_SPLIT_RE.split(text) if part and part.strip()]
     if not parts:
-        return []
+        single = text.strip()
+        if not single:
+            return []
+        end_sec = float(start_sec) + float(duration_sec)
+        return [SubtitleCue(start_sec=float(start_sec), end_sec=end_sec, text=single)]
     weighted = [max(1, _visible_char_weight(part)) for part in parts]
     total_weight = sum(weighted)
     if total_weight <= 0:

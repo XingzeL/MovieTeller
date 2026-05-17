@@ -167,3 +167,84 @@ def render_narrated_video(
         subtitle_srt_path=(str(subtitle_path) if subtitle_path is not None else None),
         timing_render_sec=timing_render_sec,
     )
+
+
+def render_video_with_soft_subtitles(
+    video_path: str,
+    *,
+    subtitle_srt_path: str,
+    output_path: str,
+    options: NarrationVideoOptions | None = None,
+    ffmpeg_bin: str | None = None,
+    settings=None,
+    subprocess_run: Callable[..., Any] = subprocess.run,
+) -> NarrationVideoRenderResult:
+    """
+    Remux source video with an SRT as a **mov_text** subtitle track (no narration audio).
+
+    Original video and audio streams are copied when present; no TTS or mix step.
+    """
+    src = Path(video_path)
+    if not src.is_file():
+        raise FileNotFoundError(f"Video not found: {src}")
+    subtitle_path = Path(subtitle_srt_path)
+    if not subtitle_path.is_file():
+        raise FileNotFoundError(f"Subtitle file not found: {subtitle_path}")
+
+    cfg = settings if settings is not None else load_settings()
+    resolved_options = options or cfg.narration_video_options(ffmpeg_bin=ffmpeg_bin)
+    ffprobe_bin = ffprobe_path_for(resolved_options.ffmpeg_bin)
+    video_duration_sec = probe_duration_sec(str(src), ffprobe_bin=ffprobe_bin)
+    has_audio = _video_has_audio_stream(
+        str(src), ffprobe_bin=ffprobe_bin, subprocess_run=subprocess_run
+    )
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd: list[str] = [
+        resolved_options.ffmpeg_bin,
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        str(src),
+        "-i",
+        str(subtitle_path),
+        "-map",
+        "0:v:0",
+    ]
+    if has_audio:
+        cmd.extend(["-map", "0:a:0", "-c:a", "copy"])
+    cmd.extend(
+        [
+            "-map",
+            "1:0",
+            "-c:v",
+            "copy",
+            "-c:s",
+            "mov_text",
+            "-movflags",
+            "+faststart",
+            str(out),
+        ]
+    )
+    t0 = time.perf_counter()
+    proc = subprocess_run(cmd, capture_output=True, text=True, check=False)
+    timing_render_sec = time.perf_counter() - t0
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg soft-subtitle mux failed ({proc.returncode}): {(proc.stderr or '').strip()}"
+        )
+    return NarrationVideoRenderResult(
+        video_path=str(src),
+        output_path=str(out),
+        segment_count=0,
+        video_duration_sec=video_duration_sec,
+        background_audio_volume=resolved_options.background_audio_volume,
+        speech_audio_volume=resolved_options.speech_audio_volume,
+        subtitle_srt_path=str(subtitle_path),
+        timing_render_sec=timing_render_sec,
+    )
