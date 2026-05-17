@@ -109,9 +109,7 @@ def narrate_from_frames(
         system_message=system_msg,
         user_text=user_txt,
         frames_base64_png=list(frames.frames_base64_png),
-        model=options.model,
         settings=settings,
-        provider_slug=options.provider_slug,
         client_factory=client_factory,
     )
     api_sec = time.perf_counter() - t_api0

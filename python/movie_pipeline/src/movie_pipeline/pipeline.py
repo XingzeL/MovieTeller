@@ -81,7 +81,6 @@ def narrate_analysis_candidates(
     *,
     video_path: str,
     subtitle_context_index_dir: str | None = None,
-    max_candidates: int | None = None,
     narration_options: NarrationOptions,
     frame_source_options: FrameSourceOptions,
     subtitle_context_retrieve_options: SubtitleContextRetrieveOptions | None = None,
@@ -111,8 +110,6 @@ def narrate_analysis_candidates(
         speech_dir.mkdir(parents=True, exist_ok=True)
 
     candidates = analysis.narration_candidates
-    if max_candidates is not None:
-        candidates = candidates[: max(0, int(max_candidates))]
 
     out: list[NarratedSegment] = []
     for idx, seg in enumerate(candidates, start=1):
@@ -386,7 +383,6 @@ def run_pipeline(
         analysis,
         video_path=video_path,
         subtitle_context_index_dir=resolved_subtitle_context_index_dir,
-        max_candidates=pipeline_options.max_candidates,
         narration_options=pipeline_options.narration_options,
         frame_source_options=resolved_frame_source_options,
         subtitle_context_retrieve_options=pipeline_options.subtitle_context_retrieve_options,

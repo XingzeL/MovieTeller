@@ -67,12 +67,18 @@ def _package_default_yaml() -> Path:
     return Path(__file__).resolve().parent / "config" / "default.yaml"
 
 
-def _repo_root_config_paths() -> list[Path]:
-    cwd = Path.cwd()
-    return [
-        cwd / "config" / "local.yaml",
-        cwd.parent / "config" / "local.yaml",
-    ]
+def _find_repo_local_yaml() -> Path | None:
+    """Resolve ``config/local.yaml`` by walking up from :func:`os.getcwd` (IDEs often use a subdir)."""
+    here = Path.cwd().resolve()
+    for _ in range(48):
+        candidate = here / "config" / "local.yaml"
+        if candidate.is_file():
+            return candidate
+        parent = here.parent
+        if parent == here:
+            break
+        here = parent
+    return None
 
 
 def _load_repo_dotenv() -> None:
@@ -176,10 +182,9 @@ def load_flat_dict() -> dict[str, Any]:
     if mt_config:
         merged = _deep_merge(merged, _load_yaml_file(Path(mt_config)))
 
-    for p in _repo_root_config_paths():
-        if p.is_file():
-            merged = _deep_merge(merged, _load_yaml_file(p))
-            break
+    local_yaml = _find_repo_local_yaml()
+    if local_yaml is not None:
+        merged = _deep_merge(merged, _load_yaml_file(local_yaml))
 
     merged = _deep_merge(merged, _env_overrides())
     return merged

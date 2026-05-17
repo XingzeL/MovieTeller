@@ -77,8 +77,8 @@ def _coerce_bool(value: Any, fallback: bool) -> bool:
 
 @dataclass(frozen=True)
 class NarrationOptions:
-    provider_slug: str
-    model: str
+    """Prompt-only options; narration model/provider come from gateway ``settings``."""
+
     prompt_style: str
     custom_prompt: str = ""
 
@@ -127,10 +127,10 @@ class SubtitleContextRetrieveOptions:
 
 @dataclass(frozen=True)
 class SubtitleExtractionOptions:
-    videocaptioner_bin: str | None
-    asr: str
-    language: str
-    timeout_sec: float | None
+    videocaptioner_bin: str | None  # 抽字幕可执行文件路径，None表示不覆盖
+    asr: str  # 抽字幕ASR模型，None表示不覆盖
+    language: str  # 抽字幕语言，None表示不覆盖
+    timeout_sec: float | None  # 抽字幕超时时间，None表示不覆盖
 
 
 @dataclass(frozen=True)
@@ -268,24 +268,13 @@ class Settings:
     def narration_options(
         self,
         *,
-        provider_slug: str | None = None,
-        model: str | None = None,
         prompt_style: str | None = None,
         custom_prompt: str = "",
     ) -> NarrationOptions:
-        resolved_provider = (
-            str(provider_slug or self.provider_for_capability("narration")).strip().lower()
-            or self.provider_for_capability("narration")
-        )
-        resolved_model = str(model or self.default_model_for_capability("narration")).strip()
-        if not resolved_model:
-            raise ValueError("narration model is empty")
         resolved_prompt_style = (
             str(prompt_style or self.default_prompt_style).strip() or "documentary"
         )
         return NarrationOptions(
-            provider_slug=resolved_provider,
-            model=resolved_model,
             prompt_style=resolved_prompt_style,
             custom_prompt=str(custom_prompt or ""),
         )

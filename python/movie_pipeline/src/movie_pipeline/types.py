@@ -99,7 +99,6 @@ class MoviePipelineOptions:
     min_gap_sec: float = 1.0
     subtitle_guard_sec: float = 0.25
     ffprobe_bin: str = "ffprobe"
-    max_candidates: int | None = None
     subtitle_context_index_dir: str | None = None
     build_subtitle_context: bool = False
     speech_output_dir: str | None = None

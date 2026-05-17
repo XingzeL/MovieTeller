@@ -69,8 +69,8 @@ ffmpeg_path: /usr/bin/ffmpeg
         try:
             with mock.patch("movieteller_config.loader._load_repo_dotenv", lambda: None):
                 with mock.patch(
-                    "movieteller_config.loader._repo_root_config_paths",
-                    return_value=[],
+                    "movieteller_config.loader._find_repo_local_yaml",
+                    return_value=None,
                 ):
                     with mock.patch.dict(
                         os.environ, {"MOVIE_TELLER_CONFIG": path}, clear=False
@@ -101,6 +101,24 @@ ffmpeg_path: /usr/bin/ffmpeg
                 self.assertEqual(d.get("max_frames_per_segment"), 7)
         finally:
             Path(path).unlink(missing_ok=True)
+
+    def test_local_yaml_found_in_ancestor_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "config").mkdir(parents=True)
+            (root / "config" / "local.yaml").write_text(
+                "max_frames_per_segment: 99\n", encoding="utf-8"
+            )
+            nested = root / "python" / "manual_tests"
+            nested.mkdir(parents=True)
+            cwd = os.getcwd()
+            try:
+                os.chdir(nested)
+                with mock.patch("movieteller_config.loader._load_repo_dotenv", lambda: None):
+                    d = load_flat_dict()
+                self.assertEqual(d.get("max_frames_per_segment"), 99)
+            finally:
+                os.chdir(cwd)
 
     def test_require_openai_raises(self):
         s = settings_from_dict({"openai_api_key": None})
@@ -200,8 +218,8 @@ ffmpeg_path: /usr/bin/ffmpeg
     def test_modelscope_env(self):
         with mock.patch("movieteller_config.loader._load_repo_dotenv", lambda: None):
             with mock.patch(
-                "movieteller_config.loader._repo_root_config_paths",
-                return_value=[],
+                "movieteller_config.loader._find_repo_local_yaml",
+                return_value=None,
             ):
                 with mock.patch.dict(
                     os.environ,
@@ -288,7 +306,10 @@ ffmpeg_path: /usr/bin/ffmpeg
         self.assertEqual(s.default_model_for_capability("embedding"), "text-embedding-v4")
         self.assertEqual(s.provider_for_capability("narration"), "newapi")
         self.assertEqual(s.provider_for_capability("tts"), "dashscope")
-        self.assertEqual(s.narration_options().model, "Qwen/Qwen3-VL-30B-A3B-Instruct")
+        self.assertEqual(
+            s.default_model_for_capability("narration"),
+            "Qwen/Qwen3-VL-30B-A3B-Instruct",
+        )
         self.assertEqual(s.narration_polish_options().model, "qwen2.5-7b-instruct")
         speech_options = s.narration_speech_options()
         self.assertEqual(speech_options.provider_slug, "dashscope")

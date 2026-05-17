@@ -49,7 +49,6 @@ ENABLE_EMBED_VIDEO = False
 # Narration candidate filtering.
 MIN_GAP_SEC = 1.0
 SUBTITLE_GUARD_SEC = 0.25
-MAX_CANDIDATES: int | None = None
 
 
 def _repo_root() -> Path:
@@ -171,7 +170,6 @@ def main() -> int:
     pipeline_options = MoviePipelineOptions(
         min_gap_sec=MIN_GAP_SEC,
         subtitle_guard_sec=SUBTITLE_GUARD_SEC,
-        max_candidates=MAX_CANDIDATES,
         subtitle_context_index_dir=subtitle_context_index_dir,
         speech_output_dir=(str(speech_output_dir) if ENABLE_SPEECH else None),
         embed_video=ENABLE_EMBED_VIDEO,

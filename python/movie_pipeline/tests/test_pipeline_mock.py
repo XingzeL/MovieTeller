@@ -13,6 +13,13 @@ from movie_pipeline import (
 )
 from subtitle_analysis import analyze_srt_text
 
+# One subtitle cue with a single qualifying narration gap before it.
+_SINGLE_GAP_SRT = """1
+00:00:01,250 --> 00:00:02,250
+x
+"""
+_SINGLE_GAP_VIDEO_DUR = 2.3
+
 
 def settings_to_frame_source_options(settings):
     return FrameSourceOptions(
@@ -76,7 +83,6 @@ b
     segments = narrate_analysis_candidates(
         analysis,
         video_path="demo.mp4",
-        max_candidates=2,
         narration_options=settings.narration_options(prompt_style="documentary"),
         frame_source_options=frame_source_options,
         narrator=fake_narrator,
@@ -99,7 +105,7 @@ b
 """
     analysis = analyze_srt_text(
         raw,
-        video_duration_sec=8.0,
+        video_duration_sec=5.2,
         min_gap_sec=1.0,
         subtitle_guard_sec=0.25,
     )
@@ -115,7 +121,6 @@ b
         analysis,
         video_path="demo.mp4",
         subtitle_context_index_dir="demo.subtitle_context",
-        max_candidates=1,
         narration_options=settings.narration_options(),
         frame_source_options=frame_source_options,
         narrator=fake_narrator,
@@ -128,10 +133,7 @@ b
 
 
 def test_run_pipeline_returns_timed_json_payload():
-    raw = """1
-00:00:01,000 --> 00:00:02,000
-x
-"""
+    raw = _SINGLE_GAP_SRT
 
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
         return ("narration", end_sec - start_sec)
@@ -139,10 +141,9 @@ x
     from tempfile import TemporaryDirectory
     settings = make_settings()
     pipeline_options = MoviePipelineOptions(
-        video_duration_sec=4.0,
+        video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
         min_gap_sec=0.5,
-        subtitle_guard_sec=0.0,
-        max_candidates=1,
+        subtitle_guard_sec=0.25,
         narration_options=settings.narration_options(),
     )
 
@@ -163,10 +164,7 @@ x
 
 
 def test_run_pipeline_detects_default_subtitle_context_index_dir():
-    raw = """1
-00:00:01,000 --> 00:00:02,000
-x
-"""
+    raw = _SINGLE_GAP_SRT
 
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
         return ("narration", end_sec - start_sec)
@@ -174,10 +172,9 @@ x
     from tempfile import TemporaryDirectory
     settings = make_settings()
     pipeline_options = MoviePipelineOptions(
-        video_duration_sec=4.0,
+        video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
         min_gap_sec=0.5,
-        subtitle_guard_sec=0.0,
-        max_candidates=1,
+        subtitle_guard_sec=0.25,
         narration_options=settings.narration_options(),
     )
 
@@ -201,10 +198,7 @@ x
 
 
 def test_run_pipeline_ignores_incomplete_default_subtitle_context_index_dir():
-    raw = """1
-00:00:01,000 --> 00:00:02,000
-x
-"""
+    raw = _SINGLE_GAP_SRT
 
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
         return ("narration", end_sec - start_sec)
@@ -212,10 +206,9 @@ x
     from tempfile import TemporaryDirectory
     settings = make_settings()
     pipeline_options = MoviePipelineOptions(
-        video_duration_sec=4.0,
+        video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
         min_gap_sec=0.5,
-        subtitle_guard_sec=0.0,
-        max_candidates=1,
+        subtitle_guard_sec=0.25,
         narration_options=settings.narration_options(),
     )
 
@@ -235,10 +228,7 @@ x
 
 
 def test_run_pipeline_can_polish_output():
-    raw = """1
-00:00:01,000 --> 00:00:02,000
-x
-"""
+    raw = _SINGLE_GAP_SRT
 
     class FakePolishResult:
         polished_text = "short line"
@@ -269,10 +259,9 @@ x
     from tempfile import TemporaryDirectory
     settings = make_settings(narration_polish_enabled=True)
     pipeline_options = MoviePipelineOptions(
-        video_duration_sec=4.0,
+        video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
         min_gap_sec=0.5,
-        subtitle_guard_sec=0.0,
-        max_candidates=1,
+        subtitle_guard_sec=0.25,
         narration_options=settings.narration_options(),
         polish_options=settings.narration_polish_options(),
     )
@@ -296,10 +285,7 @@ x
 
 
 def test_run_pipeline_can_synthesize_speech():
-    raw = """1
-00:00:01,000 --> 00:00:02,000
-x
-"""
+    raw = _SINGLE_GAP_SRT
 
     class FakeSpeechResult:
         text = "short line"
@@ -346,10 +332,9 @@ x
             srt_path=str(srt),
             video_path="demo.mp4",
             pipeline_options=MoviePipelineOptions(
-                video_duration_sec=4.0,
+                video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
                 min_gap_sec=0.5,
-                subtitle_guard_sec=0.0,
-                max_candidates=1,
+                subtitle_guard_sec=0.25,
                 speech_output_dir=str(Path(tmp) / "speech"),
                 narration_options=settings.narration_options(),
                 speech_options=settings.narration_speech_options(),
@@ -365,10 +350,7 @@ x
 
 
 def test_run_pipeline_can_render_video():
-    raw = """1
-00:00:01,000 --> 00:00:02,000
-x
-"""
+    raw = _SINGLE_GAP_SRT
 
     class FakeSpeechResult:
         text = "short line"
@@ -424,10 +406,9 @@ x
             srt_path=str(srt),
             video_path="demo.mp4",
             pipeline_options=MoviePipelineOptions(
-                video_duration_sec=4.0,
+                video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
                 min_gap_sec=0.5,
-                subtitle_guard_sec=0.0,
-                max_candidates=1,
+                subtitle_guard_sec=0.25,
                 speech_output_dir=str(Path(tmp) / "speech"),
                 embed_video=True,
                 narration_options=settings.narration_options(),
@@ -451,7 +432,6 @@ def test_translate_product_request_to_workflow_options_applies_level_defaults():
             "cefrLevel": "A1",
             "enableSpeech": True,
             "enableEmbedVideo": True,
-            "maxCandidates": 2,
         }
     )
     options = translate_product_request_to_workflow_options(req, settings)
@@ -460,7 +440,6 @@ def test_translate_product_request_to_workflow_options_applies_level_defaults():
     assert options.enable_speech is True
     assert options.enable_embed_video is True
     assert options.movie_pipeline_options is not None
-    assert options.movie_pipeline_options.max_candidates == 2
     assert options.movie_pipeline_options.narration_options.prompt_style == "movie_commentary"
     assert options.movie_pipeline_options.polish_options is not None
     assert options.movie_pipeline_options.polish_options.cefr_level == "A1"
@@ -471,10 +450,7 @@ def test_run_full_workflow_reuses_existing_artifacts_and_runs_pipeline(tmp_path)
     video.write_bytes(b"fake")
     srt = tmp_path / "demo.extracted.srt"
     srt.write_text(
-        """1
-00:00:01,000 --> 00:00:02,000
-x
-""",
+        _SINGLE_GAP_SRT,
         encoding="utf-8",
     )
     pool_dir = tmp_path / "demo.frame_pool"
@@ -505,11 +481,10 @@ x
         frame_pool_build_options=options.frame_pool_build_options,
         subtitle_context_build_options=options.subtitle_context_build_options,
         movie_pipeline_options=MoviePipelineOptions(
-            video_duration_sec=4.0,
+            video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
             min_gap_sec=options.movie_pipeline_options.min_gap_sec,
-            subtitle_guard_sec=options.movie_pipeline_options.subtitle_guard_sec,
+            subtitle_guard_sec=0.25,
             ffprobe_bin=options.movie_pipeline_options.ffprobe_bin,
-            max_candidates=options.movie_pipeline_options.max_candidates,
             subtitle_context_index_dir=options.movie_pipeline_options.subtitle_context_index_dir,
             build_subtitle_context=options.movie_pipeline_options.build_subtitle_context,
             speech_output_dir=options.movie_pipeline_options.speech_output_dir,

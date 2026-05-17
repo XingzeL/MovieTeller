@@ -25,7 +25,6 @@ class ProductRequest:
     enable_embed_video: bool | None = None
     enable_subtitle_context: bool | None = None
     enable_polish: bool | None = None
-    max_candidates: int | None = None
     min_gap_sec: float | None = None
     subtitle_guard_sec: float | None = None
     force_rebuild_subtitles: bool | None = None
@@ -60,9 +59,6 @@ def parse_product_request(payload: Mapping[str, Any] | None) -> ProductRequest:
         enable_embed_video=_coerce_bool(data.get("enableEmbedVideo")),
         enable_subtitle_context=_coerce_bool(data.get("enableSubtitleContext")),
         enable_polish=_coerce_bool(data.get("enablePolish")),
-        max_candidates=(
-            int(data["maxCandidates"]) if data.get("maxCandidates") is not None else None
-        ),
         min_gap_sec=(float(data["minGapSec"]) if data.get("minGapSec") is not None else None),
         subtitle_guard_sec=(
             float(data["subtitleGuardSec"])
@@ -164,7 +160,6 @@ def translate_product_request_to_workflow_options(
             if base.movie_pipeline_options is not None
             else "ffprobe"
         ),
-        max_candidates=request.max_candidates,
         narration_options=narration_options,
         frame_source_options=(
             base.movie_pipeline_options.frame_source_options
@@ -298,7 +293,6 @@ def run_full_workflow(
         min_gap_sec=base_pipeline_options.min_gap_sec,
         subtitle_guard_sec=base_pipeline_options.subtitle_guard_sec,
         ffprobe_bin=base_pipeline_options.ffprobe_bin,
-        max_candidates=base_pipeline_options.max_candidates,
         subtitle_context_index_dir=subtitle_context_index_dir,
         build_subtitle_context=False,
         speech_output_dir=speech_output_dir,

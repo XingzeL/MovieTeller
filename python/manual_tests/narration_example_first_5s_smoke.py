@@ -68,12 +68,6 @@ def main() -> int:
         action="store_true",
         help="输出 JSON（仅非 --narrate 时含 duration、frame_count、base64 总长度等）",
     )
-    ap.add_argument(
-        "--model",
-        default=None,
-        metavar="MODEL_ID",
-        help="覆盖本次请求的模型 id（等价 narrate_segment 的 image_model；可选）",
-    )
     args = ap.parse_args()
 
     root = _repo_root()
@@ -94,7 +88,7 @@ def main() -> int:
 
         timings: dict[str, Any] = {}
         t0 = time.perf_counter()
-        narration_options = settings.narration_options(model=args.model)
+        narration_options = settings.narration_options()
         frame_source_options = FrameSourceOptions(
             ffmpeg_bin=settings.ffmpeg_path,
             max_frames_per_segment=settings.max_frames_per_segment,

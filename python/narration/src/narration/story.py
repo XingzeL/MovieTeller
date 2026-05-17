@@ -14,9 +14,7 @@ def generate_narration(
     system_message: str,
     user_text: str,
     frames_base64_png: list[str],
-    model: str,
     settings: "Settings",
-    provider_slug: str | None = None,
     client_factory: Callable[..., Any] | None = None,
 ) -> str:
     """

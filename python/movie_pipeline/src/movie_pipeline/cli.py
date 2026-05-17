@@ -56,12 +56,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reserved compatibility flag. Pipeline always narrates derived candidates.",
     )
     ap.add_argument(
-        "--max-candidates",
-        type=int,
-        default=None,
-        help="Limit how many narration candidates are sent to narration",
-    )
-    ap.add_argument(
         "--prompt-style",
         default=None,
         help="Prompt style for narration (default: movieteller_config default_prompt_style)",
@@ -194,7 +188,6 @@ def main() -> int:
         min_gap_sec=args.min_gap_sec,
         subtitle_guard_sec=args.subtitle_guard_sec,
         ffprobe_bin=args.ffprobe_bin,
-        max_candidates=args.max_candidates,
         subtitle_context_index_dir=args.subtitle_context_index_dir,
         build_subtitle_context=args.build_subtitle_context,
         speech_output_dir=args.speech_output_dir,

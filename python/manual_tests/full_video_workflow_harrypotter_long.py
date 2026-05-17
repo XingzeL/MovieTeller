@@ -27,14 +27,15 @@ script skips the second visual-understanding pass and continues from speech/vide
 from __future__ import annotations
 
 import json
+import os
 import sys
 from dataclasses import replace
 from pathlib import Path
 
 
-VIDEO_PATH = "test_artifacts/harrypotter_smoke1.mp4"
-OUTPUT_ROOT = "test_artifacts/harrypotter_long_manual_05171201"
-ENABLE_SPEECH_AND_VIDEO = False
+VIDEO_PATH = "test_artifacts/example.mp4"
+OUTPUT_ROOT = "test_artifacts/example1"
+ENABLE_SPEECH_AND_VIDEO = True
 
 
 def _repo_root() -> Path:
@@ -68,6 +69,45 @@ def _slug_millis(value: float) -> str:
     return f"{int(round(float(value) * 1000.0)):08d}"
 
 
+def _key_preview(value: str | None) -> str:
+    if not value:
+        return "<missing>"
+    if len(value) <= 6:
+        return value
+    return f"{value[:6]}..."
+
+
+def _print_runtime_debug(settings) -> None:
+    print(
+        json.dumps(
+            {
+                "debug": {
+                    "cwd": str(Path.cwd()),
+                    "repoRoot": str(_repo_root()),
+                    "env": {
+                        "NEW_API_KEY_NARRATION_FREE_present": bool(os.environ.get("NEW_API_KEY_NARRATION_FREE")),
+                        "TTS_API_KEY_present": bool(os.environ.get("TTS_API_KEY")),
+                    },
+                    "gateway": {
+                        "defaultProvider": settings.default_provider(),
+                        "ttsProvider": settings.provider_for_capability("tts"),
+                    },
+                    "apiProviders": dict(settings.api_providers),
+                    "apiKeys": {
+                        "newapi": _key_preview(settings.get_api_key("newapi")),
+                        "dashscope": _key_preview(settings.get_api_key("dashscope")),
+                    },
+                    "modelDefaults": dict(settings.model_defaults),
+                    "ttsVoice": settings.narration_speech_options().voice,
+                }
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        file=sys.stderr,
+    )
+
+
 def _write_readable_script_from_payload(
     payload: dict[str, object],
     output_path: Path,
@@ -82,7 +122,8 @@ def _write_readable_script_from_payload(
     body = build_readable_script(payload, source_path=source_path)
     output_path.write_text(body, encoding="utf-8")
 
-
+# 试图找到已经存在的payload，如果存在则直接返回，否则运行全流程
+# 返回的内容包含narratedSegments，narratedSegments是一个列表，列表中每个元素是一个字典，字典中包含startSec, endSec, speechText, polish等字段
 def _load_existing_payload(text_json_path: Path) -> dict[str, object] | None:
     if not text_json_path.is_file():
         return None
@@ -235,14 +276,15 @@ def main() -> int:
     output_root.mkdir(parents=True, exist_ok=True)
 
     settings = load_settings(require_narration=True)
-    base = workflow_options_from_settings(settings, output_root=str(output_root))
+    _print_runtime_debug(settings)
+    base = workflow_options_from_settings(settings, output_root=str(output_root)) #这里构造了一个全流程的配置结构，是从配置文件中构建；也可以自己构建
     movie = base.movie_pipeline_options
     if movie is None:
         raise RuntimeError("movie_pipeline_options missing")
 
     stem = video_path.stem
     text_json_path = output_root / f"{stem}.manual.pipeline.json"
-    text_only_options = replace(
+    text_only_options = replace( #这里进行了一些参数的替换
         base,
         enable_speech=False,
         enable_embed_video=False,
@@ -255,7 +297,7 @@ def main() -> int:
             video_options=None,
         ),
     )
-    text_payload = _load_existing_payload(text_json_path)
+    text_payload = _load_existing_payload(text_json_path) 
     if text_payload is None:
         text_payload = run_full_workflow(
             video_path=str(video_path),
