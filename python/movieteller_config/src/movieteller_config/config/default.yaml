@@ -3,7 +3,7 @@
 # PREFIX_BASE_URL, API_KEYS_JSON, API_PROVIDERS_JSON.
 
 openai_base_url: null
-max_frames_per_segment: 24
+max_frames_per_segment: 32
 narration_frame_max_edge: 512
 ffmpeg_path: ffmpeg
 default_prompt_style: documentary

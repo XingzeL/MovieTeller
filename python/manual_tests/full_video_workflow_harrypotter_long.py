@@ -33,15 +33,15 @@ from dataclasses import replace
 from pathlib import Path
 
 
-VIDEO_PATH = "test_artifacts/example.mp4"
-OUTPUT_ROOT = "test_artifacts/example1"
+VIDEO_PATH = "test_artifacts/harrypotter_smoke1.mp4"
+OUTPUT_ROOT = "test_artifacts/smoke2"
 ENABLE_SPEECH_AND_VIDEO = True
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
-
+#不安装多个本地包、又直接跑裸脚本**时，让解释器能找到分散在各 src 下的包
 def _ensure_paths() -> None:
     root = _repo_root()
     for sub in (
@@ -68,7 +68,7 @@ def _ensure_paths() -> None:
 def _slug_millis(value: float) -> str:
     return f"{int(round(float(value) * 1000.0)):08d}"
 
-
+# 如果key长度小于等于6，则直接返回，否则返回前6个字符加上...
 def _key_preview(value: str | None) -> str:
     if not value:
         return "<missing>"
@@ -76,7 +76,7 @@ def _key_preview(value: str | None) -> str:
         return value
     return f"{value[:6]}..."
 
-
+# 打印运行时调试信息
 def _print_runtime_debug(settings) -> None:
     print(
         json.dumps(
@@ -107,7 +107,7 @@ def _print_runtime_debug(settings) -> None:
         file=sys.stderr,
     )
 
-
+# 
 def _write_readable_script_from_payload(
     payload: dict[str, object],
     output_path: Path,
@@ -282,9 +282,11 @@ def main() -> int:
     if movie is None:
         raise RuntimeError("movie_pipeline_options missing")
 
+# 获取视频文件名，用于生成文件名
     stem = video_path.stem
     text_json_path = output_root / f"{stem}.manual.pipeline.json"
-    text_only_options = replace( #这里进行了一些参数的替换
+    # 这里进行了一些参数的替换：替换了enable_speech和enable_embed_video为False，同时替换了movie_pipeline_options为None
+    text_only_options = replace( 
         base,
         enable_speech=False,
         enable_embed_video=False,
