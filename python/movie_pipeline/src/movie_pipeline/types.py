@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Mapping, TypeAlias
 
 from movieteller_config.schema import (
     FramePoolBuildOptions,
@@ -95,16 +95,11 @@ class NarratedSegment:
 
 
 @dataclass(frozen=True)
-class MoviePipelineOptions:
+class NarrationPipelineConfig:
     video_duration_sec: float | None = None
     min_gap_sec: float = 1.0
     subtitle_guard_sec: float = 0.25
     ffprobe_bin: str = "ffprobe"
-    subtitle_context_index_dir: str | None = None
-    build_subtitle_context: bool = False
-    speech_output_dir: str | None = None
-    embed_video: bool = False
-    embed_output_path: str | None = None
     narration_options: NarrationOptions | None = None
     frame_source_options: FrameSourceOptions | None = None
     subtitle_context_build_options: SubtitleContextBuildOptions | None = None
@@ -113,21 +108,8 @@ class MoviePipelineOptions:
     speech_options: NarrationSpeechOptions | None = None
     video_options: NarrationVideoOptions | None = None
 
-
-PipelineRuntimeOptions: TypeAlias = MoviePipelineOptions
-"""Alias for staged naming; same shape as :class:`MoviePipelineOptions`."""
-
-
-@dataclass(frozen=True)
-class FullWorkflowPlan:
-    """Which workflow stages are enabled (see :class:`FullWorkflowOptions`)."""
-
-    extract_subtitles: bool = True
-    build_frame_pool: bool = True
-    build_subtitle_context: bool = True
-    enable_polish: bool = True
-    enable_speech: bool = False
-    enable_embed_video: bool = False
+PipelineRuntimeConfig: TypeAlias = NarrationPipelineConfig
+"""Alias for staged naming; same shape as :class:`NarrationPipelineConfig`."""
 
 
 @dataclass(frozen=True)
@@ -172,10 +154,14 @@ class ArtifactPaths:
 
 
 @dataclass(frozen=True)
-class FullWorkflowOptions:
+class ResolvedExecutionConfig:
+    pipeline: NarrationPipelineConfig
     extract_subtitles: bool = True
     build_frame_pool: bool = True
     build_subtitle_context: bool = True
+    force_rebuild_subtitles: bool = False
+    force_rebuild_frame_pool: bool = False
+    force_rebuild_subtitle_context: bool = False
     enable_polish: bool = True
     enable_speech: bool = False
     enable_embed_video: bool = False
@@ -183,14 +169,88 @@ class FullWorkflowOptions:
     subtitle_extraction_options: SubtitleExtractionOptions | None = None
     frame_pool_build_options: FramePoolBuildOptions | None = None
     subtitle_context_build_options: SubtitleContextBuildOptions | None = None
-    movie_pipeline_options: MoviePipelineOptions | None = None
 
-    def workflow_plan(self) -> FullWorkflowPlan:
-        return FullWorkflowPlan(
-            extract_subtitles=self.extract_subtitles,
-            build_frame_pool=self.build_frame_pool,
-            build_subtitle_context=self.build_subtitle_context,
-            enable_polish=self.enable_polish,
-            enable_speech=self.enable_speech,
-            enable_embed_video=self.enable_embed_video,
-        )
+
+@dataclass(frozen=True)
+class WorkflowRequest:
+    """Frontend/API-facing workflow request: user intent and business inputs only."""
+
+    video_path: str
+    output_root: str | None = None
+    prompt_style: str | None = None
+    cefr_level: str | None = None
+    min_gap_sec: float | None = None
+    subtitle_guard_sec: float | None = None
+    enable_subtitle_context: bool | None = None
+    enable_polish: bool | None = None
+    enable_speech: bool | None = None
+    enable_embed_video: bool | None = None
+    force_rebuild_subtitles: bool | None = None
+    force_rebuild_frame_pool: bool | None = None
+    force_rebuild_subtitle_context: bool | None = None
+    user_id: str | None = None
+    workspace_id: str | None = None
+    user_tier: str | None = None
+    plan_code: str | None = None
+    request_priority: str | None = None
+    cost_mode: str | None = None
+    max_cost_usd: float | None = None
+    max_latency_sec: float | None = None
+    tts_voice: str | None = None
+
+
+@dataclass(frozen=True)
+class PolicyContext:
+    """Server-side policy derived from user/account context."""
+
+    resolved_level: str | None = None
+    allow_subtitle_context: bool = True
+    allow_polish: bool = True
+    allow_speech: bool = True
+    allow_embed_video: bool = True
+    default_enable_subtitle_context: bool | None = None
+    default_enable_polish: bool | None = None
+    default_enable_speech: bool | None = None
+    default_enable_embed_video: bool | None = None
+    default_provider_override: str | None = None
+    tts_provider_override: str | None = None
+    api_provider_overrides: Mapping[str, str] | None = None
+    api_key_overrides: Mapping[str, str] | None = None
+    capability_model_overrides: Mapping[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedWorkflowConfig:
+    """Resolved full-workflow configuration after settings + request + policy merge."""
+
+    settings: object
+    request: WorkflowRequest
+    policy: PolicyContext
+    execution: ResolvedExecutionConfig
+
+
+@dataclass(frozen=True)
+class ResolvedRunContext:
+    """Preferred full-workflow entry payload for execution."""
+
+    config: ResolvedWorkflowConfig
+
+    @property
+    def settings(self):
+        return self.config.settings
+
+    @property
+    def execution(self) -> ResolvedExecutionConfig:
+        return self.config.execution
+
+    @property
+    def request(self) -> WorkflowRequest:
+        return self.config.request
+
+    @property
+    def policy(self) -> PolicyContext:
+        return self.config.policy
+
+    @property
+    def video_path(self) -> str:
+        return self.config.request.video_path

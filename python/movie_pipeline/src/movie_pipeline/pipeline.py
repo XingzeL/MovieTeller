@@ -15,7 +15,7 @@ from narration.narrate import narrate_segment_with_duration
 
 from movie_pipeline.runtime_context import RunContext
 from movie_pipeline.types import (
-    MoviePipelineOptions,
+    NarrationPipelineConfig,
     NarratedSegment,
     NarrationPolishDetails,
     NarrationSpeechDetails,
@@ -86,14 +86,12 @@ def narrate_analysis_candidates(
 ) -> tuple[NarratedSegment, ...]:
     """Narrate all analysis candidates using a single :class:`RunContext` (no separate settings/options)."""
     settings = ctx.settings
-    pipeline_options = ctx.pipeline
-    narration_options = pipeline_options.narration_options
-    retrieve_options = pipeline_options.subtitle_context_retrieve_options
-    polish_options = pipeline_options.polish_options
-    speech_requested = (
-        pipeline_options.speech_options is not None or pipeline_options.embed_video
-    )
-    speech_options = pipeline_options.speech_options if speech_requested else None
+    pipeline_config = ctx.pipeline
+    narration_options = pipeline_config.narration_options
+    retrieve_options = pipeline_config.subtitle_context_retrieve_options
+    polish_options = pipeline_config.polish_options
+    speech_requested = pipeline_config.speech_options is not None
+    speech_options = pipeline_config.speech_options if speech_requested else None
     call_narrator = narrator or narrate_segment_with_duration
     polish_enabled = polish_options is not None
     call_polisher: Callable[..., object] | None = polisher
@@ -109,11 +107,11 @@ def narrate_analysis_candidates(
         call_synthesizer = _default_synthesizer
     resolved_frame = (
         frame_source_options
-        or pipeline_options.frame_source_options
+        or pipeline_config.frame_source_options
     )
     if resolved_frame is None:
         raise ValueError(
-            "frame_source_options is required on MoviePipelineOptions or pass frame_source_options=..."
+            "frame_source_options is required on NarrationPipelineConfig or pass frame_source_options=..."
         )
     speech_dir = Path(resolved_speech_output_dir) if resolved_speech_output_dir else None
     if speech_dir is not None:
@@ -346,26 +344,30 @@ def run_pipeline_ctx(
     srt_path: str,
     video_path: str,
     ctx: RunContext,
+    subtitle_context_index_dir: str | None = None,
+    build_subtitle_context: bool = False,
+    speech_output_dir: str | None = None,
+    embed_video: bool = False,
     narrator: Callable[..., tuple[str, float]] | None = None,
     polisher: Callable[..., object] | None = None,
     synthesizer: Callable[..., object] | None = None,
 ) -> dict[str, object]:
     """Run the text/speech narration pipeline using a single :class:`RunContext`."""
-    pipeline_options = ctx.pipeline
+    pipeline_config = ctx.pipeline
     resolved_settings = ctx.settings
     analysis = analyze_subtitle_file(
         srt_path,
         video_path=video_path,
-        video_duration_sec=pipeline_options.video_duration_sec,
-        min_gap_sec=pipeline_options.min_gap_sec,
-        subtitle_guard_sec=pipeline_options.subtitle_guard_sec,
-        ffprobe_bin=pipeline_options.ffprobe_bin,
+        video_duration_sec=pipeline_config.video_duration_sec,
+        min_gap_sec=pipeline_config.min_gap_sec,
+        subtitle_guard_sec=pipeline_config.subtitle_guard_sec,
+        ffprobe_bin=pipeline_config.ffprobe_bin,
     )
     resolved_subtitle_context_index_dir = _resolve_subtitle_context_index_dir(
         srt_path,
-        pipeline_options.subtitle_context_index_dir,
+        subtitle_context_index_dir,
     )
-    if pipeline_options.build_subtitle_context:
+    if build_subtitle_context:
         from subtitle_context import build_subtitle_context_index
 
         resolved_subtitle_context_index_dir = (
@@ -375,24 +377,22 @@ def run_pipeline_ctx(
         build_subtitle_context_index(
             srt_path=srt_path,
             output_dir=resolved_subtitle_context_index_dir,
-            options=pipeline_options.subtitle_context_build_options,
+            options=pipeline_config.subtitle_context_build_options,
             settings=resolved_settings,
         )
 
-    speech_requested = pipeline_options.speech_options is not None or pipeline_options.embed_video
-    resolved_speech_output_dir = (
-        (pipeline_options.speech_output_dir or "").strip() or None
-    )
+    speech_requested = pipeline_config.speech_options is not None or embed_video
+    resolved_speech_output_dir = (speech_output_dir or "").strip() or None
     if speech_requested:
         if not resolved_speech_output_dir:
             raise ValueError(
                 "speech_output_dir is required when speech_options is set or embed_video is True"
             )
 
-    resolved_frame_source_options = pipeline_options.frame_source_options
+    resolved_frame_source_options = pipeline_config.frame_source_options
     if resolved_frame_source_options is None:
         raise ValueError(
-            "frame_source_options is required on MoviePipelineOptions for run_pipeline_ctx"
+            "frame_source_options is required on NarrationPipelineConfig for run_pipeline_ctx"
         )
     narrated_segments = narrate_analysis_candidates(
         analysis,

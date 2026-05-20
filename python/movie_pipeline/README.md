@@ -48,9 +48,11 @@ python -m movie_pipeline \
 
 ## Python API
 
-Use `run_pipeline_ctx(..., ctx=RunContext(settings=..., pipeline=...))` — this is
-the only supported pipeline execution entry; assemble a `RunContext` once and pass
-it through.
+Use `run_full_workflow(resolved_context=...)` for the end-to-end workflow.
+
+Use `run_pipeline_ctx(..., ctx=RunContext(settings=..., pipeline=...))` only when
+you intentionally want the lower-level narration pipeline entry and are supplying
+the subtitle/frame artifacts yourself.
 
 See [docs/archive/runtime-config-architecture.md](../docs/archive/runtime-config-architecture.md)
 for diagrams and payload helpers.

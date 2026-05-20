@@ -15,7 +15,7 @@ from movie_pipeline.payload_schema import (
     serialize_pipeline_text_payload,
 )
 from movie_pipeline.runtime_context import RunContext
-from movie_pipeline.types import MoviePipelineOptions
+from movie_pipeline.types import NarrationPipelineConfig
 from movie_pipeline.workflow_continue import render_video_from_narration_payload
 
 
@@ -196,16 +196,11 @@ def main() -> int:
     embed_output_path = args.embed_output
     if args.embed_video and not (embed_output_path or "").strip():
         embed_output_path = str(Path(args.video).resolve().with_suffix("")) + ".narrated.mp4"
-    pipeline_options = MoviePipelineOptions(
+    pipeline_config = NarrationPipelineConfig(
         video_duration_sec=args.duration_sec,
         min_gap_sec=args.min_gap_sec,
         subtitle_guard_sec=args.subtitle_guard_sec,
         ffprobe_bin=args.ffprobe_bin,
-        subtitle_context_index_dir=args.subtitle_context_index_dir,
-        build_subtitle_context=args.build_subtitle_context,
-        speech_output_dir=speech_output_dir,
-        embed_video=args.embed_video,
-        embed_output_path=embed_output_path,
         narration_options=narration_options,
         frame_source_options=FrameSourceOptions(
             ffmpeg_bin=settings.ffmpeg_path,
@@ -252,11 +247,15 @@ def main() -> int:
             else None
         ),
     )
-    ctx = RunContext(settings=settings, pipeline=pipeline_options)
+    ctx = RunContext(settings=settings, pipeline=pipeline_config)
     payload = run_pipeline_ctx(
         srt_path=args.srt,
         video_path=args.video,
         ctx=ctx,
+        subtitle_context_index_dir=args.subtitle_context_index_dir,
+        build_subtitle_context=args.build_subtitle_context,
+        speech_output_dir=speech_output_dir,
+        embed_video=args.embed_video,
     )
     if args.embed_video:
         payload = render_video_from_narration_payload(

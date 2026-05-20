@@ -29,7 +29,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-from dataclasses import replace
 from pathlib import Path
 
 
@@ -129,10 +128,27 @@ def _load_existing_payload(text_json_path: Path) -> dict[str, object] | None:
     return dict(parse_pipeline_text_json_path(text_json_path))
 
 
+def _build_text_stage_context(*, video_path: Path, output_root: Path, settings):
+    from movie_pipeline import WorkflowRequest, resolved_run_context_from_request
+
+    request = WorkflowRequest(
+        video_path=str(video_path),
+        output_root=str(output_root),
+        enable_subtitle_context=True,
+        enable_polish=settings.narration_polish_enabled,
+        enable_speech=False,
+        enable_embed_video=False,
+    )
+    return resolved_run_context_from_request(
+        request=request,
+        settings=settings,
+    )
+
+
 def main() -> int:
     _ensure_paths()
 
-    from movie_pipeline.full_workflow import run_full_workflow, workflow_options_from_settings
+    from movie_pipeline.full_workflow import run_full_workflow
     from movie_pipeline.payload_schema import (
         serialize_pipeline_render_payload,
         serialize_pipeline_speech_payload,
@@ -156,36 +172,20 @@ def main() -> int:
 
     settings = load_settings(require_narration=True)
     _print_runtime_debug(settings)
-    # workflow_options_from_settings返回的就是一个FullWorkflowOptions结构
-    base = workflow_options_from_settings(settings, output_root=str(output_root)) #这里构造了一个全流程的配置结构，是从配置文件中构建；也可以自己构建
-    movie = base.movie_pipeline_options
-    if movie is None:
-        raise RuntimeError("movie_pipeline_options missing")
 
 # 获取视频文件名，用于生成文件名
     stem = video_path.stem
     text_json_path = output_root / f"{stem}.manual.pipeline.text.json"
-    # 这里进行了一些参数的替换：替换了enable_speech和enable_embed_video为False，同时替换了movie_pipeline_options为None
-    text_only_options = replace(  # 通过replace组合了一个不用合成音频的workflow选项
-        base,
-        enable_speech=False,
-        enable_embed_video=False,
-        movie_pipeline_options=replace(
-            movie,
-            speech_output_dir=None,
-            embed_video=False,
-            embed_output_path=None,
-            speech_options=None,
-            video_options=None,
-        ),
+    text_stage_context = _build_text_stage_context(
+        video_path=video_path,
+        output_root=output_root,
+        settings=settings,
     )
-    # 业务层修改参数后的FullWorkflowOptions结构
+    # 文本阶段如果已有结果，就直接复用；否则从 resolved_context 继续执行
     text_payload = _load_existing_payload(text_json_path) 
     if text_payload is None:
         text_payload = run_full_workflow(
-            video_path=str(video_path),
-            options=text_only_options,
-            settings=settings,
+            resolved_context=text_stage_context,
         )
         text_json_path.write_text(
             serialize_pipeline_text_payload(text_payload),

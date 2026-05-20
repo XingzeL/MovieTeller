@@ -1,16 +1,20 @@
+from dataclasses import replace
 from pathlib import Path
 
 from frame_source import FrameSourceOptions
 from movieteller_config.schema import settings_from_dict
 
 from movie_pipeline import (
-    MoviePipelineOptions,
-    parse_product_request,
+    NarrationPipelineConfig,
+    PolicyContext,
+    ResolvedExecutionConfig,
+    WorkflowRequest,
     render_video_from_narration_payload,
+    resolve_workflow_config,
+    resolved_run_context_from_request,
     run_full_workflow,
     narrate_analysis_candidates,
     run_pipeline_ctx,
-    translate_product_request_to_workflow_options,
 )
 from movie_pipeline.runtime_context import RunContext
 from subtitle_analysis import analyze_srt_text
@@ -69,7 +73,7 @@ b
     )
     settings = make_settings()
     frame_source_options = settings_to_frame_source_options(settings)
-    pipeline_options = MoviePipelineOptions(
+    pipeline_options = NarrationPipelineConfig(
         video_duration_sec=8.0,
         min_gap_sec=1.0,
         subtitle_guard_sec=0.25,
@@ -119,7 +123,7 @@ b
     )
     settings = make_settings()
     frame_source_options = settings_to_frame_source_options(settings)
-    pipeline_options = MoviePipelineOptions(
+    pipeline_options = NarrationPipelineConfig(
         video_duration_sec=5.2,
         min_gap_sec=1.0,
         subtitle_guard_sec=0.25,
@@ -155,7 +159,7 @@ def test_run_pipeline_ctx_returns_timed_json_payload():
 
     from tempfile import TemporaryDirectory
     settings = make_settings()
-    pipeline_options = MoviePipelineOptions(
+    pipeline_options = NarrationPipelineConfig(
         video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
         min_gap_sec=0.5,
         subtitle_guard_sec=0.25,
@@ -179,6 +183,153 @@ def test_run_pipeline_ctx_returns_timed_json_payload():
     assert payload["narratedSegments"][0]["speechText"] == "narration"
 
 
+def test_resolve_workflow_config_applies_request_and_policy_defaults():
+    settings = make_settings(
+        gateway={"default_provider": "newapi", "tts_provider": "dashscope"},
+        api_keys={"newapi": "sk-newapi", "dashscope": "sk-dashscope"},
+        api_providers={
+            "newapi": "http://127.0.0.1:3000/v1",
+            "dashscope": "https://dashscope.aliyuncs.com/api/v1",
+        },
+        model_defaults={
+            "narration": "qwen3-vl-flash",
+            "polish": "qwen3-14b",
+            "tts": "qwen3-tts-flash",
+            "embedding": "text-embedding-v4",
+        },
+    )
+    request = WorkflowRequest(
+        video_path="demo.mp4",
+        output_root="/tmp/out",
+        prompt_style="documentary",
+        cefr_level="B2",
+        user_tier="free",
+        enable_speech=True,
+        tts_voice="Cherry",
+    )
+    policy = PolicyContext(
+        resolved_level="free",
+        allow_subtitle_context=False,
+        allow_polish=False,
+        allow_speech=True,
+        allow_embed_video=False,
+        default_enable_subtitle_context=False,
+        default_enable_polish=False,
+        default_enable_speech=False,
+        default_enable_embed_video=False,
+        default_provider_override="newapi",
+        tts_provider_override="dashscope",
+        capability_model_overrides={"tts": "qwen3-tts-flash"},
+    )
+
+    resolved = resolve_workflow_config(
+        request=request,
+        settings=settings,
+        policy=policy,
+    )
+
+    assert resolved.request is request
+    assert resolved.policy is policy
+    assert resolved.settings.default_provider() == "newapi"
+    assert resolved.settings.provider_for_capability("tts") == "dashscope"
+    assert resolved.settings.default_model_for_capability("tts") == "qwen3-tts-flash"
+    assert resolved.execution.enable_speech is True
+    assert resolved.execution.enable_polish is False
+    assert resolved.execution.build_subtitle_context is False
+    assert resolved.execution.output_root == "/tmp/out"
+    assert resolved.execution.pipeline.speech_options is not None
+    assert resolved.execution.pipeline.speech_options.voice == "Cherry"
+    assert resolved.execution.pipeline.narration_options is not None
+    assert resolved.execution.pipeline.narration_options.prompt_style == "documentary"
+    assert resolved.execution.pipeline.polish_options is None
+
+
+def test_resolved_run_context_from_request_wraps_resolved_config():
+    settings = make_settings()
+    request = WorkflowRequest(video_path="demo.mp4", user_tier="pro")
+
+    resolved = resolved_run_context_from_request(
+        request=request,
+        settings=settings,
+    )
+
+    assert resolved.video_path == "demo.mp4"
+    assert resolved.request is request
+    assert resolved.execution.enable_polish is True
+    assert resolved.execution.build_subtitle_context is True
+
+
+def test_run_full_workflow_accepts_resolved_context(tmp_path):
+    video = tmp_path / "demo.mp4"
+    video.write_bytes(b"fake")
+    srt = tmp_path / "demo.extracted.srt"
+    srt.write_text(_SINGLE_GAP_SRT, encoding="utf-8")
+    pool_dir = tmp_path / "demo.frame_pool"
+    pool_dir.mkdir()
+    (pool_dir / "manifest.jsonl").write_text("", encoding="utf-8")
+    ctx_dir = tmp_path / "demo.subtitle_context"
+    ctx_dir.mkdir()
+    (ctx_dir / "chunks.jsonl").write_text("", encoding="utf-8")
+
+    import numpy as np
+
+    np.save(ctx_dir / "embeddings.npy", np.zeros((0, 0), dtype=np.float32))
+
+    settings = make_settings()
+    request = WorkflowRequest(video_path=str(video), output_root=str(tmp_path))
+    resolved_context = resolved_run_context_from_request(
+        request=request,
+        settings=settings,
+    )
+    assert resolved_context.execution.pipeline is not None
+    resolved_context = type(resolved_context)(
+        config=replace(
+            resolved_context.config,
+            execution=replace(
+                resolved_context.execution,
+                pipeline=replace(
+                    resolved_context.execution.pipeline,
+                    video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
+                ),
+            ),
+        )
+    )
+
+    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
+        return ("narration", end_sec - start_sec)
+
+    import movie_pipeline.workflow_stages as ws
+
+    original_run_pipeline_ctx = ws.run_pipeline_ctx
+    captured = {}
+
+    def fake_run_pipeline_ctx(*, srt_path, video_path, ctx, narrator=None, **kwargs):
+        captured["video_path"] = video_path
+        captured["frame_pool_manifest"] = ctx.settings.frame_pool_manifest
+        return original_run_pipeline_ctx(
+            srt_path=srt_path,
+            video_path=video_path,
+            ctx=ctx,
+            narrator=fake_narrator,
+            **kwargs,
+        )
+
+    saved = ws.run_pipeline_ctx
+    ws.run_pipeline_ctx = fake_run_pipeline_ctx
+
+    try:
+        payload = run_full_workflow(
+            resolved_context=resolved_context,
+        )
+    finally:
+        ws.run_pipeline_ctx = saved
+
+    assert payload["workflowArtifacts"]["videoPath"] == str(video)
+    assert payload["workflowArtifacts"]["srtPath"] == str(srt)
+    assert captured["video_path"] == str(video)
+    assert captured["frame_pool_manifest"] == str(pool_dir / "manifest.jsonl")
+
+
 def test_run_pipeline_ctx_requires_explicit_frame_source_options():
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
         return ("narration", end_sec - start_sec)
@@ -186,7 +337,7 @@ def test_run_pipeline_ctx_requires_explicit_frame_source_options():
     from tempfile import TemporaryDirectory
 
     settings = make_settings()
-    pipeline_options = MoviePipelineOptions(
+    pipeline_options = NarrationPipelineConfig(
         video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
         min_gap_sec=0.5,
         subtitle_guard_sec=0.25,
@@ -219,7 +370,7 @@ def test_run_pipeline_ctx_detects_default_subtitle_context_index_dir():
 
     from tempfile import TemporaryDirectory
     settings = make_settings()
-    pipeline_options = MoviePipelineOptions(
+    pipeline_options = NarrationPipelineConfig(
         video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
         min_gap_sec=0.5,
         subtitle_guard_sec=0.25,
@@ -254,7 +405,7 @@ def test_run_pipeline_ctx_ignores_incomplete_default_subtitle_context_index_dir(
 
     from tempfile import TemporaryDirectory
     settings = make_settings()
-    pipeline_options = MoviePipelineOptions(
+    pipeline_options = NarrationPipelineConfig(
         video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
         min_gap_sec=0.5,
         subtitle_guard_sec=0.25,
@@ -308,7 +459,7 @@ def test_run_pipeline_ctx_can_polish_output():
 
     from tempfile import TemporaryDirectory
     settings = make_settings(narration_polish_enabled=True)
-    pipeline_options = MoviePipelineOptions(
+    pipeline_options = NarrationPipelineConfig(
         video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
         min_gap_sec=0.5,
         subtitle_guard_sec=0.25,
@@ -381,11 +532,10 @@ def test_run_pipeline_ctx_can_synthesize_speech():
         srt.write_text(raw, encoding="utf-8")
         ctx = RunContext(
             settings=settings,
-            pipeline=MoviePipelineOptions(
+            pipeline=NarrationPipelineConfig(
                 video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
                 min_gap_sec=0.5,
                 subtitle_guard_sec=0.25,
-                speech_output_dir=str(Path(tmp) / "speech"),
                 narration_options=settings.narration_options(),
                 speech_options=settings.narration_speech_options(),
                 frame_source_options=settings_to_frame_source_options(settings),
@@ -395,6 +545,7 @@ def test_run_pipeline_ctx_can_synthesize_speech():
             srt_path=str(srt),
             video_path="demo.mp4",
             ctx=ctx,
+            speech_output_dir=str(Path(tmp) / "speech"),
             narrator=fake_narrator,
             synthesizer=fake_synthesizer,
         )
@@ -460,13 +611,10 @@ def test_render_video_from_narration_payload_can_render_video():
         srt.write_text(raw, encoding="utf-8")
         ctx = RunContext(
             settings=settings,
-            pipeline=MoviePipelineOptions(
+            pipeline=NarrationPipelineConfig(
                 video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
                 min_gap_sec=0.5,
                 subtitle_guard_sec=0.25,
-                speech_output_dir=str(Path(tmp) / "speech"),
-                embed_video=True,
-                embed_output_path=str(Path(tmp) / "demo.narrated.mp4"),
                 narration_options=settings.narration_options(),
                 speech_options=settings.narration_speech_options(),
                 video_options=settings.narration_video_options(),
@@ -477,6 +625,8 @@ def test_render_video_from_narration_payload_can_render_video():
             srt_path=str(srt),
             video_path="demo.mp4",
             ctx=ctx,
+            speech_output_dir=str(Path(tmp) / "speech"),
+            embed_video=True,
             narrator=fake_narrator,
             synthesizer=fake_synthesizer,
         )
@@ -491,26 +641,28 @@ def test_render_video_from_narration_payload_can_render_video():
     assert rendered["renderedVideo"]["outputPath"] == "demo.narrated.mp4"
 
 
-def test_translate_product_request_to_workflow_options_applies_level_defaults():
+def test_resolve_workflow_config_applies_tier_defaults_without_product_request():
     settings = make_settings(default_prompt_style="documentary")
-    req = parse_product_request(
-        {
-            "level": "pro",
-            "style": "movie_commentary",
-            "cefrLevel": "A1",
-            "enableSpeech": True,
-            "enableEmbedVideo": True,
-        }
+    request = WorkflowRequest(
+        video_path="demo.mp4",
+        user_tier="pro",
+        prompt_style="movie_commentary",
+        cefr_level="A1",
+        enable_speech=True,
+        enable_embed_video=True,
     )
-    options = translate_product_request_to_workflow_options(req, settings)
-    assert options.build_subtitle_context is True
-    assert options.enable_polish is True
-    assert options.enable_speech is True
-    assert options.enable_embed_video is True
-    assert options.movie_pipeline_options is not None
-    assert options.movie_pipeline_options.narration_options.prompt_style == "movie_commentary"
-    assert options.movie_pipeline_options.polish_options is not None
-    assert options.movie_pipeline_options.polish_options.cefr_level == "A1"
+    resolved = resolve_workflow_config(
+        request=request,
+        settings=settings,
+    )
+    execution = resolved.execution
+    assert execution.build_subtitle_context is True
+    assert execution.enable_polish is True
+    assert execution.enable_speech is True
+    assert execution.enable_embed_video is True
+    assert execution.pipeline.narration_options.prompt_style == "movie_commentary"
+    assert execution.pipeline.polish_options is not None
+    assert execution.pipeline.polish_options.cefr_level == "A1"
 
 
 def test_run_full_workflow_reuses_existing_artifacts_and_runs_pipeline(tmp_path):
@@ -533,39 +685,40 @@ def test_run_full_workflow_reuses_existing_artifacts_and_runs_pipeline(tmp_path)
 
     settings = make_settings()
 
-    from movie_pipeline.full_workflow import workflow_options_from_settings
-
-    options = workflow_options_from_settings(settings, output_root=str(tmp_path))
-    assert options.movie_pipeline_options is not None
-    options = type(options)(
-        extract_subtitles=options.extract_subtitles,
-        build_frame_pool=options.build_frame_pool,
-        build_subtitle_context=options.build_subtitle_context,
+    execution = ResolvedExecutionConfig(
+        extract_subtitles=True,
+        build_frame_pool=True,
+        build_subtitle_context=True,
         enable_polish=False,
-        enable_speech=options.enable_speech,
-        enable_embed_video=options.enable_embed_video,
-        output_root=options.output_root,
-        subtitle_extraction_options=options.subtitle_extraction_options,
-        frame_pool_build_options=options.frame_pool_build_options,
-        subtitle_context_build_options=options.subtitle_context_build_options,
-        movie_pipeline_options=MoviePipelineOptions(
+        enable_speech=False,
+        enable_embed_video=False,
+        output_root=str(tmp_path),
+        subtitle_extraction_options=settings.subtitle_extraction_options(),
+        frame_pool_build_options=settings.frame_pool_build_options(),
+        subtitle_context_build_options=settings.subtitle_context_build_options(),
+        pipeline=NarrationPipelineConfig(
             video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
-            min_gap_sec=options.movie_pipeline_options.min_gap_sec,
+            min_gap_sec=1.0,
             subtitle_guard_sec=0.25,
-            ffprobe_bin=options.movie_pipeline_options.ffprobe_bin,
-            subtitle_context_index_dir=options.movie_pipeline_options.subtitle_context_index_dir,
-            build_subtitle_context=options.movie_pipeline_options.build_subtitle_context,
-            speech_output_dir=options.movie_pipeline_options.speech_output_dir,
-            embed_video=options.movie_pipeline_options.embed_video,
-            embed_output_path=options.movie_pipeline_options.embed_output_path,
-            narration_options=options.movie_pipeline_options.narration_options,
-            frame_source_options=options.movie_pipeline_options.frame_source_options,
-            subtitle_context_build_options=options.movie_pipeline_options.subtitle_context_build_options,
-            subtitle_context_retrieve_options=options.movie_pipeline_options.subtitle_context_retrieve_options,
+            ffprobe_bin="ffprobe",
+            narration_options=settings.narration_options(),
+            frame_source_options=settings_to_frame_source_options(settings),
+            subtitle_context_build_options=settings.subtitle_context_build_options(),
+            subtitle_context_retrieve_options=settings.subtitle_context_retrieve_options(),
             polish_options=None,
             speech_options=None,
             video_options=None,
         ),
+    )
+    resolved_context = resolved_run_context_from_request(
+        request=WorkflowRequest(video_path=str(video), output_root=str(tmp_path)),
+        settings=settings,
+    )
+    resolved_context = type(resolved_context)(
+        config=replace(
+            resolved_context.config,
+            execution=execution,
+        )
     )
 
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
@@ -591,9 +744,7 @@ def test_run_full_workflow_reuses_existing_artifacts_and_runs_pipeline(tmp_path)
 
     try:
         payload = run_full_workflow(
-            video_path=str(video),
-            options=options,
-            settings=settings,
+            resolved_context=resolved_context,
         )
     finally:
         ws.run_pipeline_ctx = saved

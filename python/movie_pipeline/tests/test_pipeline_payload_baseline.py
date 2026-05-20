@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 
 from frame_source import FrameSourceOptions
 from movie_pipeline import (
-    MoviePipelineOptions,
+    NarrationPipelineConfig,
     parse_pipeline_speech_dict,
     parse_pipeline_text_dict,
     run_pipeline_ctx,
@@ -77,7 +77,7 @@ def test_run_pipeline_ctx_payload_top_level_and_segment_keys():
         return ("narration", end_sec - start_sec)
 
     settings = _minimal_settings()
-    pipeline_options = MoviePipelineOptions(
+    pipeline_options = NarrationPipelineConfig(
         video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
         min_gap_sec=0.5,
         subtitle_guard_sec=0.25,
