@@ -511,12 +511,12 @@ def render_narrated_video(
 建议接口：
 
 ```python
-def run_pipeline(
+def run_pipeline_ctx(
     *,
-    video_path: str,
     srt_path: str,
-    pipeline_options: MoviePipelineOptions,
-) -> MoviePipelineResult:
+    video_path: str,
+    ctx: RunContext,
+) -> dict[str, object]:
     ...
 ```
 
@@ -525,7 +525,7 @@ def run_pipeline(
 当前规范入口：
 
 - CLI: `python -m movie_pipeline`
-- Python API: `run_pipeline(...)`
+- Python API: `run_pipeline_ctx(..., ctx=RunContext(...))`
 
 `analyze_and_narrate(...)` 仅保留为旧调用方兼容层，不再作为推荐接口。
 

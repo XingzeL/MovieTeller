@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from frame_source import FrameSourceOptions
 from movieteller_config import load_settings
 from movieteller_config.loader import load_flat_dict
 from movieteller_config.schema import settings_from_dict
 
-from movie_pipeline.pipeline import run_pipeline
+from movie_pipeline.pipeline import run_pipeline_ctx
+from movie_pipeline.runtime_context import RunContext
 from movie_pipeline.types import MoviePipelineOptions
 
 
@@ -183,6 +185,12 @@ def main() -> int:
         custom_prompt=args.custom_prompt,
     )
     speech_enabled = bool(args.embed_video) or bool(args.speech)
+    speech_output_dir = args.speech_output_dir
+    if speech_enabled and not (speech_output_dir or "").strip():
+        speech_output_dir = str(Path(args.video).resolve().with_suffix("")) + ".narration_audio"
+    embed_output_path = args.embed_output
+    if args.embed_video and not (embed_output_path or "").strip():
+        embed_output_path = str(Path(args.video).resolve().with_suffix("")) + ".narrated.mp4"
     pipeline_options = MoviePipelineOptions(
         video_duration_sec=args.duration_sec,
         min_gap_sec=args.min_gap_sec,
@@ -190,9 +198,9 @@ def main() -> int:
         ffprobe_bin=args.ffprobe_bin,
         subtitle_context_index_dir=args.subtitle_context_index_dir,
         build_subtitle_context=args.build_subtitle_context,
-        speech_output_dir=args.speech_output_dir,
+        speech_output_dir=speech_output_dir,
         embed_video=args.embed_video,
-        embed_output_path=args.embed_output,
+        embed_output_path=embed_output_path,
         narration_options=narration_options,
         frame_source_options=FrameSourceOptions(
             ffmpeg_bin=settings.ffmpeg_path,
@@ -240,11 +248,11 @@ def main() -> int:
             else None
         ),
     )
-    payload = run_pipeline(
+    ctx = RunContext(settings=settings, pipeline=pipeline_options)
+    payload = run_pipeline_ctx(
         srt_path=args.srt,
         video_path=args.video,
-        pipeline_options=pipeline_options,
-        settings=settings,
+        ctx=ctx,
     )
 
     if args.json:

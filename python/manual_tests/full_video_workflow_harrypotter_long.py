@@ -34,8 +34,8 @@ from pathlib import Path
 
 
 VIDEO_PATH = "test_artifacts/harrypotter_smoke1.mp4"
-OUTPUT_ROOT = "test_artifacts/smoke2"
-ENABLE_SPEECH_AND_VIDEO = True
+OUTPUT_ROOT = "test_artifacts/smoke3"
+ENABLE_SPEECH_AND_VIDEO = False
 
 
 def _repo_root() -> Path:
@@ -64,9 +64,6 @@ def _ensure_paths() -> None:
         if sub.is_dir():
             sys.path.insert(0, str(sub))
 
-
-def _slug_millis(value: float) -> str:
-    return f"{int(round(float(value) * 1000.0)):08d}"
 
 # 如果key长度小于等于6，则直接返回，否则返回前6个字符加上...
 def _key_preview(value: str | None) -> str:
@@ -134,136 +131,15 @@ def _load_existing_payload(text_json_path: Path) -> dict[str, object] | None:
     return payload
 
 
-def _synthesize_speech_from_payload(
-    *,
-    payload: dict[str, object],
-    audio_output_dir: Path,
-    settings,
-) -> dict[str, object]:
-    from narration_speech import synthesize_narration_text
-
-    narrated_segments = payload.get("narratedSegments")
-    if not isinstance(narrated_segments, list) or not narrated_segments:
-        raise ValueError("No narratedSegments found in payload")
-
-    speech_options = settings.narration_speech_options()
-    audio_output_dir.mkdir(parents=True, exist_ok=True)
-
-    for index, seg in enumerate(narrated_segments, start=1):
-        if not isinstance(seg, dict):
-            raise TypeError(f"Segment #{index} is not an object")
-        start_sec = float(seg["startSec"])
-        end_sec = float(seg["endSec"])
-        duration_sec = float(seg.get("durationSec") or (end_sec - start_sec))
-        speech_text = str(seg.get("speechText") or seg.get("text") or "").strip()
-        if not speech_text:
-            raise ValueError(f"Segment #{index} has empty speech text")
-
-        slug = f"segment_{index:03d}_{_slug_millis(start_sec)}_{_slug_millis(end_sec)}"
-        audio_path = audio_output_dir / f"{slug}.mp3"
-        metadata_path = audio_output_dir / f"{slug}.mp3.jsonl"
-
-        polish_payload = seg.get("polish")
-        target_duration_sec = duration_sec
-        if isinstance(polish_payload, dict) and polish_payload.get("targetDurationSec") is not None:
-            target_duration_sec = float(polish_payload["targetDurationSec"])
-
-        result = synthesize_narration_text(
-            speech_text,
-            duration_sec,
-            output_path=str(audio_path),
-            metadata_path=str(metadata_path),
-            target_duration_sec=target_duration_sec,
-            options=speech_options,
-            settings=settings,
-        )
-        seg["speech"] = {
-            "text": result.text,
-            "audioPath": result.audio_path,
-            "metadataPath": result.metadata_path,
-            "segmentDurationSec": result.segment_duration_sec,
-            "targetDurationSec": result.target_duration_sec,
-            "rawDurationSec": result.raw_duration_sec,
-            "audioDurationSec": result.audio_duration_sec,
-            "durationDeltaSec": result.duration_delta_sec,
-            "fitsDuration": result.fits_duration,
-            "provider": result.provider,
-            "voice": result.voice,
-            "rate": result.rate,
-            "volume": result.volume,
-            "pitch": result.pitch,
-            "boundary": result.boundary,
-            "fitApplied": result.fit_applied,
-            "timingTtsSec": result.timing_tts_sec,
-            "timingFitSec": result.timing_fit_sec,
-        }
-
-    payload["speechOutputDir"] = str(audio_output_dir)
-    return payload
-
-
-def _render_video_from_payload(
-    *,
-    payload: dict[str, object],
-    video_path: Path,
-    output_path: Path,
-    subtitle_srt_path: Path | None,
-    settings,
-) -> dict[str, object]:
-    from narration_video import render_narrated_video
-    from pipeline_types import NarrationAudioSegment
-
-    narrated_segments = payload.get("narratedSegments")
-    if not isinstance(narrated_segments, list) or not narrated_segments:
-        raise ValueError("No narratedSegments found in payload")
-
-    audio_segments: list[NarrationAudioSegment] = []
-    for index, seg in enumerate(narrated_segments, start=1):
-        if not isinstance(seg, dict):
-            raise TypeError(f"Segment #{index} is not an object")
-        speech = seg.get("speech")
-        if not isinstance(speech, dict):
-            raise ValueError(f"Segment #{index} has no synthesized speech payload")
-        audio_path = str(speech.get("audioPath") or "").strip()
-        if not audio_path:
-            raise ValueError(f"Segment #{index} has empty speech audioPath")
-        audio_segments.append(
-            NarrationAudioSegment(
-                start_sec=float(seg["startSec"]),
-                end_sec=float(seg["endSec"]),
-                audio_path=audio_path,
-            )
-        )
-
-    render_result = render_narrated_video(
-        str(video_path),
-        audio_segments,
-        output_path=str(output_path),
-        subtitle_srt_path=(str(subtitle_srt_path) if subtitle_srt_path is not None else None),
-        options=settings.narration_video_options(),
-        settings=settings,
-    )
-    payload["renderedVideo"] = {
-        "videoPath": str(render_result.video_path),
-        "outputPath": str(render_result.output_path),
-        "segmentCount": int(render_result.segment_count),
-        "videoDurationSec": float(render_result.video_duration_sec),
-        "backgroundAudioVolume": float(render_result.background_audio_volume),
-        "speechAudioVolume": float(render_result.speech_audio_volume),
-        "subtitleSrtPath": render_result.subtitle_srt_path,
-        "timingRenderSec": (
-            float(render_result.timing_render_sec)
-            if render_result.timing_render_sec is not None
-            else None
-        ),
-    }
-    return payload
-
-
 def main() -> int:
     _ensure_paths()
 
     from movie_pipeline.full_workflow import run_full_workflow, workflow_options_from_settings
+    from movie_pipeline.subtitle_merge_stage import merge_subtitles_for_narration
+    from movie_pipeline.workflow_continue import (
+        render_video_from_narration_payload,
+        synthesize_speech_from_text_payload,
+    )
     from movieteller_config import load_settings
 
     root = _repo_root()
@@ -277,6 +153,7 @@ def main() -> int:
 
     settings = load_settings(require_narration=True)
     _print_runtime_debug(settings)
+    # workflow_options_from_settings返回的就是一个FullWorkflowOptions结构
     base = workflow_options_from_settings(settings, output_root=str(output_root)) #这里构造了一个全流程的配置结构，是从配置文件中构建；也可以自己构建
     movie = base.movie_pipeline_options
     if movie is None:
@@ -286,7 +163,7 @@ def main() -> int:
     stem = video_path.stem
     text_json_path = output_root / f"{stem}.manual.pipeline.json"
     # 这里进行了一些参数的替换：替换了enable_speech和enable_embed_video为False，同时替换了movie_pipeline_options为None
-    text_only_options = replace( 
+    text_only_options = replace(  # 通过replace组合了一个不用合成音频的workflow选项
         base,
         enable_speech=False,
         enable_embed_video=False,
@@ -299,6 +176,7 @@ def main() -> int:
             video_options=None,
         ),
     )
+    # 业务层修改参数后的FullWorkflowOptions结构
     text_payload = _load_existing_payload(text_json_path) 
     if text_payload is None:
         text_payload = run_full_workflow(
@@ -312,6 +190,7 @@ def main() -> int:
         )
 
     text_script_path = output_root / f"{stem}.manual.pipeline.script.txt"
+    # 测试流程的函数
     _write_readable_script_from_payload(
         text_payload,
         text_script_path,
@@ -319,29 +198,29 @@ def main() -> int:
     )
 
     if not ENABLE_SPEECH_AND_VIDEO:
-        softsubs_video_path = output_root / f"{stem}.narration_softsubs.mp4"
-        final_srt_path = output_root / f"{stem}.final.subtitled.srt"
+        softsubs_video_path = output_root / f"{stem}.narration_softsubs.mp4" # 嵌入软字幕的视频路径
+        final_srt_path = output_root / f"{stem}.final.subtitled.srt"         # 合并完成后的字幕文件
         source_srt_path = output_root / f"{stem}.extracted.srt"
         subtitle_merge: dict[str, object] | None = None
         softsubs_error: str | None = None
         try:
-            from narration_video import build_subtitled_narration_srt, render_video_with_soft_subtitles
+            from narration_video import render_video_with_soft_subtitles
 
             if not source_srt_path.is_file():
                 raise FileNotFoundError(f"Missing extracted subtitles: {source_srt_path}")
-            subtitle_result = build_subtitled_narration_srt(
+            subtitle_result = merge_subtitles_for_narration( # 合并字幕
                 speech_video_json_path=str(text_json_path),
                 source_srt_path=str(source_srt_path),
                 output_srt_path=str(final_srt_path),
             )
-            subtitle_merge = {
+            subtitle_merge = {  # 合并字幕的结果
                 "sourceSrtPath": subtitle_result.source_srt_path,
                 "speechVideoJsonPath": subtitle_result.speech_video_json_path,
                 "outputSrtPath": subtitle_result.output_srt_path,
                 "insertedCueCount": subtitle_result.inserted_cue_count,
                 "totalCueCount": subtitle_result.total_cue_count,
             }
-            render_video_with_soft_subtitles(
+            render_video_with_soft_subtitles( # 将字幕文件进行软嵌入
                 str(video_path),
                 subtitle_srt_path=str(final_srt_path),
                 output_path=str(softsubs_video_path),
@@ -350,7 +229,7 @@ def main() -> int:
         except Exception as exc:
             softsubs_error = str(exc)
 
-        summary: dict[str, object] = {
+        summary: dict[str, object] = { # 总结信息，这个字典包含了视频路径、输出根目录、文本JSON路径、文本脚本路径、narratedSegments、speechAttempted、extractedSrtPath、finalSubtitledSrtPath、softSubsVideoPath等信息
             "video": str(video_path),
             "outputRoot": str(output_root),
             "textJsonPath": str(text_json_path),
@@ -368,36 +247,33 @@ def main() -> int:
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return 0
 
-    try:
-        from narration_video import build_subtitled_narration_srt
-
-        payload = json.loads(json.dumps(text_payload, ensure_ascii=False))
-        payload = _synthesize_speech_from_payload(
-            payload=payload,
+    try: # 另一条路线：合成音频到视频中
+        speech_payload = synthesize_speech_from_text_payload( # 文生音频，指定音频输出路径
+            payload=dict(text_payload),
             audio_output_dir=output_root / f"{stem}.narration_audio",
             settings=settings,
         )
         speech_json_path = output_root / f"{stem}.manual.pipeline.speech_video.json"
-        speech_json_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
+        speech_json_path.write_text(  # 将音频合成结果写入JSON文件
+            json.dumps(speech_payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        source_srt_path = output_root / f"{stem}.extracted.srt"
-        final_srt_path = output_root / f"{stem}.final.subtitled.srt"
-        subtitle_result = build_subtitled_narration_srt(
+        source_srt_path = output_root / f"{stem}.extracted.srt"  # 提取的字幕文件路径
+        final_srt_path = output_root / f"{stem}.final.subtitled.srt" # 合并完成后的字幕文件路径
+        subtitle_result = merge_subtitles_for_narration( # 软字幕嵌入
             speech_video_json_path=str(speech_json_path),
             source_srt_path=str(source_srt_path),
             output_srt_path=str(final_srt_path),
         )
-        payload["subtitleMerge"] = {
+        speech_payload["subtitleMerge"] = { # 合并字幕的结果
             "sourceSrtPath": subtitle_result.source_srt_path,
             "speechVideoJsonPath": subtitle_result.speech_video_json_path,
             "outputSrtPath": subtitle_result.output_srt_path,
             "insertedCueCount": subtitle_result.inserted_cue_count,
             "totalCueCount": subtitle_result.total_cue_count,
         }
-        payload = _render_video_from_payload(
-            payload=payload,
+        final_payload = render_video_from_narration_payload( # 将音频文件渲染进入视频合成解说声道视频
+            payload=speech_payload,
             video_path=video_path,
             output_path=output_root / f"{stem}.narrated.mp4",
             subtitle_srt_path=final_srt_path,
@@ -424,12 +300,12 @@ def main() -> int:
         return 2
 
     speech_json_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
+        json.dumps(final_payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     speech_video_script_path = output_root / f"{stem}.manual.pipeline.speech_video.script.txt"
     _write_readable_script_from_payload(
-        payload,
+        final_payload,
         speech_video_script_path,
         source_path=speech_json_path,
     )
@@ -445,7 +321,7 @@ def main() -> int:
                 "speechVideoScriptPath": str(speech_video_script_path),
                 "audioDir": str(output_root / f"{stem}.narration_audio"),
                 "videoOutput": str(output_root / f"{stem}.narrated.mp4"),
-                "narratedSegments": len(payload.get("narratedSegments", [])),
+                "narratedSegments": len(final_payload.get("narratedSegments", [])),
                 "speechAttempted": True,
                 "speechSucceeded": True,
             },

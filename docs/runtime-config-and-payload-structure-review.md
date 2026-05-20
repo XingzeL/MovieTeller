@@ -335,3 +335,8 @@ If the system continues growing, the most valuable architectural move is not a r
 - typed payload contracts
 - cleaner stage boundaries
 - formal pipeline ownership of mature workflow steps
+
+## See also
+
+- [runtime-config-architecture.md](runtime-config-architecture.md) — diagrams and entry points after consolidation work.
+- [runtime-config-dual-pass-inventory.md](runtime-config-dual-pass-inventory.md) — dual-pass boundary inventory.

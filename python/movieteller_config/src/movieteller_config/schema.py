@@ -4,7 +4,7 @@ import os
 import re
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 _ENV_REF_BRACE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
 _ENV_REF_DOLLAR = re.compile(r"^\$\$([A-Za-z_][A-Za-z0-9_]*)$")
@@ -85,7 +85,6 @@ class NarrationOptions:
 
 @dataclass(frozen=True)
 class NarrationPolishOptions:
-    provider_slug: str
     model: str
     prompt_style: str
     target_wpm: int
@@ -96,7 +95,6 @@ class NarrationPolishOptions:
 
 @dataclass(frozen=True)
 class NarrationSpeechOptions:
-    provider_slug: str
     voice: str
     model: str
     rate: str
@@ -111,6 +109,8 @@ class NarrationVideoOptions:
     ffmpeg_bin: str
     background_audio_volume: float
     speech_audio_volume: float
+    """How final packaged video carries subtitles: soft mux, burn-in, or both."""
+    subtitle_output_mode: Literal["soft_mux", "burn_in", "both"] = "soft_mux"
 
 
 @dataclass(frozen=True)
@@ -146,8 +146,6 @@ class FramePoolBuildOptions:
 
 @dataclass(frozen=True)
 class Settings:
-    openai_api_key: str | None
-    openai_base_url: str | None
     max_frames_per_segment: int
     narration_frame_max_edge: int
     ffmpeg_path: str
@@ -206,9 +204,6 @@ class Settings:
             )
         return value
 
-    def require_openai(self) -> str:
-        return self.require_api_key("openai")
-
     def get_api_base_url(self, provider: str) -> str | None:
         key = str(provider or "").strip().lower()
         if not key:
@@ -216,17 +211,16 @@ class Settings:
         value = self.api_providers.get(key)
         if value:
             return value.strip()
-        if key == "openai" and self.openai_base_url:
-            return self.openai_base_url.strip()
         return None
 
     def default_provider(self) -> str:
         slug = _none_if_empty(self.gateway_default_provider)
-        if slug:
-            return slug.strip().lower()
-        if len(self.api_providers) == 1:
-            return next(iter(self.api_providers.keys()))
-        return "newapi"
+        if not slug:
+            raise ValueError(
+                "gateway_default_provider is empty; set gateway.default_provider in YAML "
+                "or GATEWAY_DEFAULT_PROVIDER."
+            )
+        return slug.strip().lower()
 
     def provider_for_capability(self, capability: str) -> str:
         cap = str(capability or "").strip().lower()
@@ -271,18 +265,15 @@ class Settings:
         prompt_style: str | None = None,
         custom_prompt: str = "",
     ) -> NarrationOptions:
-        resolved_prompt_style = (
-            str(prompt_style or self.default_prompt_style).strip() or "documentary"
-        )
-        return NarrationOptions(
-            prompt_style=resolved_prompt_style,
-            custom_prompt=str(custom_prompt or ""),
+        from movieteller_config import runtime_options
+
+        return runtime_options.build_narration_options(
+            self, prompt_style=prompt_style, custom_prompt=custom_prompt
         )
 
     def narration_polish_options(
         self,
         *,
-        provider_slug: str | None = None,
         model: str | None = None,
         prompt_style: str | None = None,
         target_wpm: int | None = None,
@@ -290,83 +281,36 @@ class Settings:
         strength: str | None = None,
         safety_margin_sec: float | None = None,
     ) -> NarrationPolishOptions:
-        resolved_provider = (
-            str(provider_slug or self.provider_for_capability("polish")).strip().lower()
-            or self.provider_for_capability("polish")
-        )
-        resolved_model = str(model or self.default_model_for_capability("polish")).strip()
-        if not resolved_model:
-            raise ValueError("narration polish model is empty")
-        resolved_prompt_style = (
-            str(prompt_style or self.default_prompt_style).strip() or "documentary"
-        )
-        return NarrationPolishOptions(
-            provider_slug=resolved_provider,
-            model=resolved_model,
-            prompt_style=resolved_prompt_style,
-            target_wpm=max(
-                1,
-                int(
-                    target_wpm
-                    if target_wpm is not None
-                    else self.narration_polish_target_wpm
-                ),
-            ),
-            cefr_level=(
-                str(
-                    cefr_level
-                    if cefr_level is not None
-                    else self.narration_polish_cefr_level
-                ).strip().upper()
-                or "B1"
-            ),
-            strength=(
-                str(
-                    strength
-                    if strength is not None
-                    else self.narration_polish_strength
-                ).strip().lower()
-                or "medium"
-            ),
-            safety_margin_sec=max(
-                0.0,
-                float(
-                    safety_margin_sec
-                    if safety_margin_sec is not None
-                    else self.narration_polish_safety_margin_sec
-                ),
-            ),
+        from movieteller_config import runtime_options
+
+        return runtime_options.build_narration_polish_options(
+            self,
+            model=model,
+            prompt_style=prompt_style,
+            target_wpm=target_wpm,
+            cefr_level=cefr_level,
+            strength=strength,
+            safety_margin_sec=safety_margin_sec,
         )
 
     def narration_speech_options(
         self,
         *,
-        provider_slug: str | None = None,
         voice: str | None = None,
         rate: str | None = None,
         volume: str | None = None,
         pitch: str | None = None,
         boundary: str | None = None,
     ) -> NarrationSpeechOptions:
-        resolved_provider = (
-            str(provider_slug or self.provider_for_capability("tts")).strip().lower()
-            or self.provider_for_capability("tts")
-        )
-        resolved_model = str(self.default_model_for_capability("tts")).strip()
-        resolved_voice = (
-            str(voice).strip()
-            if voice is not None
-            else self.default_tts_voice()
-        ) or self.default_tts_voice()
-        return NarrationSpeechOptions(
-            provider_slug=resolved_provider,
-            voice=resolved_voice,
-            model=resolved_model,
-            rate=str(rate or self.default_tts_rate()).strip() or self.default_tts_rate(),
-            volume=str(volume or self.default_tts_volume()).strip() or self.default_tts_volume(),
-            pitch=str(pitch or self.default_tts_pitch()).strip() or self.default_tts_pitch(),
-            boundary=str(boundary or self.default_tts_boundary()).strip() or self.default_tts_boundary(),
-            ffmpeg_bin=self.ffmpeg_path,
+        from movieteller_config import runtime_options
+
+        return runtime_options.build_narration_speech_options(
+            self,
+            voice=voice,
+            rate=rate,
+            volume=volume,
+            pitch=pitch,
+            boundary=boundary,
         )
 
     def narration_video_options(
@@ -376,24 +320,13 @@ class Settings:
         speech_audio_volume: float | None = None,
         ffmpeg_bin: str | None = None,
     ) -> NarrationVideoOptions:
-        return NarrationVideoOptions(
-            ffmpeg_bin=str(ffmpeg_bin or self.ffmpeg_path).strip() or self.ffmpeg_path,
-            background_audio_volume=max(
-                0.0,
-                float(
-                    background_audio_volume
-                    if background_audio_volume is not None
-                    else self.narration_video_background_audio_volume
-                ),
-            ),
-            speech_audio_volume=max(
-                0.0,
-                float(
-                    speech_audio_volume
-                    if speech_audio_volume is not None
-                    else self.narration_video_speech_audio_volume
-                ),
-            ),
+        from movieteller_config import runtime_options
+
+        return runtime_options.build_narration_video_options(
+            self,
+            background_audio_volume=background_audio_volume,
+            speech_audio_volume=speech_audio_volume,
+            ffmpeg_bin=ffmpeg_bin,
         )
 
     def subtitle_context_build_options(
@@ -402,23 +335,10 @@ class Settings:
         chunk_cue_count: int | None = None,
         chunk_stride: int | None = None,
     ) -> SubtitleContextBuildOptions:
-        return SubtitleContextBuildOptions(
-            chunk_cue_count=max(
-                1,
-                int(
-                    chunk_cue_count
-                    if chunk_cue_count is not None
-                    else self.subtitle_context_chunk_cue_count
-                ),
-            ),
-            chunk_stride=max(
-                1,
-                int(
-                    chunk_stride
-                    if chunk_stride is not None
-                    else self.subtitle_context_chunk_stride
-                ),
-            ),
+        from movieteller_config import runtime_options
+
+        return runtime_options.build_subtitle_context_build_options(
+            self, chunk_cue_count=chunk_cue_count, chunk_stride=chunk_stride
         )
 
     def subtitle_context_retrieve_options(
@@ -427,16 +347,10 @@ class Settings:
         history_window_sec: float | None = None,
         top_k: int | None = None,
     ) -> SubtitleContextRetrieveOptions:
-        return SubtitleContextRetrieveOptions(
-            history_window_sec=float(
-                history_window_sec
-                if history_window_sec is not None
-                else self.subtitle_context_history_window_sec
-            ),
-            top_k=max(
-                1,
-                int(top_k if top_k is not None else self.subtitle_context_top_k),
-            ),
+        from movieteller_config import runtime_options
+
+        return runtime_options.build_subtitle_context_retrieve_options(
+            self, history_window_sec=history_window_sec, top_k=top_k
         )
 
     def subtitle_extraction_options(
@@ -447,20 +361,14 @@ class Settings:
         language: str | None = None,
         timeout_sec: float | None = None,
     ) -> SubtitleExtractionOptions:
-        resolved_timeout_sec = timeout_sec
-        if resolved_timeout_sec is None and self.videocaptioner_transcribe_timeout_ms is not None:
-            resolved_timeout_sec = max(
-                1.0, float(self.videocaptioner_transcribe_timeout_ms) / 1000.0
-            )
-        return SubtitleExtractionOptions(
-            videocaptioner_bin=_none_if_empty(
-                videocaptioner_bin
-                if videocaptioner_bin is not None
-                else self.videocaptioner_bin
-            ),
-            asr=str(asr or self.videocaptioner_asr).strip().lower() or "bijian",
-            language=str(language or self.videocaptioner_language).strip() or "auto",
-            timeout_sec=resolved_timeout_sec,
+        from movieteller_config import runtime_options
+
+        return runtime_options.build_subtitle_extraction_options(
+            self,
+            videocaptioner_bin=videocaptioner_bin,
+            asr=asr,
+            language=language,
+            timeout_sec=timeout_sec,
         )
 
     def frame_pool_build_options(
@@ -474,59 +382,17 @@ class Settings:
         dialogue_overlap_threshold: float | None = None,
         pyscenedetect_merge_sec: float | None = None,
     ) -> FramePoolBuildOptions:
-        resolved_min_frames = max(
-            1,
-            int(
-                min_frames_per_shot
-                if min_frames_per_shot is not None
-                else self.pool_frames_per_shot_min
-            ),
-        )
-        resolved_max_frames = max(
-            resolved_min_frames,
-            int(
-                max_frames_per_shot
-                if max_frames_per_shot is not None
-                else self.pool_frames_per_shot_max
-            ),
-        )
-        return FramePoolBuildOptions(
-            ffmpeg_bin=str(ffmpeg_bin or self.ffmpeg_path).strip() or self.ffmpeg_path,
-            max_edge_pixels=max(
-                16,
-                int(
-                    max_edge_pixels
-                    if max_edge_pixels is not None
-                    else self.narration_frame_max_edge
-                ),
-            ),
-            min_frames_per_shot=resolved_min_frames,
-            max_frames_per_shot=resolved_max_frames,
-            frames_per_shot_rate=(
-                float(frames_per_shot_rate)
-                if frames_per_shot_rate is not None
-                else (
-                    float(self.pool_frames_per_shot_rate)
-                    if self.pool_frames_per_shot_rate is not None
-                    else None
-                )
-            ),
-            dialogue_overlap_threshold=max(
-                0.0,
-                float(
-                    dialogue_overlap_threshold
-                    if dialogue_overlap_threshold is not None
-                    else self.dialogue_overlap_threshold
-                ),
-            ),
-            pyscenedetect_merge_sec=max(
-                0.0,
-                float(
-                    pyscenedetect_merge_sec
-                    if pyscenedetect_merge_sec is not None
-                    else self.pyscenedetect_merge_sec
-                ),
-            ),
+        from movieteller_config import runtime_options
+
+        return runtime_options.build_frame_pool_build_options(
+            self,
+            ffmpeg_bin=ffmpeg_bin,
+            max_edge_pixels=max_edge_pixels,
+            min_frames_per_shot=min_frames_per_shot,
+            max_frames_per_shot=max_frames_per_shot,
+            frames_per_shot_rate=frames_per_shot_rate,
+            dialogue_overlap_threshold=dialogue_overlap_threshold,
+            pyscenedetect_merge_sec=pyscenedetect_merge_sec,
         )
 
 
@@ -540,8 +406,6 @@ def _normalize_api_keys_dict(data: dict[str, Any]) -> dict[str, str]:
             expanded = expand_env_placeholder(str(v))
             if expanded:
                 raw[str(k).strip().lower()] = expanded
-    if v := _expand_optional_env_str(data.get("openai_api_key")):
-        raw.setdefault("openai", v)
     return raw
 
 
@@ -555,8 +419,6 @@ def _normalize_api_providers(data: dict[str, Any]) -> dict[str, str]:
             expanded = expand_env_placeholder(str(v))
             if expanded:
                 raw[str(k).strip().lower()] = expanded
-    if v := _expand_optional_env_str(data.get("openai_base_url")):
-        raw.setdefault("openai", v)
     return raw
 
 
@@ -598,14 +460,11 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
     )
     api_keys = _normalize_api_keys_dict(data)
     api_providers = _normalize_api_providers(data)
-    gateway_default_provider = (
-        str(
-            data.get("gateway_default_provider")
-            or gateway_cfg.get("default_provider")
-            or "newapi"
-        ).strip().lower()
-        or "newapi"
-    )
+    gateway_default_provider = str(
+        data.get("gateway_default_provider")
+        or gateway_cfg.get("default_provider")
+        or ""
+    ).strip().lower()
     gateway_tts_provider = _none_if_empty(
         str(
             data.get("gateway_tts_provider")
@@ -619,10 +478,7 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
     explicit_nested_video_defaults = _looks_like_explicit_nested_video_defaults(data)
     pool_min = max(1, _coerce_int(data.get("pool_frames_per_shot_min"), 1))
     pool_max = max(pool_min, _coerce_int(data.get("pool_frames_per_shot_max"), 3))
-    openai = api_keys.get("openai") or _expand_optional_env_str(data.get("openai_api_key"))
     return Settings(
-        openai_api_key=openai,
-        openai_base_url=_expand_optional_env_str(data.get("openai_base_url")),
         max_frames_per_segment=_coerce_int(data.get("max_frames_per_segment"), 24),
         narration_frame_max_edge=_coerce_int(data.get("narration_frame_max_edge"), 768),
         ffmpeg_path=str(data.get("ffmpeg_path") or "ffmpeg"),

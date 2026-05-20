@@ -1,8 +1,9 @@
 from movieteller_config.schema import settings_from_dict
 
 from model_gateway.router import (
-    resolve_default_model,
+    resolve_capability_model_endpoint,
     resolve_chat_endpoint,
+    resolve_default_model,
     resolve_embedding_endpoint,
     resolve_model_endpoint,
     resolve_model_provider,
@@ -29,11 +30,12 @@ def test_resolve_chat_endpoint_uses_provider_key_and_base_url():
     assert endpoint.adapter == "openai_compatible"
 
 
-def test_resolve_embedding_endpoint_uses_openai_fallback_base_url():
+def test_resolve_embedding_endpoint_uses_openai_api_providers():
     settings = settings_from_dict(
         {
-            "openai_api_key": "sk-openai",
-            "openai_base_url": "https://openai.example/v1",
+            "gateway": {"default_provider": "openai"},
+            "api_keys": {"openai": "sk-openai"},
+            "api_providers": {"openai": "https://openai.example/v1"},
         }
     )
     endpoint = resolve_embedding_endpoint(
@@ -193,3 +195,36 @@ def test_resolve_model_endpoint_for_tts_uses_tts_provider_override():
     assert endpoint.adapter == "dashscope_tts"
     assert endpoint.base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
     assert endpoint.model == "qwen3-tts-flash"
+
+
+def test_resolve_capability_model_endpoint_matches_pair_for_narration():
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "openai"},
+            "api_keys": {"openai": "sk-x"},
+            "model_defaults": {"narration": "gpt-4o-mini"},
+            "model_catalog": ["gpt-4o-mini"],
+        }
+    )
+    via = resolve_capability_model_endpoint(capability="narration", settings=settings)
+    model = resolve_default_model("narration", settings)
+    direct = resolve_model_endpoint(model, "narration", settings)
+    assert via == direct
+
+
+def test_resolve_capability_model_endpoint_tts_uses_tts_provider():
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "newapi", "tts_provider": "dashscope"},
+            "api_providers": {
+                "newapi": "http://127.0.0.1:3000/v1",
+                "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            },
+            "api_keys": {"newapi": "sk-new", "dashscope": "sk-dash"},
+            "model_catalog": ["qwen3-tts-flash"],
+            "model_defaults": {"tts": "qwen3-tts-flash"},
+        }
+    )
+    ep = resolve_capability_model_endpoint(capability="tts", settings=settings)
+    assert ep.provider == "dashscope"
+    assert ep.adapter == "dashscope_tts"

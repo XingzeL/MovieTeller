@@ -86,7 +86,8 @@ def main() -> int:
     _ensure_paths()
 
     from frame_source import FrameSourceOptions
-    from movie_pipeline import MoviePipelineOptions, run_pipeline
+    from movie_pipeline import MoviePipelineOptions, run_pipeline_ctx
+    from movie_pipeline.runtime_context import RunContext
     from movieteller_config import load_flat_dict
     from movieteller_config.schema import settings_from_dict
     from subtitle_context import build_subtitle_context_index
@@ -188,11 +189,11 @@ def main() -> int:
         speech_options=(settings.narration_speech_options() if ENABLE_SPEECH else None),
         video_options=(settings.narration_video_options() if ENABLE_EMBED_VIDEO else None),
     )
-    payload = run_pipeline(
+    ctx = RunContext(settings=settings, pipeline=pipeline_options)
+    payload = run_pipeline_ctx(
         srt_path=str(srt_path),
         video_path=str(video_path),
-        pipeline_options=pipeline_options,
-        settings=settings,
+        ctx=ctx,
     )
     pipeline_json_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),

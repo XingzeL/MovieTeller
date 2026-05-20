@@ -26,7 +26,7 @@ class FrameSourceOptions:
     max_frames_per_segment: int
     max_edge_pixels: int
     pool_miss_uniform_max_frames: int = 6
-    allow_uniform_fallback: bool = True
+    allow_uniform_fallback: bool = False
 
 
 def get_frames_for_segment(

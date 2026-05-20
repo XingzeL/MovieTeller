@@ -66,7 +66,10 @@ def _subtract_cue_spans(
         if end_sec > start_sec
     )
 
-
+# 在已知“镜头时间段”和“字幕cue时间段”的前提下，给每个镜头打上“对话”或“非对话”标签
+# 对话：镜头时间段和字幕cue时间段有重叠
+# 非对话：镜头时间段和字幕cue时间段没有重叠
+# 返回值是一个元组，元组中每个元素是一个ShotSpan，ShotSpan中包含镜头ID、开始时间、结束时间、是否对话、对话重叠比例、非对话时间段
 def _tag_dialogue_shots(
     shots: tuple[ShotSpan, ...],
     cues: list[SubtitleCue],
@@ -178,7 +181,10 @@ def _write_png_frame(
         err = proc.stderr.decode("utf-8", errors="replace") if proc.stderr else ""
         raise RuntimeError(f"ffmpeg failed ({proc.returncode}): {err.strip()}")
 
-
+# 构建帧池
+# 输入：视频路径、字幕路径、输出目录、帧池构建选项、设置、子进程运行函数
+# 输出：帧池构建结果
+# 帧池构建结果包含输出目录、清单文件路径、镜头文件路径、镜头数量、非对话镜头数量、帧数量
 def build_frame_pool(
     *,
     video_path: str,

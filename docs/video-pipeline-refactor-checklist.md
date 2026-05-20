@@ -274,7 +274,7 @@
 
 - [ ] 新建 `python/movie_pipeline/`
 - [ ] 提供统一入口
-  - `run_pipeline(...)`
+  - `run_pipeline_ctx(..., ctx=RunContext(...))`
 - [ ] 在这里串起：
   - `subtitle_analysis`
   - `subtitle_context`
@@ -428,6 +428,6 @@
 
 ## Notes
 
-- 当前规范入口已经切到 `python -m movie_pipeline` 和 `run_pipeline(...)`。
+- 当前规范入口已经切到 `python -m movie_pipeline` 和 `run_pipeline_ctx(..., ctx=RunContext(...))`。
 - `analyze_and_narrate(...)` 仍保留，但仅作为兼容包装层。
 - 优先保证边界清晰，再考虑进一步优化内部实现。

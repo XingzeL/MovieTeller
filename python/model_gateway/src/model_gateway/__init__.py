@@ -1,10 +1,7 @@
 from model_gateway.facade import (
-    embed_texts,
     embed_texts_for_capability,
-    generate_chat,
     generate_narration,
     polish_text,
-    synthesize_speech,
     synthesize_speech_for_capability,
 )
 from model_gateway.types import (
@@ -33,11 +30,8 @@ __all__ = [
     "SpeechRequest",
     "SpeechResult",
     "UsageInfo",
-    "embed_texts",
     "embed_texts_for_capability",
-    "generate_chat",
     "generate_narration",
     "polish_text",
-    "synthesize_speech",
     "synthesize_speech_for_capability",
 ]

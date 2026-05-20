@@ -27,7 +27,6 @@ class TestLoader(unittest.TestCase):
             clear=False,
         ):
             s = load_settings()
-            self.assertEqual(s.openai_api_key, "sk-test")
             self.assertEqual(s.get_api_key("openai"), "sk-test")
             self.assertEqual(s.max_frames_per_segment, 8)
             self.assertEqual(s.narration_frame_max_edge, 512)
@@ -120,16 +119,22 @@ ffmpeg_path: /usr/bin/ffmpeg
             finally:
                 os.chdir(cwd)
 
-    def test_require_openai_raises(self):
-        s = settings_from_dict({"openai_api_key": None})
-        self.assertRaises(ValueError, s.require_openai)
+    def test_require_api_key_openai_raises_when_missing(self):
+        s = settings_from_dict({"api_keys": {}})
+        with self.assertRaises(ValueError):
+            s.require_api_key("openai")
+
+    def test_default_provider_raises_when_gateway_empty(self):
+        s = settings_from_dict({})
+        with self.assertRaises(ValueError):
+            s.default_provider()
 
     def test_require_api_key_custom(self):
         s = settings_from_dict({"api_keys": {"gemini": "g-key"}})
         self.assertEqual(s.require_api_key("gemini"), "g-key")
 
     def test_defaults(self):
-        s = settings_from_dict({})
+        s = settings_from_dict({"gateway_default_provider": "newapi"})
         self.assertEqual(s.max_frames_per_segment, 24)
         self.assertEqual(s.narration_frame_max_edge, 768)
         self.assertEqual(s.ffmpeg_path, "ffmpeg")
@@ -224,7 +229,7 @@ ffmpeg_path: /usr/bin/ffmpeg
                 with mock.patch.dict(
                     os.environ,
                     {
-                        "MODELSCOPE_API_KEY_FREE": "ms-free-token",
+                        "MODELSCOPE_API_KEY": "ms-free-token",
                         "MODELSCOPE_BASE_URL": "https://api-inference.modelscope.cn/v1",
                     },
                     clear=False,
@@ -240,8 +245,8 @@ ffmpeg_path: /usr/bin/ffmpeg
         with mock.patch.dict(
             os.environ,
             {
-                "MODELSCOPE_API_KEY_FREE": "resolved-ms",
-                "API_KEYS_JSON": '{"modelscope":"$MODELSCOPE_API_KEY_FREE","openai":"${OPENAI_API_KEY}"}',
+                "API_KEYS_JSON": '{"modelscope":"$MODELSCOPE_API_KEY","openai":"${OPENAI_API_KEY}"}',
+                "MODELSCOPE_API_KEY": "resolved-ms",
                 "OPENAI_API_KEY": "resolved-openai",
             },
             clear=False,
@@ -312,7 +317,7 @@ ffmpeg_path: /usr/bin/ffmpeg
         )
         self.assertEqual(s.narration_polish_options().model, "qwen2.5-7b-instruct")
         speech_options = s.narration_speech_options()
-        self.assertEqual(speech_options.provider_slug, "dashscope")
+        self.assertEqual(s.provider_for_capability("tts"), "dashscope")
         self.assertEqual(speech_options.model, "qwen3-tts-flash")
         self.assertEqual(speech_options.voice, "Cherry")
         self.assertEqual(speech_options.rate, "+5%")
@@ -322,6 +327,7 @@ ffmpeg_path: /usr/bin/ffmpeg
         video_options = s.narration_video_options()
         self.assertEqual(video_options.background_audio_volume, 0.2)
         self.assertEqual(video_options.speech_audio_volume, 1.2)
+        self.assertEqual(video_options.subtitle_output_mode, "soft_mux")
 
     def test_new_schema_env_overrides(self):
         with mock.patch.dict(
@@ -350,6 +356,29 @@ ffmpeg_path: /usr/bin/ffmpeg
             self.assertEqual(s.video_default_background_audio_volume, 0.2)
             self.assertEqual(s.video_default_speech_audio_volume, 1.2)
             self.assertTrue(s.narration_tts_enabled)
+
+    def test_env_overrides_local_yaml_values_in_load_flat_dict(self):
+        """Documented precedence: env layer from ``_env_overrides`` wins over merged YAML."""
+        import yaml
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmp:
+            local = Path(tmp) / "config" / "local.yaml"
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_text(
+                yaml.safe_dump({"max_frames_per_segment": 3}, allow_unicode=True),
+                encoding="utf-8",
+            )
+            cwd = os.getcwd()
+            try:
+                os.chdir(tmp)
+                with mock.patch.dict(
+                    os.environ, {"MAX_FRAMES_PER_SEGMENT": "9"}, clear=False
+                ):
+                    d = load_flat_dict()
+                self.assertEqual(d.get("max_frames_per_segment"), 9)
+            finally:
+                os.chdir(cwd)
 
     def test_missing_default_model_raises(self):
         s = settings_from_dict({})

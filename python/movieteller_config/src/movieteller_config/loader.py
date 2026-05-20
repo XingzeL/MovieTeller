@@ -19,11 +19,6 @@ except ImportError:
 
 from movieteller_config.schema import Settings, settings_from_dict
 
-_LEGACY_API_KEY_ALIASES: tuple[tuple[str, str], ...] = (
-    ("ELEVEN_LABS_API", "elevenlabs"),
-    ("MODELSCOPE_API_KEY_FREE", "modelscope"),
-)
-
 
 def _slug_from_api_key_env(env_name: str) -> str | None:
     suf = "_API_KEY"
@@ -93,9 +88,6 @@ def _collect_api_keys_from_env() -> dict[str, str]:
         slug = _slug_from_api_key_env(env_name)
         if slug and (v := os.environ.get(env_name, "").strip()):
             keys.setdefault(slug, v)
-    for env_name, provider in _LEGACY_API_KEY_ALIASES:
-        if v := os.environ.get(env_name, "").strip():
-            keys.setdefault(provider, v)
     raw_json = os.environ.get("API_KEYS_JSON", "").strip()
     if raw_json:
         try:
@@ -175,6 +167,16 @@ def _collect_flat_model_catalog_from_env(env_name: str) -> list[str]:
 
 
 def load_flat_dict() -> dict[str, Any]:
+    """Merge config layers (lowest to highest precedence).
+
+    Order (later wins):
+        1. Packaged ``default.yaml``
+        2. Optional ``MOVIE_TELLER_CONFIG`` YAML path (env)
+        3. Repo ``config/local.yaml`` if found (walk-up from cwd)
+        4. ``_env_overrides()`` (environment variables and derived patches)
+
+    Call :func:`load_settings` / :func:`settings_from_dict` for a typed :class:`Settings` view.
+    """
     _load_repo_dotenv()
     merged: dict[str, Any] = _load_yaml_file(_package_default_yaml())
 
@@ -194,10 +196,6 @@ def _env_overrides() -> dict[str, Any]:
     out: dict[str, Any] = {}
     tts_defaults_patch: dict[str, Any] = {}
     video_defaults_patch: dict[str, Any] = {}
-    if v := os.environ.get("OPENAI_API_KEY"):
-        out["openai_api_key"] = v
-    if v := os.environ.get("OPENAI_BASE_URL"):
-        out["openai_base_url"] = v
     if v := os.environ.get("MAX_FRAMES_PER_SEGMENT"):
         out["max_frames_per_segment"] = int(v)
     if v := os.environ.get("NARRATION_FRAME_MAX_EDGE"):
@@ -386,13 +384,9 @@ def _env_overrides() -> dict[str, Any]:
     return out
 
 
-def load_settings(
-    *, require_openai: bool = False, require_narration: bool = False
-) -> Settings:
+def load_settings(*, require_narration: bool = False) -> Settings:
     data = load_flat_dict()
     settings = settings_from_dict(data)
-    if require_openai:
-        settings.require_openai()
     if require_narration:
         settings.require_api_key(settings.default_provider())
     return settings

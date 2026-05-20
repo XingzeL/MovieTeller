@@ -1,7 +1,5 @@
 /** Default values aligned with Python `movieteller_config/config/default.yaml`. */
 export const DEFAULTS = {
-  openai_api_key: null,
-  openai_base_url: null,
   narration_image_model: "gpt-4o-mini",
   max_frames_per_segment: 24,
   narration_frame_max_edge: 768,
@@ -56,21 +54,10 @@ export function expandEnvPlaceholder(v) {
 /** Public camelCase shape returned by `loadConfig()`. */
 export function toPublicConfig(s) {
   const apiKeys = normalizeApiKeysObject(s.api_keys ?? {});
-  let apiBaseUrls = normalizeApiBaseUrlsObject(s.api_base_urls ?? {});
-  const rawOb = s.openai_base_url;
-  const ob =
-    rawOb != null && String(rawOb).trim()
-      ? expandEnvPlaceholder(String(rawOb))
-      : "";
-  if (ob && !apiBaseUrls.openai) apiBaseUrls = { ...apiBaseUrls, openai: ob };
-  const rawOk = s.openai_api_key;
-  const directKey =
-    rawOk != null && String(rawOk).trim()
-      ? expandEnvPlaceholder(String(rawOk))
-      : "";
+  const apiBaseUrls = normalizeApiBaseUrlsObject(s.api_base_urls ?? {});
   return {
-    openaiApiKey: directKey || apiKeys.openai || null,
-    openaiBaseUrl: ob || apiBaseUrls.openai || null,
+    openaiApiKey: apiKeys.openai ?? null,
+    openaiBaseUrl: apiBaseUrls.openai ?? null,
     narrationImageModel: s.narration_image_model ?? "gpt-4o-mini",
     maxFramesPerSegment: Number(s.max_frames_per_segment ?? 24),
     narrationFrameMaxEdge: Number(s.narration_frame_max_edge ?? 768),

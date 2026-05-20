@@ -110,8 +110,6 @@ def polish_narration_text(
     resolved_strength = options.strength
     resolved_safety_margin_sec = options.safety_margin_sec
     resolved_prompt_style = options.prompt_style
-    resolved_provider = options.provider_slug
-    resolved_model = options.model
     target_duration_sec = compute_target_duration_sec(
         duration_sec, resolved_safety_margin_sec
     )
@@ -174,7 +172,7 @@ def polish_narration_text(
         estimated_polished_duration_sec=estimated_polished_duration_sec,
         cefr_level=resolved_cefr_level,
         strength=resolved_strength,
-        provider=settings.default_provider(),
-        model=settings.default_model_for_capability("polish"),
+        provider=result.meta.provider,
+        model=result.meta.model,
         timing_api_sec=t1 - t0,
     )

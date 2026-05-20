@@ -26,7 +26,13 @@ def test_facade_generate_chat_routes_through_openai_compatible_adapter():
         def __init__(self):
             self.chat = SimpleNamespace(completions=FakeChatApi())
 
-    settings = settings_from_dict({"openai_api_key": "sk-test"})
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "openai"},
+            "api_keys": {"openai": "sk-test"},
+            "api_providers": {"openai": "https://api.openai.com/v1"},
+        }
+    )
     result = generate_chat(
         ChatRequest(provider="openai", model="gpt-4o-mini", messages=[]),
         settings=settings,
@@ -44,7 +50,13 @@ def test_facade_embed_texts_routes_through_openai_compatible_adapter():
         def __init__(self):
             self.embeddings = FakeEmbeddingsApi()
 
-    settings = settings_from_dict({"openai_api_key": "sk-test"})
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "openai"},
+            "api_keys": {"openai": "sk-test"},
+            "api_providers": {"openai": "https://api.openai.com/v1"},
+        }
+    )
     result = embed_texts(
         EmbeddingRequest(provider="openai", model="text-embedding-3-small", texts=["a"]),
         settings=settings,

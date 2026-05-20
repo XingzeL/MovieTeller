@@ -91,7 +91,6 @@ def synthesize_narration_text(
     if not raw_text:
         raise ValueError("speech text is empty")
 
-    resolved_provider = options.provider_slug
     resolved_voice = options.voice
     resolved_rate = options.rate
     resolved_volume = options.volume
@@ -166,7 +165,7 @@ def synthesize_narration_text(
         metadata_path=str(metadata_file),
         raw_duration_sec=raw_duration_sec,
         audio_duration_sec=audio_duration_sec,
-        provider=settings.default_provider(),
+        provider=settings.provider_for_capability("tts"),
         voice=resolved_voice,
         rate=resolved_rate,
         volume=resolved_volume,

@@ -1,0 +1,5 @@
+{
+    "editor.links": true,
+    "editor.multiCursorModifier": "ctrlCmd",
+    "editor.gotoLocation.multipleDefinitions": "peek"
+}

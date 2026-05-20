@@ -1,8 +1,8 @@
 # See movieteller_config README and repository root .env.example.
 # api_keys / api_providers: arbitrary provider slugs. Env supports PREFIX_API_KEY,
 # PREFIX_BASE_URL, API_KEYS_JSON, API_PROVIDERS_JSON.
+# Use api_keys.openai and api_providers.openai instead of legacy top-level openai_* keys.
 
-openai_base_url: null
 max_frames_per_segment: 32
 narration_frame_max_edge: 512
 ffmpeg_path: ffmpeg

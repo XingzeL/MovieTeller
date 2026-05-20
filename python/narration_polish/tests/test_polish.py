@@ -55,7 +55,7 @@ def test_polish_narration_uses_injected_client_and_enforces_budget():
     fake_client.chat.completions.create.assert_called_once()
 
 
-def test_polish_narration_respects_explicit_provider_and_model_overrides():
+def test_polish_narration_respects_explicit_model_override():
     settings = settings_from_dict(
         {
             "gateway": {"default_provider": "newapi"},

@@ -17,12 +17,6 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/** Names that are not ``PREFIX_API_KEY`` but map to a slug (kept minimal). */
-const LEGACY_API_KEY_ALIASES = [
-  ["ELEVEN_LABS_API", "elevenlabs"],
-  ["MODELSCOPE_API_KEY_FREE", "modelscope"],
-];
-
 function slugFromApiKeyEnv(name) {
   const suf = "_API_KEY";
   if (!name.endsWith(suf)) return null;
@@ -76,10 +70,6 @@ function collectApiKeysFromEnv() {
     if (!slug) continue;
     const v = process.env[envName]?.trim();
     if (v && !keys[slug]) keys[slug] = v;
-  }
-  for (const [envName, provider] of LEGACY_API_KEY_ALIASES) {
-    const v = process.env[envName]?.trim();
-    if (v && !keys[provider]) keys[provider] = v;
   }
   const rawJson = process.env.API_KEYS_JSON?.trim();
   if (rawJson) {
@@ -167,8 +157,6 @@ function collectModelCatalogFromEnv(envName) {
 
 function envOverrides() {
   const o = {};
-  if (process.env.OPENAI_API_KEY) o.openai_api_key = process.env.OPENAI_API_KEY;
-  if (process.env.OPENAI_BASE_URL) o.openai_base_url = process.env.OPENAI_BASE_URL;
   const model = process.env.NARRATION_IMAGE_MODEL || process.env.IMAGE_MODEL;
   if (model) o.narration_image_model = model;
   if (process.env.MAX_FRAMES_PER_SEGMENT)
@@ -341,25 +329,16 @@ export function loadConfig(opts = {}) {
       collectModelCatalogFromEnv("NARRATION_POLISH_PROVIDER_MODEL_CATALOG_JSON")
     ),
   });
-  if (merged.openai_api_key?.trim() && !merged.api_keys.openai) {
-    merged.api_keys = {
-      ...merged.api_keys,
-      openai: merged.openai_api_key.trim(),
-    };
-  }
 
   cached = Object.freeze(toPublicConfig(merged));
   return cached;
 }
 
-/** Resolve inference base URL for a provider (see apiBaseUrls / openaiBaseUrl). */
+/** Resolve inference base URL for a provider (see apiBaseUrls). */
 export function getApiBaseUrl(config, provider) {
   const id = String(provider).trim().toLowerCase();
   if (!id) return null;
-  const fromMap = config.apiBaseUrls?.[id]?.trim();
-  if (fromMap) return fromMap;
-  if (id === "openai") return config.openaiBaseUrl?.trim() ?? null;
-  return null;
+  return config.apiBaseUrls?.[id]?.trim() ?? null;
 }
 
 /** Model id for a provider slug (matches Python ``model_for_provider`` resolution). */
@@ -423,7 +402,7 @@ export function getApiKey(config, provider) {
 
 /** Throws if OpenAI key missing — use before OpenAI-specific calls. */
 export function requireOpenAIConfig(config = loadConfig()) {
-  const key = config.openaiApiKey?.trim() || config.apiKeys?.openai?.trim();
+  const key = getApiKey(config, "openai")?.trim();
   if (!key) {
     throw new Error(
       "OpenAI API key is required for this operation. Set OPENAI_API_KEY, API_KEYS_JSON, or api_keys.openai in config/local.yaml."

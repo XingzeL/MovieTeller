@@ -25,7 +25,6 @@ def main() -> int:
         default=None,
         help="Optional stricter target duration to fit inside",
     )
-    ap.add_argument("--provider", default=None, help="Speech provider slug override")
     ap.add_argument("--voice", default=None, help="edge-tts voice name override")
     ap.add_argument("--rate", default=None, help="edge-tts speaking rate, e.g. +5%")
     ap.add_argument("--volume", default=None, help="edge-tts volume, e.g. +0%")
@@ -41,7 +40,6 @@ def main() -> int:
 
     settings = load_settings()
     options = settings.narration_speech_options(
-        provider_slug=args.provider,
         voice=args.voice,
         rate=args.rate,
         volume=args.volume,

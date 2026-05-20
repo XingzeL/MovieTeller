@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, TypeAlias
 
 from movieteller_config.schema import (
     FramePoolBuildOptions,
@@ -113,6 +114,63 @@ class MoviePipelineOptions:
     video_options: NarrationVideoOptions | None = None
 
 
+PipelineRuntimeOptions: TypeAlias = MoviePipelineOptions
+"""Alias for staged naming; same shape as :class:`MoviePipelineOptions`."""
+
+
+@dataclass(frozen=True)
+class FullWorkflowPlan:
+    """Which workflow stages are enabled (see :class:`FullWorkflowOptions`)."""
+
+    extract_subtitles: bool = True
+    build_frame_pool: bool = True
+    build_subtitle_context: bool = True
+    enable_polish: bool = True
+    enable_speech: bool = False
+    enable_embed_video: bool = False
+
+
+@dataclass(frozen=True)
+class ArtifactPaths:
+    """Fixed on-disk layout under ``output_root`` for ``run_full_workflow``."""
+
+    output_root: str
+    source_video: str
+    stem: str
+    srt_path: str
+    frame_pool_dir: str
+    frame_pool_manifest: str
+    subtitle_context_dir: str
+    speech_output_dir: str | None
+    embed_output_path: str | None
+
+    @staticmethod
+    def resolve(
+        *,
+        output_root: str | Path,
+        source_video: str | Path,
+        enable_speech: bool,
+        enable_embed_video: bool,
+    ) -> ArtifactPaths:
+        root = Path(output_root).resolve()
+        vid = Path(source_video).resolve()
+        stem = vid.stem
+        speech = str(root / f"{stem}.narration_audio") if enable_speech else None
+        embed = str(root / f"{stem}.narrated.mp4") if enable_embed_video else None
+        pool_dir = root / f"{stem}.frame_pool"
+        return ArtifactPaths(
+            output_root=str(root),
+            source_video=str(vid),
+            stem=stem,
+            srt_path=str(root / f"{stem}.extracted.srt"),
+            frame_pool_dir=str(pool_dir),
+            frame_pool_manifest=str(pool_dir / "manifest.jsonl"),
+            subtitle_context_dir=str(root / f"{stem}.subtitle_context"),
+            speech_output_dir=speech,
+            embed_output_path=embed,
+        )
+
+
 @dataclass(frozen=True)
 class FullWorkflowOptions:
     extract_subtitles: bool = True
@@ -126,3 +184,13 @@ class FullWorkflowOptions:
     frame_pool_build_options: FramePoolBuildOptions | None = None
     subtitle_context_build_options: SubtitleContextBuildOptions | None = None
     movie_pipeline_options: MoviePipelineOptions | None = None
+
+    def workflow_plan(self) -> FullWorkflowPlan:
+        return FullWorkflowPlan(
+            extract_subtitles=self.extract_subtitles,
+            build_frame_pool=self.build_frame_pool,
+            build_subtitle_context=self.build_subtitle_context,
+            enable_polish=self.enable_polish,
+            enable_speech=self.enable_speech,
+            enable_embed_video=self.enable_embed_video,
+        )

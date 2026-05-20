@@ -59,10 +59,7 @@ def resolve_model_endpoint(model: str, capability: str, settings) -> ResolvedEnd
 
 
 def _resolve_base_url(settings, provider: str) -> str | None:
-    base_url = settings.get_api_base_url(provider)
-    if provider == "openai" and not base_url:
-        return settings.openai_base_url
-    return base_url
+    return settings.get_api_base_url(provider)
 
 
 def _resolve_adapter(provider: str) -> str:
@@ -90,6 +87,13 @@ def _resolve_capability_adapter(capability: str, provider: str) -> str:
     if cap in {"tts", "speech"}:
         return _resolve_speech_adapter(provider)
     raise ValueError(f"unsupported capability '{capability}'")
+
+
+def resolve_capability_model_endpoint(*, capability: str, settings) -> ResolvedEndpoint:
+    """Single entry: default model for ``capability`` + provider/adapter/base_url/key."""
+    cap = str(capability).strip().lower()
+    model = resolve_default_model(cap, settings)
+    return resolve_model_endpoint(model, cap, settings)
 
 
 def resolve_chat_endpoint(request: ChatRequest, settings) -> ResolvedEndpoint:

@@ -6,14 +6,15 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from frame_source import FrameSourceOptions
-from movie_pipeline.pipeline import run_pipeline
-from movie_pipeline.types import FullWorkflowOptions, MoviePipelineOptions
+from movie_pipeline.types import ArtifactPaths, FullWorkflowOptions, MoviePipelineOptions
+from movie_pipeline.workflow_stages import (
+    stage_frame_pool,
+    stage_narration_pipeline,
+    stage_subtitle_context,
+    stage_subtitle_extraction,
+)
 from movieteller_config import load_settings
 from movieteller_config.schema import Settings
-from subtitle_context import build_subtitle_context_index
-from subtitle_context.index import subtitle_context_index_is_complete
-from subtitle_extraction import extract_subtitles
-from video_frame_pool import build_frame_pool
 
 
 @dataclass(frozen=True)
@@ -82,22 +83,22 @@ def workflow_options_from_settings(
         frame_pool_build_options=settings.frame_pool_build_options(),
         subtitle_context_build_options=settings.subtitle_context_build_options(),
         movie_pipeline_options=MoviePipelineOptions(
-            narration_options=settings.narration_options(),
-            frame_source_options=FrameSourceOptions(
+            narration_options=settings.narration_options(),                             # 图生文旁白参数
+            frame_source_options=FrameSourceOptions(                                    # 视频数据预处理帧池选项
                 ffmpeg_bin=settings.ffmpeg_path,
                 max_frames_per_segment=settings.max_frames_per_segment,
                 max_edge_pixels=settings.narration_frame_max_edge,
                 pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
                 allow_uniform_fallback=True,
             ),
-            subtitle_context_build_options=settings.subtitle_context_build_options(),
+            subtitle_context_build_options=settings.subtitle_context_build_options(),   # 台词信息RAG相关现象
             subtitle_context_retrieve_options=settings.subtitle_context_retrieve_options(),
-            polish_options=(
+            polish_options=(                                                            # 文生文润色选项
                 settings.narration_polish_options()
                 if settings.narration_polish_enabled
                 else None
             ),
-            speech_options=(
+            speech_options=(                                                            # 语音生成选项
                 settings.narration_speech_options()
                 if settings.narration_tts_enabled
                 else None
@@ -213,6 +214,10 @@ def run_full_workflow(
     video_path: str,
     options: FullWorkflowOptions | None = None,
     settings: Settings | None = None,
+    narrator: Any = None,
+    polisher: Any = None,
+    synthesizer: Any = None,
+    video_renderer: Any = None,
 ) -> dict[str, Any]:
     resolved_settings = settings if settings is not None else load_settings(require_narration=True)
     resolved_options = options or workflow_options_from_settings(resolved_settings)
@@ -221,36 +226,25 @@ def run_full_workflow(
     ).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
 
-    source_video = Path(video_path).resolve()
-    stem = source_video.stem
-    srt_path = output_root / f"{stem}.extracted.srt"
-    frame_pool_dir = output_root / f"{stem}.frame_pool"
-    frame_pool_manifest = frame_pool_dir / "manifest.jsonl"
-    subtitle_context_dir = output_root / f"{stem}.subtitle_context"
+    paths = ArtifactPaths.resolve(
+        output_root=output_root,
+        source_video=video_path,
+        enable_speech=resolved_options.enable_speech,
+        enable_embed_video=resolved_options.enable_embed_video,
+    )
 
-    if resolved_options.extract_subtitles and not srt_path.is_file():
-        so = resolved_options.subtitle_extraction_options or resolved_settings.subtitle_extraction_options()
-        extract_subtitles(
-            str(source_video),
-            videocaptioner_bin=so.videocaptioner_bin,
-            output_srt_path=str(srt_path),
-            asr=so.asr,
-            language=so.language,
-            timeout_sec=so.timeout_sec,
-        )
-    elif not srt_path.is_file():
-        raise FileNotFoundError(f"Subtitle file not found and extraction disabled: {srt_path}")
+    stage_subtitle_extraction(
+        paths=paths,
+        resolved_options=resolved_options,
+        resolved_settings=resolved_settings,
+    )
+    stage_frame_pool(
+        paths=paths,
+        resolved_options=resolved_options,
+        resolved_settings=resolved_settings,
+    )
 
-    if resolved_options.build_frame_pool and not frame_pool_manifest.is_file():
-        fo = resolved_options.frame_pool_build_options or resolved_settings.frame_pool_build_options()
-        build_frame_pool(
-            video_path=str(source_video),
-            srt_path=str(srt_path),
-            output_dir=str(frame_pool_dir),
-            options=fo,
-            settings=resolved_settings,
-        )
-
+    frame_pool_manifest = Path(paths.frame_pool_manifest)
     pipeline_settings = resolved_settings
     if frame_pool_manifest.is_file():
         manifest_value = str(frame_pool_manifest)
@@ -260,16 +254,11 @@ def run_full_workflow(
                 frame_pool_manifest=manifest_value,
             )
 
-    subtitle_context_index_dir: str | None = None
-    if resolved_options.build_subtitle_context:
-        if not subtitle_context_index_is_complete(subtitle_context_dir):
-            build_subtitle_context_index(
-                srt_path=str(srt_path),
-                output_dir=str(subtitle_context_dir),
-                options=resolved_options.subtitle_context_build_options,
-                settings=pipeline_settings,
-            )
-        subtitle_context_index_dir = str(subtitle_context_dir)
+    subtitle_context_index_dir = stage_subtitle_context(
+        paths=paths,
+        resolved_options=resolved_options,
+        pipeline_settings=pipeline_settings,
+    )
 
     base_pipeline_options = resolved_options.movie_pipeline_options or workflow_options_from_settings(
         pipeline_settings,
@@ -278,50 +267,23 @@ def run_full_workflow(
     if base_pipeline_options is None:
         raise RuntimeError("movie_pipeline_options is required for full workflow")
 
-    speech_output_dir = (
-        str(output_root / f"{stem}.narration_audio")
-        if resolved_options.enable_speech
-        else None
-    )
-    embed_output_path = (
-        str(output_root / f"{stem}.narrated.mp4")
-        if resolved_options.enable_embed_video
-        else None
-    )
-    pipeline_options = MoviePipelineOptions(
-        video_duration_sec=base_pipeline_options.video_duration_sec,
-        min_gap_sec=base_pipeline_options.min_gap_sec,
-        subtitle_guard_sec=base_pipeline_options.subtitle_guard_sec,
-        ffprobe_bin=base_pipeline_options.ffprobe_bin,
+    payload = stage_narration_pipeline(
+        paths=paths,
+        resolved_options=resolved_options,
+        pipeline_settings=pipeline_settings,
+        base_pipeline_options=base_pipeline_options,
         subtitle_context_index_dir=subtitle_context_index_dir,
-        build_subtitle_context=False,
-        speech_output_dir=speech_output_dir,
-        embed_video=resolved_options.enable_embed_video,
-        embed_output_path=embed_output_path,
-        narration_options=base_pipeline_options.narration_options,
-        frame_source_options=base_pipeline_options.frame_source_options,
-        subtitle_context_build_options=base_pipeline_options.subtitle_context_build_options,
-        subtitle_context_retrieve_options=base_pipeline_options.subtitle_context_retrieve_options,
-        polish_options=(
-            base_pipeline_options.polish_options if resolved_options.enable_polish else None
-        ),
-        speech_options=(
-            base_pipeline_options.speech_options if resolved_options.enable_speech else None
-        ),
-        video_options=(
-            base_pipeline_options.video_options if resolved_options.enable_embed_video else None
-        ),
-    )
-    payload = run_pipeline(
-        srt_path=str(srt_path),
-        video_path=str(source_video),
-        pipeline_options=pipeline_options,
-        settings=pipeline_settings,
+        narrator=narrator,
+        polisher=polisher,
+        synthesizer=synthesizer,
+        video_renderer=video_renderer,
     )
     payload["workflowArtifacts"] = {
-        "videoPath": str(source_video),
-        "srtPath": str(srt_path),
-        "framePoolManifest": (str(frame_pool_manifest) if frame_pool_manifest.is_file() else None),
+        "videoPath": paths.source_video,
+        "srtPath": paths.srt_path,
+        "framePoolManifest": (
+            paths.frame_pool_manifest if frame_pool_manifest.is_file() else None
+        ),
         "subtitleContextIndexDir": subtitle_context_index_dir,
         "outputRoot": str(output_root),
     }

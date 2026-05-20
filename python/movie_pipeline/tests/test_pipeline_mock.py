@@ -8,9 +8,10 @@ from movie_pipeline import (
     parse_product_request,
     run_full_workflow,
     narrate_analysis_candidates,
-    run_pipeline,
+    run_pipeline_ctx,
     translate_product_request_to_workflow_options,
 )
+from movie_pipeline.runtime_context import RunContext
 from subtitle_analysis import analyze_srt_text
 
 # One subtitle cue with a single qualifying narration gap before it.
@@ -68,6 +69,14 @@ b
     )
     settings = make_settings()
     frame_source_options = settings_to_frame_source_options(settings)
+    pipeline_options = MoviePipelineOptions(
+        video_duration_sec=8.0,
+        min_gap_sec=1.0,
+        subtitle_guard_sec=0.25,
+        narration_options=settings.narration_options(prompt_style="documentary"),
+        frame_source_options=frame_source_options,
+    )
+    ctx = RunContext(settings=settings, pipeline=pipeline_options)
 
     calls = []
 
@@ -82,11 +91,10 @@ b
 
     segments = narrate_analysis_candidates(
         analysis,
+        ctx=ctx,
         video_path="demo.mp4",
-        narration_options=settings.narration_options(prompt_style="documentary"),
         frame_source_options=frame_source_options,
         narrator=fake_narrator,
-        settings=settings,
     )
     assert len(segments) == 2
     assert segments[0].narration_text.startswith("text-")
@@ -111,6 +119,14 @@ b
     )
     settings = make_settings()
     frame_source_options = settings_to_frame_source_options(settings)
+    pipeline_options = MoviePipelineOptions(
+        video_duration_sec=5.2,
+        min_gap_sec=1.0,
+        subtitle_guard_sec=0.25,
+        narration_options=settings.narration_options(),
+        frame_source_options=frame_source_options,
+    )
+    ctx = RunContext(settings=settings, pipeline=pipeline_options)
     calls = []
 
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
@@ -119,12 +135,11 @@ b
 
     segments = narrate_analysis_candidates(
         analysis,
+        ctx=ctx,
         video_path="demo.mp4",
         subtitle_context_index_dir="demo.subtitle_context",
-        narration_options=settings.narration_options(),
         frame_source_options=frame_source_options,
         narrator=fake_narrator,
-        settings=settings,
     )
     assert len(segments) == 1
     assert calls[0].prev_subtitle_text == "a"
@@ -132,7 +147,7 @@ b
     assert calls[0].retrieved_context_texts == ()
 
 
-def test_run_pipeline_returns_timed_json_payload():
+def test_run_pipeline_ctx_returns_timed_json_payload():
     raw = _SINGLE_GAP_SRT
 
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
@@ -146,16 +161,16 @@ def test_run_pipeline_returns_timed_json_payload():
         subtitle_guard_sec=0.25,
         narration_options=settings.narration_options(),
     )
+    ctx = RunContext(settings=settings, pipeline=pipeline_options)
 
     with TemporaryDirectory() as tmp:
         srt = Path(tmp) / "demo.srt"
         srt.write_text(raw, encoding="utf-8")
-        payload = run_pipeline(
+        payload = run_pipeline_ctx(
             srt_path=str(srt),
             video_path="demo.mp4",
-            pipeline_options=pipeline_options,
+            ctx=ctx,
             narrator=fake_narrator,
-            settings=settings,
         )
     assert "narratedSegments" in payload
     assert len(payload["narratedSegments"]) == 1
@@ -163,7 +178,7 @@ def test_run_pipeline_returns_timed_json_payload():
     assert payload["narratedSegments"][0]["speechText"] == "narration"
 
 
-def test_run_pipeline_detects_default_subtitle_context_index_dir():
+def test_run_pipeline_ctx_detects_default_subtitle_context_index_dir():
     raw = _SINGLE_GAP_SRT
 
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
@@ -177,6 +192,7 @@ def test_run_pipeline_detects_default_subtitle_context_index_dir():
         subtitle_guard_sec=0.25,
         narration_options=settings.narration_options(),
     )
+    ctx = RunContext(settings=settings, pipeline=pipeline_options)
 
     with TemporaryDirectory() as tmp:
         srt = Path(tmp) / "demo.srt"
@@ -187,17 +203,16 @@ def test_run_pipeline_detects_default_subtitle_context_index_dir():
 
         np.save(index_dir / "embeddings.npy", np.zeros((0, 0), dtype=np.float32))
         srt.write_text(raw, encoding="utf-8")
-        payload = run_pipeline(
+        payload = run_pipeline_ctx(
             srt_path=str(srt),
             video_path="demo.mp4",
-            pipeline_options=pipeline_options,
+            ctx=ctx,
             narrator=fake_narrator,
-            settings=settings,
         )
     assert payload["subtitleContextIndexDir"] == str(index_dir)
 
 
-def test_run_pipeline_ignores_incomplete_default_subtitle_context_index_dir():
+def test_run_pipeline_ctx_ignores_incomplete_default_subtitle_context_index_dir():
     raw = _SINGLE_GAP_SRT
 
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
@@ -211,23 +226,23 @@ def test_run_pipeline_ignores_incomplete_default_subtitle_context_index_dir():
         subtitle_guard_sec=0.25,
         narration_options=settings.narration_options(),
     )
+    ctx = RunContext(settings=settings, pipeline=pipeline_options)
 
     with TemporaryDirectory() as tmp:
         srt = Path(tmp) / "demo.srt"
         index_dir = Path(tmp) / "demo.subtitle_context"
         index_dir.mkdir()
         srt.write_text(raw, encoding="utf-8")
-        payload = run_pipeline(
+        payload = run_pipeline_ctx(
             srt_path=str(srt),
             video_path="demo.mp4",
-            pipeline_options=pipeline_options,
+            ctx=ctx,
             narrator=fake_narrator,
-            settings=settings,
         )
     assert payload["subtitleContextIndexDir"] is None
 
 
-def test_run_pipeline_can_polish_output():
+def test_run_pipeline_ctx_can_polish_output():
     raw = _SINGLE_GAP_SRT
 
     class FakePolishResult:
@@ -265,17 +280,17 @@ def test_run_pipeline_can_polish_output():
         narration_options=settings.narration_options(),
         polish_options=settings.narration_polish_options(),
     )
+    ctx = RunContext(settings=settings, pipeline=pipeline_options)
 
     with TemporaryDirectory() as tmp:
         srt = Path(tmp) / "demo.srt"
         srt.write_text(raw, encoding="utf-8")
-        payload = run_pipeline(
+        payload = run_pipeline_ctx(
             srt_path=str(srt),
             video_path="demo.mp4",
-            pipeline_options=pipeline_options,
+            ctx=ctx,
             narrator=fake_narrator,
             polisher=fake_polisher,
-            settings=settings,
         )
     seg = payload["narratedSegments"][0]
     assert seg["text"] == "longer narration line here"
@@ -284,7 +299,7 @@ def test_run_pipeline_can_polish_output():
     assert seg["polish"]["cefrLevel"] == "A1"
 
 
-def test_run_pipeline_can_synthesize_speech():
+def test_run_pipeline_ctx_can_synthesize_speech():
     raw = _SINGLE_GAP_SRT
 
     class FakeSpeechResult:
@@ -312,7 +327,7 @@ def test_run_pipeline_can_synthesize_speech():
         assert text == "short line"
         assert duration_sec == 1.0
         assert kwargs["target_duration_sec"] == 1.0
-        assert kwargs["options"].provider_slug == "newapi"
+        assert kwargs["options"].voice == "en-US-EmmaMultilingualNeural"
         return FakeSpeechResult()
 
     from tempfile import TemporaryDirectory
@@ -328,10 +343,9 @@ def test_run_pipeline_can_synthesize_speech():
     with TemporaryDirectory() as tmp:
         srt = Path(tmp) / "demo.srt"
         srt.write_text(raw, encoding="utf-8")
-        payload = run_pipeline(
-            srt_path=str(srt),
-            video_path="demo.mp4",
-            pipeline_options=MoviePipelineOptions(
+        ctx = RunContext(
+            settings=settings,
+            pipeline=MoviePipelineOptions(
                 video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
                 min_gap_sec=0.5,
                 subtitle_guard_sec=0.25,
@@ -339,9 +353,13 @@ def test_run_pipeline_can_synthesize_speech():
                 narration_options=settings.narration_options(),
                 speech_options=settings.narration_speech_options(),
             ),
+        )
+        payload = run_pipeline_ctx(
+            srt_path=str(srt),
+            video_path="demo.mp4",
+            ctx=ctx,
             narrator=fake_narrator,
             synthesizer=fake_synthesizer,
-            settings=settings,
         )
     seg = payload["narratedSegments"][0]
     assert seg["speech"]["audioPath"].endswith(".mp3")
@@ -349,7 +367,7 @@ def test_run_pipeline_can_synthesize_speech():
     assert seg["speech"]["fitsDuration"] is True
 
 
-def test_run_pipeline_can_render_video():
+def test_run_pipeline_ctx_can_render_video():
     raw = _SINGLE_GAP_SRT
 
     class FakeSpeechResult:
@@ -402,23 +420,27 @@ def test_run_pipeline_can_render_video():
     with TemporaryDirectory() as tmp:
         srt = Path(tmp) / "demo.srt"
         srt.write_text(raw, encoding="utf-8")
-        payload = run_pipeline(
-            srt_path=str(srt),
-            video_path="demo.mp4",
-            pipeline_options=MoviePipelineOptions(
+        ctx = RunContext(
+            settings=settings,
+            pipeline=MoviePipelineOptions(
                 video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
                 min_gap_sec=0.5,
                 subtitle_guard_sec=0.25,
                 speech_output_dir=str(Path(tmp) / "speech"),
                 embed_video=True,
+                embed_output_path=str(Path(tmp) / "demo.narrated.mp4"),
                 narration_options=settings.narration_options(),
                 speech_options=settings.narration_speech_options(),
                 video_options=settings.narration_video_options(),
             ),
+        )
+        payload = run_pipeline_ctx(
+            srt_path=str(srt),
+            video_path="demo.mp4",
+            ctx=ctx,
             narrator=fake_narrator,
             synthesizer=fake_synthesizer,
             video_renderer=fake_renderer,
-            settings=settings,
         )
     assert payload["renderedVideo"]["outputPath"] == "demo.narrated.mp4"
 
@@ -503,25 +525,23 @@ def test_run_full_workflow_reuses_existing_artifacts_and_runs_pipeline(tmp_path)
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
         return ("narration", end_sec - start_sec)
 
-    from movie_pipeline import full_workflow as fw
+    import movie_pipeline.workflow_stages as ws
 
-    original_run_pipeline = fw.run_pipeline
+    original_run_pipeline_ctx = ws.run_pipeline_ctx
     captured = {}
 
-    def fake_run_pipeline(*, srt_path, video_path, pipeline_options, settings):
-        captured["frame_pool_manifest"] = settings.frame_pool_manifest
-        return original_run_pipeline(
+    def fake_run_pipeline_ctx(*, srt_path, video_path, ctx, narrator=None, **kwargs):
+        captured["frame_pool_manifest"] = ctx.settings.frame_pool_manifest
+        return original_run_pipeline_ctx(
             srt_path=srt_path,
             video_path=video_path,
-            pipeline_options=pipeline_options,
-            settings=settings,
+            ctx=ctx,
             narrator=fake_narrator,
+            **kwargs,
         )
 
-    import movie_pipeline.full_workflow as full_workflow_module
-
-    saved = full_workflow_module.run_pipeline
-    full_workflow_module.run_pipeline = fake_run_pipeline
+    saved = ws.run_pipeline_ctx
+    ws.run_pipeline_ctx = fake_run_pipeline_ctx
 
     try:
         payload = run_full_workflow(
@@ -530,7 +550,7 @@ def test_run_full_workflow_reuses_existing_artifacts_and_runs_pipeline(tmp_path)
             settings=settings,
         )
     finally:
-        full_workflow_module.run_pipeline = saved
+        ws.run_pipeline_ctx = saved
 
     assert payload["workflowArtifacts"]["srtPath"] == str(srt)
     assert payload["workflowArtifacts"]["framePoolManifest"] == str(pool_dir / "manifest.jsonl")

@@ -46,7 +46,6 @@ def test_synthesize_narration_without_fit(monkeypatch, tmp_path):
         2.0,
         output_path=str(tmp_path / "out.mp3"),
         options=NarrationSpeechOptions(
-            provider_slug="newapi",
             voice="en-US-EmmaMultilingualNeural",
             model="qwen3-tts-flash",
             rate="+0%",
@@ -88,7 +87,6 @@ def test_synthesize_narration_with_fit(monkeypatch, tmp_path):
         2.0,
         output_path=str(tmp_path / "out.mp3"),
         options=NarrationSpeechOptions(
-            provider_slug="newapi",
             voice="en-US-EmmaMultilingualNeural",
             model="qwen3-tts-flash",
             rate="+0%",

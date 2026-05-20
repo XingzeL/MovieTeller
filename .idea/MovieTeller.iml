@@ -18,6 +18,7 @@
       <sourceFolder url="file://$MODULE_DIR$/python/pipeline_transcript" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/python/pipeline_transcript/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/python/pipeline_types/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/python/rerank/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/python/subtitle_analysis" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/python/subtitle_analysis/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/python/subtitle_context/src" isTestSource="false" />
@@ -25,6 +26,7 @@
       <sourceFolder url="file://$MODULE_DIR$/python/subtitle_extraction/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/python/video_frame_pool/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/python/movie_pipeline/.venv" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.12 (MovieTeller)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

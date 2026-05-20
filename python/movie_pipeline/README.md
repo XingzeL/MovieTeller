@@ -38,7 +38,6 @@ python -m movie_pipeline \
   --subtitle-guard-sec 0.25 \
   --build-subtitle-context \
   --polish \
-  --max-candidates 3 \
   --json
 ```
 
@@ -49,7 +48,12 @@ python -m movie_pipeline \
 
 ## Python API
 
-Canonical Python entry: `run_pipeline(...)` with `MoviePipelineOptions`.
+Use `run_pipeline_ctx(..., ctx=RunContext(settings=..., pipeline=...))` — this is
+the only supported pipeline execution entry; assemble a `RunContext` once and pass
+it through.
+
+See [docs/runtime-config-architecture.md](../docs/runtime-config-architecture.md)
+for diagrams and payload helpers.
 
 `analyze_and_narrate(...)` is compatibility-only for older call sites and should not
 be used for new integration code.

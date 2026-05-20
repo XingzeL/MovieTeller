@@ -18,10 +18,9 @@ from model_gateway.adapters.volcengine_tts import (
 from model_gateway.errors import GatewayConfigError, GatewayUnsupportedCapabilityError
 from model_gateway.policies import execute_with_retry, limited
 from model_gateway.router import (
-    resolve_default_model,
+    resolve_capability_model_endpoint,
     resolve_chat_endpoint,
     resolve_embedding_endpoint,
-    resolve_model_endpoint,
     resolve_speech_endpoint,
 )
 from model_gateway.telemetry import emit_gateway_event
@@ -202,8 +201,7 @@ def generate_narration(
     meta=None,
     client_factory: Callable[[str, str | None], Any] | None = None,
 ) -> ChatResult:
-    model = resolve_default_model("narration", settings)
-    endpoint = resolve_model_endpoint(model, "narration", settings)
+    endpoint = resolve_capability_model_endpoint(capability="narration", settings=settings)
     if endpoint.adapter != "openai_compatible":
         raise GatewayUnsupportedCapabilityError(
             f"Unsupported narration adapter '{endpoint.adapter}'"
@@ -232,8 +230,7 @@ def polish_text(
     meta=None,
     client_factory: Callable[[str, str | None], Any] | None = None,
 ) -> ChatResult:
-    model = resolve_default_model("polish", settings)
-    endpoint = resolve_model_endpoint(model, "polish", settings)
+    endpoint = resolve_capability_model_endpoint(capability="polish", settings=settings)
     if endpoint.adapter != "openai_compatible":
         raise GatewayUnsupportedCapabilityError(
             f"Unsupported polish adapter '{endpoint.adapter}'"
@@ -260,8 +257,7 @@ def embed_texts_for_capability(
     meta=None,
     client_factory: Callable[[str, str | None], Any] | None = None,
 ) -> EmbeddingResult:
-    model = resolve_default_model("embedding", settings)
-    endpoint = resolve_model_endpoint(model, "embedding", settings)
+    endpoint = resolve_capability_model_endpoint(capability="embedding", settings=settings)
     if endpoint.adapter != "openai_compatible":
         raise GatewayUnsupportedCapabilityError(
             f"Unsupported embedding adapter '{endpoint.adapter}'"
@@ -292,8 +288,7 @@ def synthesize_speech_for_capability(
     meta=None,
     communicator_factory: Callable[..., Any] | None = None,
 ) -> SpeechResult:
-    model = resolve_default_model("tts", settings)
-    endpoint = resolve_model_endpoint(model, "tts", settings)
+    endpoint = resolve_capability_model_endpoint(capability="tts", settings=settings)
     request = SpeechRequest(
         provider=endpoint.provider,
         voice=voice,
