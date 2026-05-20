@@ -6,7 +6,7 @@ Stages (product order; see :func:`run_full_workflow`):
 2. **frame_pool** — ``{stem}.frame_pool/manifest.jsonl``
 3. **subtitle_context** — ``{stem}.subtitle_context`` (optional)
 4. **narration_pipeline** — analysis + narration (+ optional TTS) via :func:`run_pipeline_ctx`
-5. **video_package** — mux when ``enable_embed_video`` (runs inside stage 4 today)
+5. **video_package** — mux when ``enable_embed_video``
 
 **Resume:** each stage skips work when its primary artifact already exists and the
 matching ``FullWorkflowOptions`` flag is true; disabling a stage still requires
@@ -22,6 +22,7 @@ from typing import Any, Callable
 from movie_pipeline.pipeline import run_pipeline_ctx
 from movie_pipeline.runtime_context import RunContext
 from movie_pipeline.types import ArtifactPaths, FullWorkflowOptions, MoviePipelineOptions
+from movie_pipeline.workflow_continue import render_video_from_narration_payload
 from movieteller_config.schema import Settings
 from subtitle_context import build_subtitle_context_index
 from subtitle_context.index import subtitle_context_index_is_complete
@@ -100,15 +101,14 @@ def stage_narration_pipeline(
     narrator: Callable[..., Any] | None = None,
     polisher: Callable[..., Any] | None = None,
     synthesizer: Callable[..., Any] | None = None,
-    video_renderer: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     pipeline_options = replace(
         base_pipeline_options,
         subtitle_context_index_dir=subtitle_context_index_dir,
         build_subtitle_context=False,
         speech_output_dir=paths.speech_output_dir,
-        embed_video=resolved_options.enable_embed_video,
-        embed_output_path=paths.embed_output_path,
+        embed_video=False,
+        embed_output_path=None,
         polish_options=(
             base_pipeline_options.polish_options if resolved_options.enable_polish else None
         ),
@@ -129,5 +129,27 @@ def stage_narration_pipeline(
         narrator=narrator,
         polisher=polisher,
         synthesizer=synthesizer,
+    )
+
+
+def stage_video_package(
+    *,
+    paths: ArtifactPaths,
+    resolved_options: FullWorkflowOptions,
+    pipeline_settings: Settings,
+    payload: dict[str, Any],
+    video_renderer: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    if not resolved_options.enable_embed_video:
+        return payload
+    output_path = (paths.embed_output_path or "").strip()
+    if not output_path:
+        raise ValueError("embed output path is required when enable_embed_video is True")
+    return render_video_from_narration_payload(
+        payload=payload,
+        video_path=Path(paths.source_video),
+        output_path=Path(output_path),
+        subtitle_srt_path=None,
+        settings=pipeline_settings,
         video_renderer=video_renderer,
     )

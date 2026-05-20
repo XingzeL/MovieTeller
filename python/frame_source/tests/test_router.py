@@ -152,7 +152,6 @@ def test_get_frames_for_segment_pool_falls_back_to_uniform(
             max_frames_per_segment=4,
             max_edge_pixels=512,
             pool_miss_uniform_max_frames=2,
-            allow_uniform_fallback=True,
         ),
         subprocess_run=fake_run,
     )

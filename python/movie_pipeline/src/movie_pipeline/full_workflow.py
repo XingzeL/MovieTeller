@@ -12,6 +12,7 @@ from movie_pipeline.workflow_stages import (
     stage_narration_pipeline,
     stage_subtitle_context,
     stage_subtitle_extraction,
+    stage_video_package,
 )
 from movieteller_config import load_settings
 from movieteller_config.schema import Settings
@@ -89,7 +90,6 @@ def workflow_options_from_settings(
                 max_frames_per_segment=settings.max_frames_per_segment,
                 max_edge_pixels=settings.narration_frame_max_edge,
                 pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
-                allow_uniform_fallback=True,
             ),
             subtitle_context_build_options=settings.subtitle_context_build_options(),   # 台词信息RAG相关现象
             subtitle_context_retrieve_options=settings.subtitle_context_retrieve_options(),
@@ -276,6 +276,12 @@ def run_full_workflow(
         narrator=narrator,
         polisher=polisher,
         synthesizer=synthesizer,
+    )
+    payload = stage_video_package(
+        paths=paths,
+        resolved_options=resolved_options,
+        pipeline_settings=pipeline_settings,
+        payload=payload,
         video_renderer=video_renderer,
     )
     payload["workflowArtifacts"] = {

@@ -60,7 +60,6 @@ def main(argv: list[str] | None = None) -> int:
         max_frames_per_segment=settings.max_frames_per_segment,
         max_edge_pixels=settings.narration_frame_max_edge,
         pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
-        allow_uniform_fallback=True,
     )
 
     try:

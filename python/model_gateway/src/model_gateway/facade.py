@@ -18,10 +18,10 @@ from model_gateway.adapters.volcengine_tts import (
 from model_gateway.errors import GatewayConfigError, GatewayUnsupportedCapabilityError
 from model_gateway.policies import execute_with_retry, limited
 from model_gateway.router import (
+    _resolve_chat_endpoint,
+    _resolve_embedding_endpoint,
+    _resolve_speech_endpoint,
     resolve_capability_model_endpoint,
-    resolve_chat_endpoint,
-    resolve_embedding_endpoint,
-    resolve_speech_endpoint,
 )
 from model_gateway.telemetry import emit_gateway_event
 from model_gateway.types import (
@@ -34,7 +34,7 @@ from model_gateway.types import (
 )
 
 
-def generate_chat(
+def _generate_chat(
     request: ChatRequest,
     *,
     settings,
@@ -42,7 +42,7 @@ def generate_chat(
 ) -> ChatResult:
     if not str(request.model).strip():
         raise GatewayConfigError("chat model is empty")
-    endpoint = resolve_chat_endpoint(request, settings)
+    endpoint = _resolve_chat_endpoint(request, settings)
     if endpoint.adapter != "openai_compatible":
         raise GatewayUnsupportedCapabilityError(
             f"Unsupported chat adapter '{endpoint.adapter}'"
@@ -78,7 +78,7 @@ def generate_chat(
     return result
 
 
-def embed_texts(
+def _embed_texts(
     request: EmbeddingRequest,
     *,
     settings,
@@ -86,7 +86,7 @@ def embed_texts(
 ) -> EmbeddingResult:
     if not str(request.model).strip():
         raise GatewayConfigError("embedding model is empty")
-    endpoint = resolve_embedding_endpoint(request, settings)
+    endpoint = _resolve_embedding_endpoint(request, settings)
     if endpoint.adapter != "openai_compatible":
         raise GatewayUnsupportedCapabilityError(
             f"Unsupported embedding adapter '{endpoint.adapter}'"
@@ -121,13 +121,13 @@ def embed_texts(
     return result
 
 
-def synthesize_speech(
+def _synthesize_speech(
     request: SpeechRequest,
     *,
     settings,
     communicator_factory: Callable[..., Any] | None = None,
 ) -> SpeechResult:
-    endpoint = resolve_speech_endpoint(request, settings)
+    endpoint = _resolve_speech_endpoint(request, settings)
     if endpoint.adapter == "edge_tts":
 
         def _run_edge() -> SpeechResult:
@@ -216,7 +216,7 @@ def generate_narration(
         response_format=response_format,
         meta=meta,
     )
-    return generate_chat(request, settings=settings, client_factory=client_factory)
+    return _generate_chat(request, settings=settings, client_factory=client_factory)
 
 
 def polish_text(
@@ -245,7 +245,7 @@ def polish_text(
         response_format=response_format,
         meta=meta,
     )
-    return generate_chat(request, settings=settings, client_factory=client_factory)
+    return _generate_chat(request, settings=settings, client_factory=client_factory)
 
 
 def embed_texts_for_capability(
@@ -270,7 +270,7 @@ def embed_texts_for_capability(
         timeout_sec=timeout_sec,
         meta=meta,
     )
-    return embed_texts(request, settings=settings, client_factory=client_factory)
+    return _embed_texts(request, settings=settings, client_factory=client_factory)
 
 
 def synthesize_speech_for_capability(
@@ -303,7 +303,7 @@ def synthesize_speech_for_capability(
         timeout_sec=timeout_sec,
         meta=meta,
     )
-    return synthesize_speech(
+    return _synthesize_speech(
         request,
         settings=settings,
         communicator_factory=communicator_factory,

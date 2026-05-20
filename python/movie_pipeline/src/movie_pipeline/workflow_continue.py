@@ -6,6 +6,10 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
+from movie_pipeline.payload_schema import (
+    parse_pipeline_speech_dict,
+    parse_pipeline_text_dict,
+)
 from narration_video import render_narrated_video
 from narration_speech import synthesize_narration_text
 from pipeline_types import NarrationAudioSegment
@@ -27,7 +31,7 @@ def synthesize_speech_from_text_payload(
     settings: Any,
 ) -> dict[str, Any]:
     """Deep-copy payload then add ``speech`` per segment and ``speechOutputDir``."""
-    out = deep_copy_payload(payload)
+    out = deep_copy_payload(parse_pipeline_text_dict(dict(payload)))
     narrated_segments = out.get("narratedSegments")
     if not isinstance(narrated_segments, list) or not narrated_segments:
         raise ValueError("No narratedSegments found in payload")
@@ -95,9 +99,10 @@ def render_video_from_narration_payload(
     output_path: Path,
     subtitle_srt_path: Path | None,
     settings: Any,
+    video_renderer: Any | None = None,
 ) -> dict[str, Any]:
     """Mix narration audio into video; set ``renderedVideo`` on a deep-copied payload."""
-    out = deep_copy_payload(payload)
+    out = deep_copy_payload(parse_pipeline_speech_dict(dict(payload)))
     narrated_segments = out.get("narratedSegments")
     if not isinstance(narrated_segments, list) or not narrated_segments:
         raise ValueError("No narratedSegments found in payload")
@@ -120,7 +125,8 @@ def render_video_from_narration_payload(
             )
         )
 
-    render_result = render_narrated_video(
+    renderer = video_renderer or render_narrated_video
+    render_result = renderer(
         str(video_path),
         audio_segments,
         output_path=str(output_path),
@@ -143,4 +149,3 @@ def render_video_from_narration_payload(
         ),
     }
     return out
-

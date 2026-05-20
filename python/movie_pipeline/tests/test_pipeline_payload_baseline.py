@@ -5,7 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from movie_pipeline import MoviePipelineOptions, run_pipeline_ctx
+from frame_source import FrameSourceOptions
+from movie_pipeline import (
+    MoviePipelineOptions,
+    parse_pipeline_speech_dict,
+    parse_pipeline_text_dict,
+    run_pipeline_ctx,
+)
 from movie_pipeline.runtime_context import RunContext
 from movieteller_config.schema import settings_from_dict
 
@@ -24,7 +30,6 @@ _EXPECTED_TOP_LEVEL_KEYS_TEXT = frozenset(
         "narratedSegments",
         "speechOutputDir",
         "subtitleContextIndexDir",
-        "renderedVideo",
     }
 )
 
@@ -77,6 +82,12 @@ def test_run_pipeline_ctx_payload_top_level_and_segment_keys():
         min_gap_sec=0.5,
         subtitle_guard_sec=0.25,
         narration_options=settings.narration_options(),
+        frame_source_options=FrameSourceOptions(
+            ffmpeg_bin=settings.ffmpeg_path,
+            max_frames_per_segment=settings.max_frames_per_segment,
+            max_edge_pixels=settings.narration_frame_max_edge,
+            pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
+        ),
     )
     ctx = RunContext(settings=settings, pipeline=pipeline_options)
     with TemporaryDirectory() as tmp:
@@ -95,3 +106,37 @@ def test_run_pipeline_ctx_payload_top_level_and_segment_keys():
     assert seg0["speechText"] == "narration"
     assert seg0["polish"] is None
     assert seg0["speech"] is None
+
+
+def test_parse_pipeline_text_dict_rejects_rendered_video_key():
+    payload = {
+        "narratedSegments": [
+            {"startSec": 0.0, "endSec": 1.0, "text": "x"}
+        ],
+        "renderedVideo": {"outputPath": "bad.mp4"},
+    }
+    try:
+        parse_pipeline_text_dict(payload)
+    except ValueError as exc:
+        assert "must not contain renderedVideo" in str(exc)
+    else:
+        raise AssertionError("text payload should reject renderedVideo")
+
+
+def test_parse_pipeline_speech_dict_requires_speech_audio_path():
+    payload = {
+        "narratedSegments": [
+            {
+                "startSec": 0.0,
+                "endSec": 1.0,
+                "text": "x",
+                "speech": {},
+            }
+        ]
+    }
+    try:
+        parse_pipeline_speech_dict(payload)
+    except ValueError as exc:
+        assert "speech missing audioPath" in str(exc)
+    else:
+        raise AssertionError("speech payload should require audioPath")

@@ -22,7 +22,7 @@ Suggested implementation order (high-level):
 5. Refactor `run_full_workflow` into a pure stage orchestrator — **done** via
    [`workflow_stages.py`](../python/movie_pipeline/src/movie_pipeline/workflow_stages.py)
    and [`ArtifactPaths`](../python/movie_pipeline/src/movie_pipeline/types.py).
-6. Remove “helpful” fallbacks — **partially done**: `FrameSourceOptions.allow_uniform_fallback`
+6. Pool-window miss for ``strategy=frame_pool`` always falls back to uniform temporal sampling in ``frame_source`` (no toggle).
    defaults to `False` (callers that need pool-miss uniform sampling pass `True` explicitly);
    `run_pipeline_ctx` no longer invents `speech_output_dir` / `embed_output_path` (CLI and
    full workflow set them explicitly).

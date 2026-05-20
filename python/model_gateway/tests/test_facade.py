@@ -4,12 +4,12 @@ from movieteller_config.schema import settings_from_dict
 
 from model_gateway.errors import GatewayConfigError
 from model_gateway.facade import (
-    embed_texts,
+    _embed_texts,
+    _generate_chat,
+    _synthesize_speech,
     embed_texts_for_capability,
-    generate_chat,
     generate_narration,
     polish_text,
-    synthesize_speech,
     synthesize_speech_for_capability,
 )
 from model_gateway.types import ChatRequest, EmbeddingRequest, SpeechRequest
@@ -33,7 +33,7 @@ def test_facade_generate_chat_routes_through_openai_compatible_adapter():
             "api_providers": {"openai": "https://api.openai.com/v1"},
         }
     )
-    result = generate_chat(
+    result = _generate_chat(
         ChatRequest(provider="openai", model="gpt-4o-mini", messages=[]),
         settings=settings,
         client_factory=lambda _k, _b: FakeClient(),
@@ -57,7 +57,7 @@ def test_facade_embed_texts_routes_through_openai_compatible_adapter():
             "api_providers": {"openai": "https://api.openai.com/v1"},
         }
     )
-    result = embed_texts(
+    result = _embed_texts(
         EmbeddingRequest(provider="openai", model="text-embedding-3-small", texts=["a"]),
         settings=settings,
         client_factory=lambda _k, _b: FakeClient(),
@@ -74,7 +74,7 @@ def test_facade_synthesize_speech_routes_through_edge_tts_adapter(tmp_path):
             Path(metadata_path).write_text("{}", encoding="utf-8")
 
     settings = settings_from_dict({})
-    result = synthesize_speech(
+    result = _synthesize_speech(
         SpeechRequest(
             provider="edge_tts",
             voice="en-US-EmmaMultilingualNeural",
@@ -113,7 +113,7 @@ def test_facade_synthesize_speech_routes_through_volcengine_adapter(tmp_path):
             "api_providers": {"volcengine": "https://ark.cn-beijing.volces.com/api/v3"},
         }
     )
-    result = synthesize_speech(
+    result = _synthesize_speech(
         SpeechRequest(
             provider="volcengine",
             voice="zh_female_shuangkuaisisi_moon_bigtts",
@@ -171,7 +171,7 @@ def test_facade_synthesize_speech_routes_through_dashscope_adapter(tmp_path):
     from unittest.mock import patch
 
     with patch("model_gateway.adapters.dashscope_tts.urlopen", return_value=FakeHttpResponse()):
-        result = synthesize_speech(
+        result = _synthesize_speech(
             SpeechRequest(
                 provider="dashscope",
                 voice="Cherry",
@@ -197,7 +197,7 @@ def test_facade_synthesize_speech_rejects_openspeech_base_url_for_openai_style_t
         }
     )
     try:
-        synthesize_speech(
+        _synthesize_speech(
             SpeechRequest(
                 provider="volcengine_tts",
                 voice="zh_female_shuangkuaisisi_moon_bigtts",

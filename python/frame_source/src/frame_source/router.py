@@ -22,11 +22,17 @@ class FrameRequest:
 
 @dataclass(frozen=True)
 class FrameSourceOptions:
+    """Frame extraction limits for narration segments.
+
+    For ``strategy=frame_pool``, if the pool has no frames covering the segment
+    window, :func:`get_frames_for_segment` always falls back to uniform temporal
+    sampling from the video (see ``pool_miss_uniform_max_frames``).
+    """
+
     ffmpeg_bin: str
     max_frames_per_segment: int
     max_edge_pixels: int
     pool_miss_uniform_max_frames: int = 6
-    allow_uniform_fallback: bool = False
 
 
 def get_frames_for_segment(
@@ -64,8 +70,6 @@ def get_frames_for_segment(
             settings=settings,
         )
     except PoolWindowMiss:
-        if not options.allow_uniform_fallback:
-            raise
         batch = sample_uniform_frames(
             video_path=request.video_path,
             start_sec=request.start_sec,

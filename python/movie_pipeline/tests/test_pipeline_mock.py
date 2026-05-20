@@ -6,6 +6,7 @@ from movieteller_config.schema import settings_from_dict
 from movie_pipeline import (
     MoviePipelineOptions,
     parse_product_request,
+    render_video_from_narration_payload,
     run_full_workflow,
     narrate_analysis_candidates,
     run_pipeline_ctx,
@@ -28,7 +29,6 @@ def settings_to_frame_source_options(settings):
         max_frames_per_segment=settings.max_frames_per_segment,
         max_edge_pixels=settings.narration_frame_max_edge,
         pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
-        allow_uniform_fallback=True,
     )
 
 
@@ -160,6 +160,7 @@ def test_run_pipeline_ctx_returns_timed_json_payload():
         min_gap_sec=0.5,
         subtitle_guard_sec=0.25,
         narration_options=settings.narration_options(),
+        frame_source_options=settings_to_frame_source_options(settings),
     )
     ctx = RunContext(settings=settings, pipeline=pipeline_options)
 
@@ -178,6 +179,38 @@ def test_run_pipeline_ctx_returns_timed_json_payload():
     assert payload["narratedSegments"][0]["speechText"] == "narration"
 
 
+def test_run_pipeline_ctx_requires_explicit_frame_source_options():
+    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
+        return ("narration", end_sec - start_sec)
+
+    from tempfile import TemporaryDirectory
+
+    settings = make_settings()
+    pipeline_options = MoviePipelineOptions(
+        video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
+        min_gap_sec=0.5,
+        subtitle_guard_sec=0.25,
+        narration_options=settings.narration_options(),
+        frame_source_options=None,
+    )
+    ctx = RunContext(settings=settings, pipeline=pipeline_options)
+
+    with TemporaryDirectory() as tmp:
+        srt = Path(tmp) / "demo.srt"
+        srt.write_text(_SINGLE_GAP_SRT, encoding="utf-8")
+        try:
+            run_pipeline_ctx(
+                srt_path=str(srt),
+                video_path="demo.mp4",
+                ctx=ctx,
+                narrator=fake_narrator,
+            )
+        except ValueError as exc:
+            assert "frame_source_options is required" in str(exc)
+        else:
+            raise AssertionError("run_pipeline_ctx should require explicit frame_source_options")
+
+
 def test_run_pipeline_ctx_detects_default_subtitle_context_index_dir():
     raw = _SINGLE_GAP_SRT
 
@@ -191,6 +224,7 @@ def test_run_pipeline_ctx_detects_default_subtitle_context_index_dir():
         min_gap_sec=0.5,
         subtitle_guard_sec=0.25,
         narration_options=settings.narration_options(),
+        frame_source_options=settings_to_frame_source_options(settings),
     )
     ctx = RunContext(settings=settings, pipeline=pipeline_options)
 
@@ -225,6 +259,7 @@ def test_run_pipeline_ctx_ignores_incomplete_default_subtitle_context_index_dir(
         min_gap_sec=0.5,
         subtitle_guard_sec=0.25,
         narration_options=settings.narration_options(),
+        frame_source_options=settings_to_frame_source_options(settings),
     )
     ctx = RunContext(settings=settings, pipeline=pipeline_options)
 
@@ -279,6 +314,7 @@ def test_run_pipeline_ctx_can_polish_output():
         subtitle_guard_sec=0.25,
         narration_options=settings.narration_options(),
         polish_options=settings.narration_polish_options(),
+        frame_source_options=settings_to_frame_source_options(settings),
     )
     ctx = RunContext(settings=settings, pipeline=pipeline_options)
 
@@ -352,6 +388,7 @@ def test_run_pipeline_ctx_can_synthesize_speech():
                 speech_output_dir=str(Path(tmp) / "speech"),
                 narration_options=settings.narration_options(),
                 speech_options=settings.narration_speech_options(),
+                frame_source_options=settings_to_frame_source_options(settings),
             ),
         )
         payload = run_pipeline_ctx(
@@ -367,7 +404,7 @@ def test_run_pipeline_ctx_can_synthesize_speech():
     assert seg["speech"]["fitsDuration"] is True
 
 
-def test_run_pipeline_ctx_can_render_video():
+def test_render_video_from_narration_payload_can_render_video():
     raw = _SINGLE_GAP_SRT
 
     class FakeSpeechResult:
@@ -395,6 +432,7 @@ def test_run_pipeline_ctx_can_render_video():
         video_duration_sec = 4.0
         background_audio_volume = 0.35
         speech_audio_volume = 1.0
+        subtitle_srt_path = None
         timing_render_sec = 0.5
 
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
@@ -432,6 +470,7 @@ def test_run_pipeline_ctx_can_render_video():
                 narration_options=settings.narration_options(),
                 speech_options=settings.narration_speech_options(),
                 video_options=settings.narration_video_options(),
+                frame_source_options=settings_to_frame_source_options(settings),
             ),
         )
         payload = run_pipeline_ctx(
@@ -440,9 +479,16 @@ def test_run_pipeline_ctx_can_render_video():
             ctx=ctx,
             narrator=fake_narrator,
             synthesizer=fake_synthesizer,
+        )
+        rendered = render_video_from_narration_payload(
+            payload=payload,
+            video_path=Path("demo.mp4"),
+            output_path=Path(tmp) / "demo.narrated.mp4",
+            subtitle_srt_path=None,
+            settings=settings,
             video_renderer=fake_renderer,
         )
-    assert payload["renderedVideo"]["outputPath"] == "demo.narrated.mp4"
+    assert rendered["renderedVideo"]["outputPath"] == "demo.narrated.mp4"
 
 
 def test_translate_product_request_to_workflow_options_applies_level_defaults():

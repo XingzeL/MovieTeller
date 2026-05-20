@@ -1,25 +1,25 @@
 from movieteller_config.schema import settings_from_dict
 
 from model_gateway.router import (
+    _resolve_chat_endpoint,
+    _resolve_embedding_endpoint,
+    _resolve_speech_endpoint,
     resolve_capability_model_endpoint,
-    resolve_chat_endpoint,
     resolve_default_model,
-    resolve_embedding_endpoint,
     resolve_model_endpoint,
     resolve_model_provider,
-    resolve_speech_endpoint,
 )
 from model_gateway.types import ChatRequest, EmbeddingRequest, SpeechRequest
 
 
-def test_resolve_chat_endpoint_uses_provider_key_and_base_url():
+def test__resolve_chat_endpoint_uses_provider_key_and_base_url():
     settings = settings_from_dict(
         {
             "api_keys": {"dashscope": "k1"},
             "api_providers": {"dashscope": "https://dash.example/v1"},
         }
     )
-    endpoint = resolve_chat_endpoint(
+    endpoint = _resolve_chat_endpoint(
         ChatRequest(provider="dashscope", model="qwen-plus", messages=[]),
         settings,
     )
@@ -30,7 +30,7 @@ def test_resolve_chat_endpoint_uses_provider_key_and_base_url():
     assert endpoint.adapter == "openai_compatible"
 
 
-def test_resolve_embedding_endpoint_uses_openai_api_providers():
+def test__resolve_embedding_endpoint_uses_openai_api_providers():
     settings = settings_from_dict(
         {
             "gateway": {"default_provider": "openai"},
@@ -38,21 +38,21 @@ def test_resolve_embedding_endpoint_uses_openai_api_providers():
             "api_providers": {"openai": "https://openai.example/v1"},
         }
     )
-    endpoint = resolve_embedding_endpoint(
+    endpoint = _resolve_embedding_endpoint(
         EmbeddingRequest(provider="openai", model="text-embedding-3-small", texts=["x"]),
         settings,
     )
     assert endpoint.base_url == "https://openai.example/v1"
 
 
-def test_resolve_speech_endpoint_volcengine_requires_key_and_model():
+def test__resolve_speech_endpoint_volcengine_requires_key_and_model():
     settings = settings_from_dict(
         {
             "api_keys": {"volcengine": "sk-v"},
             "api_providers": {"volcengine": "https://ark.cn-beijing.volces.com/api/v3"},
         }
     )
-    endpoint = resolve_speech_endpoint(
+    endpoint = _resolve_speech_endpoint(
         SpeechRequest(
             provider="volcengine",
             voice="zh_female_shuangkuaisisi_moon_bigtts",
@@ -68,14 +68,14 @@ def test_resolve_speech_endpoint_volcengine_requires_key_and_model():
     assert endpoint.model == "volcengine-tts-standard"
 
 
-def test_resolve_speech_endpoint_volcengine_tts_alias_uses_volcengine_adapter():
+def test__resolve_speech_endpoint_volcengine_tts_alias_uses_volcengine_adapter():
     settings = settings_from_dict(
         {
             "api_keys": {"volcengine_tts": "sk-vtts"},
             "api_providers": {"volcengine_tts": "https://openspeech.bytedance.com"},
         }
     )
-    endpoint = resolve_speech_endpoint(
+    endpoint = _resolve_speech_endpoint(
         SpeechRequest(
             provider="volcengine_tts",
             voice="zh_female_shuangkuaisisi_moon_bigtts",
@@ -91,9 +91,9 @@ def test_resolve_speech_endpoint_volcengine_tts_alias_uses_volcengine_adapter():
     assert endpoint.model == "volcengine-tts-standard"
 
 
-def test_resolve_speech_endpoint_edge_tts_does_not_require_api_key():
+def test__resolve_speech_endpoint_edge_tts_does_not_require_api_key():
     settings = settings_from_dict({})
-    endpoint = resolve_speech_endpoint(
+    endpoint = _resolve_speech_endpoint(
         SpeechRequest(provider="edge_tts", voice="en-US-EmmaMultilingualNeural", text="hi"),
         settings,
     )
@@ -101,14 +101,14 @@ def test_resolve_speech_endpoint_edge_tts_does_not_require_api_key():
     assert endpoint.api_key is None
 
 
-def test_resolve_speech_endpoint_dashscope_uses_dashscope_adapter():
+def test__resolve_speech_endpoint_dashscope_uses_dashscope_adapter():
     settings = settings_from_dict(
         {
             "api_keys": {"dashscope": "sk-dash"},
             "api_providers": {"dashscope": "https://dashscope.aliyuncs.com/compatible-mode"},
         }
     )
-    endpoint = resolve_speech_endpoint(
+    endpoint = _resolve_speech_endpoint(
         SpeechRequest(
             provider="dashscope",
             voice="Cherry",

@@ -12,13 +12,13 @@ Run from the repo root:
     python python/manual_tests/full_video_workflow_harrypotter_long.py
 
 Behavior:
-1. Run narration/polish first and persist text JSON immediately.
+1. Run narration/polish first and persist text-stage JSON immediately.
 2. Write a human-readable script (.manual.pipeline.script.txt) from that payload.
 3. Merge extracted SRT + narrated segments into ``{stem}.final.subtitled.srt``, then remux
    ``{stem}.narration_softsubs.mp4`` with **mov_text** soft subtitles (no TTS; original audio kept).
 4. When ``ENABLE_SPEECH_AND_VIDEO`` is True: TTS + full narrated video as before.
 
-If TTS fails, the text JSON is still preserved on disk.
+If TTS fails, the text-stage JSON is still preserved on disk.
 
 Routing comes from the shared gateway config. If text JSON already exists, the
 script skips the second visual-understanding pass and continues from speech/video.
@@ -124,17 +124,20 @@ def _write_readable_script_from_payload(
 def _load_existing_payload(text_json_path: Path) -> dict[str, object] | None:
     if not text_json_path.is_file():
         return None
-    payload = json.loads(text_json_path.read_text(encoding="utf-8"))
-    narrated_segments = payload.get("narratedSegments")
-    if not isinstance(narrated_segments, list) or not narrated_segments:
-        raise ValueError(f"Existing text JSON has no narratedSegments: {text_json_path}")
-    return payload
+    from movie_pipeline import parse_pipeline_text_json_path
+
+    return dict(parse_pipeline_text_json_path(text_json_path))
 
 
 def main() -> int:
     _ensure_paths()
 
     from movie_pipeline.full_workflow import run_full_workflow, workflow_options_from_settings
+    from movie_pipeline.payload_schema import (
+        serialize_pipeline_render_payload,
+        serialize_pipeline_speech_payload,
+        serialize_pipeline_text_payload,
+    )
     from movie_pipeline.subtitle_merge_stage import merge_subtitles_for_narration
     from movie_pipeline.workflow_continue import (
         render_video_from_narration_payload,
@@ -161,7 +164,7 @@ def main() -> int:
 
 # 获取视频文件名，用于生成文件名
     stem = video_path.stem
-    text_json_path = output_root / f"{stem}.manual.pipeline.json"
+    text_json_path = output_root / f"{stem}.manual.pipeline.text.json"
     # 这里进行了一些参数的替换：替换了enable_speech和enable_embed_video为False，同时替换了movie_pipeline_options为None
     text_only_options = replace(  # 通过replace组合了一个不用合成音频的workflow选项
         base,
@@ -185,7 +188,7 @@ def main() -> int:
             settings=settings,
         )
         text_json_path.write_text(
-            json.dumps(text_payload, ensure_ascii=False, indent=2),
+            serialize_pipeline_text_payload(text_payload),
             encoding="utf-8",
         )
 
@@ -253,9 +256,9 @@ def main() -> int:
             audio_output_dir=output_root / f"{stem}.narration_audio",
             settings=settings,
         )
-        speech_json_path = output_root / f"{stem}.manual.pipeline.speech_video.json"
+        speech_json_path = output_root / f"{stem}.manual.pipeline.speech.json"
         speech_json_path.write_text(  # 将音频合成结果写入JSON文件
-            json.dumps(speech_payload, ensure_ascii=False, indent=2),
+            serialize_pipeline_speech_payload(speech_payload),
             encoding="utf-8",
         )
         source_srt_path = output_root / f"{stem}.extracted.srt"  # 提取的字幕文件路径
@@ -299,15 +302,16 @@ def main() -> int:
         )
         return 2
 
-    speech_json_path.write_text(
-        json.dumps(final_payload, ensure_ascii=False, indent=2),
+    render_json_path = output_root / f"{stem}.manual.pipeline.render.json"
+    render_json_path.write_text(
+        serialize_pipeline_render_payload(final_payload),
         encoding="utf-8",
     )
-    speech_video_script_path = output_root / f"{stem}.manual.pipeline.speech_video.script.txt"
+    speech_video_script_path = output_root / f"{stem}.manual.pipeline.render.script.txt"
     _write_readable_script_from_payload(
         final_payload,
         speech_video_script_path,
-        source_path=speech_json_path,
+        source_path=render_json_path,
     )
 
     print(
@@ -318,7 +322,8 @@ def main() -> int:
                 "textJsonPath": str(text_json_path),
                 "textScriptPath": str(text_script_path),
                 "speechJsonPath": str(speech_json_path),
-                "speechVideoScriptPath": str(speech_video_script_path),
+                "renderJsonPath": str(render_json_path),
+                "renderScriptPath": str(speech_video_script_path),
                 "audioDir": str(output_root / f"{stem}.narration_audio"),
                 "videoOutput": str(output_root / f"{stem}.narrated.mp4"),
                 "narratedSegments": len(final_payload.get("narratedSegments", [])),

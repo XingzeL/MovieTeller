@@ -59,6 +59,7 @@ class RenderedVideoPayload(TypedDict, total=False):
     videoDurationSec: float
     backgroundAudioVolume: float
     speechAudioVolume: float
+    subtitleSrtPath: str | None
     timingRenderSec: float | None
 
 
@@ -88,19 +89,30 @@ class PipelineTextPayload(TypedDict, total=False):
     narratedSegments: list[NarratedSegmentPayload]
     speechOutputDir: str | None
     subtitleContextIndexDir: str | None
-    renderedVideo: RenderedVideoPayload | None
 
 
 class PipelineSpeechPayload(TypedDict, total=False):
-    """Speech-focused slice (same keys as the text payload subset used after TTS)."""
+    """Speech-stage payload: text payload plus synthesized ``speech`` blocks."""
 
+    videoDurationSec: float
+    subtitleSpans: list[dict[str, Any]]
+    rawGaps: list[dict[str, Any]]
+    narrationCandidates: list[dict[str, Any]]
     speechOutputDir: str | None
+    subtitleContextIndexDir: str | None
     narratedSegments: list[NarratedSegmentPayload]
 
 
 class PipelineRenderPayload(TypedDict, total=False):
-    """Render-only artifact; typically matches ``PipelineTextPayload['renderedVideo']``."""
+    """Render-stage payload: prior payload plus packaged video metadata."""
 
+    videoDurationSec: float
+    subtitleSpans: list[dict[str, Any]]
+    rawGaps: list[dict[str, Any]]
+    narrationCandidates: list[dict[str, Any]]
+    speechOutputDir: str | None
+    subtitleContextIndexDir: str | None
+    narratedSegments: list[NarratedSegmentPayload]
     renderedVideo: RenderedVideoPayload
 
 
@@ -112,20 +124,27 @@ class WorkflowArtifactsPayload(TypedDict, total=False):
     outputRoot: str
 
 
-def parse_pipeline_text_dict(data: dict[str, Any]) -> PipelineTextPayload:
-    """Validate minimal keys for a text-stage pipeline JSON dict."""
+def _require_narrated_segments(data: dict[str, Any], *, kind: str) -> list[dict[str, Any]]:
     segs = data.get("narratedSegments")
     if not isinstance(segs, list) or not segs:
-        raise ValueError("pipeline JSON missing non-empty narratedSegments list")
+        raise ValueError(f"{kind} payload missing non-empty narratedSegments list")
+    normalized: list[dict[str, Any]] = []
     for i, seg in enumerate(segs):
         if not isinstance(seg, dict):
             raise ValueError(f"narratedSegments[{i}] must be an object")
+        normalized.append(seg)
+    return normalized
+
+
+def parse_pipeline_text_dict(data: dict[str, Any]) -> PipelineTextPayload:
+    """Validate minimal keys for a text-stage pipeline JSON dict."""
+    segs = _require_narrated_segments(data, kind="text")
+    for i, seg in enumerate(segs):
         for key in ("startSec", "endSec", "text"):
             if key not in seg:
                 raise ValueError(f"narratedSegments[{i}] missing required key {key!r}")
-    rv = data.get("renderedVideo")
-    if rv is not None and not isinstance(rv, dict):
-        raise ValueError("renderedVideo must be an object or null")
+    if "renderedVideo" in data:
+        raise ValueError("text payload must not contain renderedVideo")
     return data  # type: ignore[return-value]
 
 
@@ -139,12 +158,10 @@ def parse_rendered_video_dict(data: dict[str, Any] | None) -> RenderedVideoPaylo
 
 
 def parse_pipeline_speech_dict(data: dict[str, Any]) -> PipelineSpeechPayload:
-    segs = data.get("narratedSegments")
-    if not isinstance(segs, list) or not segs:
-        raise ValueError("speech payload missing non-empty narratedSegments list")
+    segs = _require_narrated_segments(data, kind="speech")
+    if "renderedVideo" in data:
+        raise ValueError("speech payload must not contain renderedVideo")
     for i, seg in enumerate(segs):
-        if not isinstance(seg, dict):
-            raise ValueError(f"narratedSegments[{i}] must be an object")
         sp = seg.get("speech")
         if not isinstance(sp, dict):
             raise ValueError(f"narratedSegments[{i}] missing speech object")
@@ -154,6 +171,7 @@ def parse_pipeline_speech_dict(data: dict[str, Any]) -> PipelineSpeechPayload:
 
 
 def parse_pipeline_render_dict(data: dict[str, Any]) -> PipelineRenderPayload:
+    _require_narrated_segments(data, kind="render")
     inner = data.get("renderedVideo")
     if not isinstance(inner, dict):
         raise ValueError("render payload requires renderedVideo object")
@@ -168,5 +186,27 @@ def parse_pipeline_text_json_path(path: str | Path) -> PipelineTextPayload:
     return parse_pipeline_text_dict(raw)
 
 
+def parse_pipeline_speech_json_path(path: str | Path) -> PipelineSpeechPayload:
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("pipeline JSON root must be an object")
+    return parse_pipeline_speech_dict(raw)
+
+
+def parse_pipeline_render_json_path(path: str | Path) -> PipelineRenderPayload:
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("pipeline JSON root must be an object")
+    return parse_pipeline_render_dict(raw)
+
+
 def serialize_pipeline_text_payload(payload: PipelineTextPayload) -> str:
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def serialize_pipeline_speech_payload(payload: PipelineSpeechPayload) -> str:
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def serialize_pipeline_render_payload(payload: PipelineRenderPayload) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)

@@ -96,7 +96,7 @@ def resolve_capability_model_endpoint(*, capability: str, settings) -> ResolvedE
     return resolve_model_endpoint(model, cap, settings)
 
 
-def resolve_chat_endpoint(request: ChatRequest, settings) -> ResolvedEndpoint:
+def _resolve_chat_endpoint(request: ChatRequest, settings) -> ResolvedEndpoint:
     provider = str(request.provider).strip().lower() or "openai"
     model = str(request.model).strip()
     api_key = settings.require_api_key(provider)
@@ -109,7 +109,7 @@ def resolve_chat_endpoint(request: ChatRequest, settings) -> ResolvedEndpoint:
     )
 
 
-def resolve_embedding_endpoint(request: EmbeddingRequest, settings) -> ResolvedEndpoint:
+def _resolve_embedding_endpoint(request: EmbeddingRequest, settings) -> ResolvedEndpoint:
     provider = str(request.provider).strip().lower() or "openai"
     model = str(request.model).strip()
     api_key = settings.require_api_key(provider)
@@ -122,7 +122,7 @@ def resolve_embedding_endpoint(request: EmbeddingRequest, settings) -> ResolvedE
     )
 
 
-def resolve_speech_endpoint(request: SpeechRequest, settings) -> ResolvedEndpoint:
+def _resolve_speech_endpoint(request: SpeechRequest, settings) -> ResolvedEndpoint:
     provider = str(request.provider).strip().lower() or "edge_tts"
     adapter = _resolve_speech_adapter(provider)
     model = str(getattr(request, "model", None) or "").strip()

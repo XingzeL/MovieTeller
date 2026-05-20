@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 
 def load_pipeline_speech_video_json(path: str | Path) -> dict[str, Any]:
-    """Load a pipeline JSON payload (e.g. ``*.manual.pipeline.speech_video.json``)."""
+    """Load a speech/render-stage pipeline JSON payload (e.g. ``*.manual.pipeline.speech.json``)."""
     p = Path(path)
     data = json.loads(p.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
@@ -57,7 +57,7 @@ def build_readable_script(
     options: PipelineSpeechVideoScriptOptions | None = None,
 ) -> str:
     """
-    Turn a pipeline speech_video JSON dict into a human-readable script.
+    Turn a pipeline speech/render JSON dict into a human-readable script.
 
     Each narrated segment includes subtitle context (``prevSubtitleText`` /
     ``nextSubtitleText``) and the narration / TTS line (``speechText`` or ``text``).

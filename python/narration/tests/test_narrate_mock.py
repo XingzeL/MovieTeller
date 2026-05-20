@@ -48,7 +48,6 @@ def test_narrate_segment_with_duration_end_to_end_mocked(
         max_frames_per_segment=settings.max_frames_per_segment,
         max_edge_pixels=settings.narration_frame_max_edge,
         pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
-        allow_uniform_fallback=True,
     )
     text, dur = narrate_segment_with_duration(
         str(vid),
@@ -98,7 +97,6 @@ def test_narrate_segment_uses_frame_pool_when_manifest_configured(tmp_path):
         max_frames_per_segment=settings.max_frames_per_segment,
         max_edge_pixels=settings.narration_frame_max_edge,
         pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
-        allow_uniform_fallback=True,
     )
     timings = {}
     text, dur = narrate_segment_with_duration(
@@ -163,7 +161,6 @@ def test_narrate_segment_falls_back_to_uniform_on_pool_window_miss(
         max_frames_per_segment=settings.max_frames_per_segment,
         max_edge_pixels=settings.narration_frame_max_edge,
         pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
-        allow_uniform_fallback=True,
     )
     timings = {}
     text, _dur = narrate_segment_with_duration(
@@ -215,7 +212,6 @@ def test_narrate_segment_includes_subtitle_context_in_prompt(
         max_frames_per_segment=settings.max_frames_per_segment,
         max_edge_pixels=settings.narration_frame_max_edge,
         pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
-        allow_uniform_fallback=True,
     )
     text, dur = narrate_segment_with_duration(
         str(vid),

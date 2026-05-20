@@ -10,8 +10,13 @@ from movieteller_config.loader import load_flat_dict
 from movieteller_config.schema import settings_from_dict
 
 from movie_pipeline.pipeline import run_pipeline_ctx
+from movie_pipeline.payload_schema import (
+    serialize_pipeline_render_payload,
+    serialize_pipeline_text_payload,
+)
 from movie_pipeline.runtime_context import RunContext
 from movie_pipeline.types import MoviePipelineOptions
+from movie_pipeline.workflow_continue import render_video_from_narration_payload
 
 
 def _resolve_cli_settings(args):
@@ -207,7 +212,6 @@ def main() -> int:
             max_frames_per_segment=settings.max_frames_per_segment,
             max_edge_pixels=settings.narration_frame_max_edge,
             pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
-            allow_uniform_fallback=True,
         ),
         subtitle_context_build_options=settings.subtitle_context_build_options(
             chunk_cue_count=args.subtitle_context_chunk_cue_count,
@@ -254,9 +258,21 @@ def main() -> int:
         video_path=args.video,
         ctx=ctx,
     )
+    if args.embed_video:
+        payload = render_video_from_narration_payload(
+            payload=payload,
+            video_path=Path(args.video),
+            output_path=Path(embed_output_path),
+            subtitle_srt_path=None,
+            settings=settings,
+        )
+    rendered_video = payload.get("renderedVideo")
 
     if args.json:
-        print(json.dumps(payload, ensure_ascii=False))
+        if rendered_video:
+            print(serialize_pipeline_render_payload(payload))
+        else:
+            print(serialize_pipeline_text_payload(payload))
     else:
         print(
             f"subtitle_spans={len(payload['subtitleSpans'])} "
@@ -270,6 +286,6 @@ def main() -> int:
                 f"{seg['startSec']:.3f}-{seg['endSec']:.3f}s "
                 f"({seg['durationSec']:.3f}s) {line_text}"
             )
-        if payload.get("renderedVideo"):
-            print(payload["renderedVideo"]["outputPath"])
+        if rendered_video:
+            print(rendered_video["outputPath"])
     return 0

@@ -9,6 +9,7 @@ Edit ``PIPELINE_JSON_PATH`` below, then run:
 This script does not rerun subtitle extraction, frame pooling, subtitle context,
 or narration. It only reads ``narratedSegments`` from an existing JSON file and
 generates speech audio for each segment using the shared TTS capability config.
+Input must be a **text-stage** pipeline JSON; output is a **speech-stage** JSON.
 """
 
 from __future__ import annotations
@@ -19,19 +20,15 @@ from pathlib import Path
 
 
 # Existing pipeline JSON with narratedSegments.
-PIPELINE_JSON_PATH = "test_artifacts/harrypotter_long/harrypotter_long.manual.pipeline.json"
+PIPELINE_JSON_PATH = "test_artifacts/harrypotter_long/harrypotter_long.manual.pipeline.text.json"
 
 # Output directory for generated audio. If None, defaults to:
 # <pipeline_json_dir>/<video_stem>.narration_audio
 AUDIO_OUTPUT_DIR: str | None = None
 
 # Output JSON path after speech is attached. If None, defaults to:
-# <pipeline_json_dir>/<pipeline_json_stem>.speech_only.json
+# <pipeline_json_dir>/<pipeline_json_stem>.speech.json
 OUTPUT_JSON_PATH: str | None = None
-
-# If False, reuse already generated audio files when present.
-OVERWRITE_AUDIO = False
-
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -47,16 +44,6 @@ def _ensure_paths() -> None:
     ):
         if sub.is_dir():
             sys.path.insert(0, str(sub))
-
-
-def _log(message: str) -> None:
-    print(message, file=sys.stderr)
-
-
-def _slug_millis(value: float) -> str:
-    return f"{int(round(float(value) * 1000.0)):08d}"
-
-
 def _default_audio_dir(pipeline_json_path: Path, payload: dict[str, object]) -> Path:
     artifacts = payload.get("workflowArtifacts")
     video_stem = None
@@ -72,8 +59,12 @@ def _default_audio_dir(pipeline_json_path: Path, payload: dict[str, object]) -> 
 def main() -> int:
     _ensure_paths()
 
+    from movie_pipeline import (
+        parse_pipeline_text_json_path,
+        serialize_pipeline_speech_payload,
+        synthesize_speech_from_text_payload,
+    )
     from movieteller_config import load_settings
-    from narration_speech import synthesize_narration_text
 
     root = _repo_root()
     pipeline_json_path = (root / PIPELINE_JSON_PATH).resolve()
@@ -81,11 +72,7 @@ def main() -> int:
         print(f"Pipeline JSON not found: {pipeline_json_path}", file=sys.stderr)
         return 1
 
-    payload = json.loads(pipeline_json_path.read_text(encoding="utf-8"))
-    narrated_segments = payload.get("narratedSegments")
-    if not isinstance(narrated_segments, list) or not narrated_segments:
-        print("No narratedSegments found in pipeline JSON", file=sys.stderr)
-        return 1
+    payload = parse_pipeline_text_json_path(pipeline_json_path)
 
     settings = load_settings()
     speech_options = settings.narration_speech_options()
@@ -100,89 +87,15 @@ def main() -> int:
     output_json_path = (
         (root / OUTPUT_JSON_PATH).resolve()
         if OUTPUT_JSON_PATH is not None
-        else pipeline_json_path.with_name(f"{pipeline_json_path.stem}.speech_only.json")
+        else pipeline_json_path.with_name(f"{pipeline_json_path.stem}.speech.json")
     )
-
-    for index, seg in enumerate(narrated_segments, start=1):
-        if not isinstance(seg, dict):
-            raise TypeError(f"Segment #{index} is not an object")
-        start_sec = float(seg["startSec"])
-        end_sec = float(seg["endSec"])
-        duration_sec = float(seg.get("durationSec") or (end_sec - start_sec))
-        speech_text = str(seg.get("speechText") or seg.get("text") or "").strip()
-        if not speech_text:
-            raise ValueError(f"Segment #{index} has empty speech text")
-
-        slug = f"segment_{index:03d}_{_slug_millis(start_sec)}_{_slug_millis(end_sec)}"
-        audio_path = audio_output_dir / f"{slug}.mp3"
-        metadata_path = audio_output_dir / f"{slug}.mp3.jsonl"
-
-        if audio_path.is_file() and metadata_path.is_file() and not OVERWRITE_AUDIO:
-            _log(f"[{index}/{len(narrated_segments)}] reusing audio -> {audio_path.name}")
-            speech_payload = seg.get("speech")
-            if not isinstance(speech_payload, dict):
-                speech_payload = {
-                    "text": speech_text,
-                    "audioPath": str(audio_path),
-                    "metadataPath": str(metadata_path),
-                    "segmentDurationSec": duration_sec,
-                    "targetDurationSec": duration_sec,
-                    "rawDurationSec": duration_sec,
-                    "audioDurationSec": duration_sec,
-                    "durationDeltaSec": 0.0,
-                    "provider": settings.provider_for_capability("tts"),
-                    "voice": speech_options.voice,
-                    "rate": speech_options.rate,
-                    "volume": speech_options.volume,
-                    "pitch": speech_options.pitch,
-                    "boundary": speech_options.boundary,
-                    "fitApplied": False,
-                    "fitsDuration": True,
-                    "timingTtsSec": None,
-                    "timingFitSec": None,
-                }
-            seg["speech"] = speech_payload
-            continue
-
-        polish_payload = seg.get("polish")
-        target_duration_sec = duration_sec
-        if isinstance(polish_payload, dict) and polish_payload.get("targetDurationSec") is not None:
-            target_duration_sec = float(polish_payload["targetDurationSec"])
-
-        _log(f"[{index}/{len(narrated_segments)}] synthesizing -> {audio_path.name}")
-        result = synthesize_narration_text(
-            speech_text,
-            duration_sec,
-            output_path=str(audio_path),
-            metadata_path=str(metadata_path),
-            target_duration_sec=target_duration_sec,
-            options=speech_options,
-            settings=settings,
-        )
-        seg["speech"] = {
-            "text": result.text,
-            "audioPath": result.audio_path,
-            "metadataPath": result.metadata_path,
-            "segmentDurationSec": result.segment_duration_sec,
-            "targetDurationSec": result.target_duration_sec,
-            "rawDurationSec": result.raw_duration_sec,
-            "audioDurationSec": result.audio_duration_sec,
-            "durationDeltaSec": result.duration_delta_sec,
-            "fitsDuration": result.fits_duration,
-            "provider": result.provider,
-            "voice": result.voice,
-            "rate": result.rate,
-            "volume": result.volume,
-            "pitch": result.pitch,
-            "boundary": result.boundary,
-            "fitApplied": result.fit_applied,
-            "timingTtsSec": result.timing_tts_sec,
-            "timingFitSec": result.timing_fit_sec,
-        }
-
-    payload["speechOutputDir"] = str(audio_output_dir)
+    speech_payload = synthesize_speech_from_text_payload(
+        payload=payload,
+        audio_output_dir=audio_output_dir,
+        settings=settings,
+    )
     output_json_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
+        serialize_pipeline_speech_payload(speech_payload),
         encoding="utf-8",
     )
 
@@ -192,7 +105,7 @@ def main() -> int:
                 "pipelineJsonPath": str(pipeline_json_path),
                 "outputJsonPath": str(output_json_path),
                 "audioOutputDir": str(audio_output_dir),
-                "segmentCount": len(narrated_segments),
+                "segmentCount": len(speech_payload["narratedSegments"]),
                 "provider": settings.provider_for_capability("tts"),
                 "voice": speech_options.voice,
             },

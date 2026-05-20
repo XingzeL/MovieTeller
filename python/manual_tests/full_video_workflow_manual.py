@@ -31,7 +31,7 @@ VIDEO_PATH = "test_artifacts/harrypotter2.mp4"
 # - <stem>.extracted.srt
 # - <stem>.frame_pool/
 # - <stem>.subtitle_context/
-# - <stem>.manual.pipeline.json
+# - <stem>.manual.pipeline.text.json
 # - optional speech/video outputs
 OUTPUT_ROOT = "test_artifacts"
 
@@ -86,7 +86,11 @@ def main() -> int:
     _ensure_paths()
 
     from frame_source import FrameSourceOptions
-    from movie_pipeline import MoviePipelineOptions, run_pipeline_ctx
+    from movie_pipeline import (
+        MoviePipelineOptions,
+        run_pipeline_ctx,
+        serialize_pipeline_text_payload,
+    )
     from movie_pipeline.runtime_context import RunContext
     from movieteller_config import load_flat_dict
     from movieteller_config.schema import settings_from_dict
@@ -109,7 +113,7 @@ def main() -> int:
     frame_pool_dir = output_root / f"{stem}.frame_pool"
     frame_pool_manifest = frame_pool_dir / "manifest.jsonl"
     subtitle_context_dir = output_root / f"{stem}.subtitle_context"
-    pipeline_json_path = output_root / f"{stem}.manual.pipeline.json"
+    pipeline_json_path = output_root / f"{stem}.manual.pipeline.text.json"
     speech_output_dir = output_root / f"{stem}.narration_audio"
     embed_output_path = output_root / f"{stem}.narrated.mp4"
 
@@ -181,7 +185,6 @@ def main() -> int:
             max_frames_per_segment=settings.max_frames_per_segment,
             max_edge_pixels=settings.narration_frame_max_edge,
             pool_miss_uniform_max_frames=settings.pool_miss_uniform_max_frames,
-            allow_uniform_fallback=True,
         ),
         subtitle_context_build_options=settings.subtitle_context_build_options(),
         subtitle_context_retrieve_options=settings.subtitle_context_retrieve_options(),
@@ -196,7 +199,7 @@ def main() -> int:
         ctx=ctx,
     )
     pipeline_json_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
+        serialize_pipeline_text_payload(payload),
         encoding="utf-8",
     )
 

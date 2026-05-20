@@ -52,7 +52,7 @@ Use `run_pipeline_ctx(..., ctx=RunContext(settings=..., pipeline=...))` — this
 the only supported pipeline execution entry; assemble a `RunContext` once and pass
 it through.
 
-See [docs/runtime-config-architecture.md](../docs/runtime-config-architecture.md)
+See [docs/archive/runtime-config-architecture.md](../docs/archive/runtime-config-architecture.md)
 for diagrams and payload helpers.
 
 `analyze_and_narrate(...)` is compatibility-only for older call sites and should not

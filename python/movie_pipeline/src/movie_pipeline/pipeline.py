@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from frame_source import FrameSourceOptions
 from movieteller_config.loader import load_flat_dict
 from movieteller_config.schema import (
     Settings,
@@ -350,9 +349,8 @@ def run_pipeline_ctx(
     narrator: Callable[..., tuple[str, float]] | None = None,
     polisher: Callable[..., object] | None = None,
     synthesizer: Callable[..., object] | None = None,
-    video_renderer: Callable[..., object] | None = None,
 ) -> dict[str, object]:
-    """Run the narration pipeline using a single :class:`RunContext` (preferred API)."""
+    """Run the text/speech narration pipeline using a single :class:`RunContext`."""
     pipeline_options = ctx.pipeline
     resolved_settings = ctx.settings
     analysis = analyze_subtitle_file(
@@ -391,13 +389,11 @@ def run_pipeline_ctx(
                 "speech_output_dir is required when speech_options is set or embed_video is True"
             )
 
-    resolved_frame_source_options = pipeline_options.frame_source_options or FrameSourceOptions(
-        ffmpeg_bin=resolved_settings.ffmpeg_path,
-        max_frames_per_segment=resolved_settings.max_frames_per_segment,
-        max_edge_pixels=resolved_settings.narration_frame_max_edge,
-        pool_miss_uniform_max_frames=resolved_settings.pool_miss_uniform_max_frames,
-        allow_uniform_fallback=True,
-    )
+    resolved_frame_source_options = pipeline_options.frame_source_options
+    if resolved_frame_source_options is None:
+        raise ValueError(
+            "frame_source_options is required on MoviePipelineOptions for run_pipeline_ctx"
+        )
     narrated_segments = narrate_analysis_candidates(
         analysis,
         ctx=ctx,
@@ -415,46 +411,4 @@ def run_pipeline_ctx(
         speech_output_dir=resolved_speech_output_dir,
         subtitle_context_index_dir=resolved_subtitle_context_index_dir,
     )
-    if pipeline_options.embed_video:
-        from narration_video import NarrationAudioSegment, render_narrated_video
-
-        _default_renderer = video_renderer or render_narrated_video
-        audio_segments = [seg for seg in narrated_segments if seg.speech is not None]
-        if not audio_segments:
-            raise RuntimeError("embed_video requires synthesized speech audio segments")
-        output_path = (pipeline_options.embed_output_path or "").strip() or None
-        if not output_path:
-            raise ValueError("embed_output_path is required when embed_video is True")
-        render_segments = [
-            NarrationAudioSegment(
-                start_sec=seg.start_sec,
-                end_sec=seg.end_sec,
-                audio_path=seg.speech.audio_path,
-            )
-            for seg in audio_segments
-        ]
-        render_result = _default_renderer(
-            video_path,
-            render_segments,
-            output_path=output_path,
-            options=pipeline_options.video_options,
-            settings=resolved_settings,
-        )
-        payload["renderedVideo"] = {
-            "videoPath": str(getattr(render_result, "video_path")),
-            "outputPath": str(getattr(render_result, "output_path")),
-            "segmentCount": int(getattr(render_result, "segment_count")),
-            "videoDurationSec": float(getattr(render_result, "video_duration_sec")),
-            "backgroundAudioVolume": float(
-                getattr(render_result, "background_audio_volume")
-            ),
-            "speechAudioVolume": float(getattr(render_result, "speech_audio_volume")),
-            "timingRenderSec": (
-                float(getattr(render_result, "timing_render_sec"))
-                if getattr(render_result, "timing_render_sec", None) is not None
-                else None
-            ),
-        }
-    else:
-        payload["renderedVideo"] = None
     return payload
