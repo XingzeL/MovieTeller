@@ -21,6 +21,7 @@ class NarrationPolishResult:
     provider: str
     model: str
     timing_api_sec: float | None = None
+    scene_title_zh: str | None = None
 
     @property
     def fits_duration(self) -> bool:

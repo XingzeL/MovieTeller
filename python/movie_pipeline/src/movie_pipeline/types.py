@@ -36,6 +36,7 @@ class NarrationPolishDetails:
     provider: str
     model: str
     timing_api_sec: float | None = None
+    scene_title_zh: str | None = None
 
     @property
     def fits_duration(self) -> bool:
@@ -110,6 +111,22 @@ class NarrationPipelineConfig:
 
 PipelineRuntimeConfig: TypeAlias = NarrationPipelineConfig
 """Alias for staged naming; same shape as :class:`NarrationPipelineConfig`."""
+
+
+@dataclass(frozen=True)
+class StudyCardSegment:
+    start_sec: float
+    end_sec: float
+    narration_text: str
+    prev_subtitle_text: str | None
+    next_subtitle_text: str | None
+    scene_title_zh: str | None = None
+
+
+@dataclass(frozen=True)
+class StudyCardsDocument:
+    title: str
+    segments: tuple[StudyCardSegment, ...]
 
 
 @dataclass(frozen=True)

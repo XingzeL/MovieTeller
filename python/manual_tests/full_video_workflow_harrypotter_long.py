@@ -33,7 +33,7 @@ from pathlib import Path
 
 
 VIDEO_PATH = "test_artifacts/harrypotter_smoke1.mp4"
-OUTPUT_ROOT = "test_artifacts/smoke3"
+OUTPUT_ROOT = "test_artifacts/smokeFree2"
 ENABLE_SPEECH_AND_VIDEO = False
 
 

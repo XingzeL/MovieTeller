@@ -328,6 +328,15 @@ def test_run_full_workflow_accepts_resolved_context(tmp_path):
     assert payload["workflowArtifacts"]["srtPath"] == str(srt)
     assert captured["video_path"] == str(video)
     assert captured["frame_pool_manifest"] == str(pool_dir / "manifest.jsonl")
+    artifacts = payload["workflowArtifacts"]
+    assert artifacts.get("studyCardsHtmlPath")
+    assert Path(artifacts["studyCardsHtmlPath"]).name == "demo.study_cards.html"
+    assert artifacts.get("studyCardsHtmlError") is None
+    study_html_path = Path(artifacts["studyCardsHtmlPath"])
+    assert study_html_path.is_file()
+    study_html = study_html_path.read_text(encoding="utf-8")
+    assert study_html.startswith("<!DOCTYPE html>")
+    assert "segment-card" in study_html
 
 
 def test_run_pipeline_ctx_requires_explicit_frame_source_options():
@@ -484,6 +493,7 @@ def test_run_pipeline_ctx_can_polish_output():
     assert seg["speechText"] == "short line"
     assert seg["polish"]["fitsDuration"] is True
     assert seg["polish"]["cefrLevel"] == "A1"
+    assert seg["polish"]["sceneTitleZh"] is None
 
 
 def test_run_pipeline_ctx_can_synthesize_speech():
@@ -754,3 +764,10 @@ def test_run_full_workflow_reuses_existing_artifacts_and_runs_pipeline(tmp_path)
     assert payload["workflowArtifacts"]["subtitleContextIndexDir"] == str(ctx_dir)
     assert payload["narratedSegments"][0]["text"] == "narration"
     assert captured["frame_pool_manifest"] == str(pool_dir / "manifest.jsonl")
+    artifacts = payload["workflowArtifacts"]
+    assert artifacts.get("studyCardsHtmlPath")
+    assert Path(artifacts["studyCardsHtmlPath"]).name == "demo.study_cards.html"
+    assert artifacts.get("studyCardsHtmlError") is None
+    assert Path(artifacts["studyCardsHtmlPath"]).is_file()
+    study_body = Path(artifacts["studyCardsHtmlPath"]).read_text(encoding="utf-8")
+    assert "segment-card" in study_body

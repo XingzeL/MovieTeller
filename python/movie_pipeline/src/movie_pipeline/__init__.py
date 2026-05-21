@@ -41,6 +41,8 @@ from movie_pipeline.types import (
     ResolvedExecutionConfig,
     ResolvedRunContext,
     ResolvedWorkflowConfig,
+    StudyCardSegment,
+    StudyCardsDocument,
     WorkflowRequest,
 )
 
@@ -61,6 +63,8 @@ __all__ = [
     "ResolvedRunContext",
     "ResolvedWorkflowConfig",
     "RunContext",
+    "StudyCardSegment",
+    "StudyCardsDocument",
     "WorkflowRequest",
     "default_policy_context_for_request",
     "deep_copy_payload",

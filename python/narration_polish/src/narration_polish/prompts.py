@@ -27,7 +27,11 @@ def build_system_message(*, cefr_level: str, strength: str, style: str | None = 
         f"Rewrite strength: {strength}. "
         "Keep the meaning visually grounded, natural to read aloud, and concise. "
         f"{style_hint} "
-        "Do not explain your choices. Output only the final narration text."
+        "The first line must start with TITLE: followed by a short Chinese scene label "
+        "(at most 10 characters; no English on that line).\n"
+        "The second line must start with BODY: followed by the final English narration. "
+        "If the narration needs more than one line, continue on extra lines without a "
+        "second TITLE: prefix."
     )
 
 
@@ -51,6 +55,30 @@ def build_user_message(
         "- If space is tight, summarize instead of overflowing.\n"
         f"- Rewrite strength: {strength}.\n"
         f"- Original segment duration: {segment_duration_sec:.2f} seconds.\n\n"
+        "Respond with exactly two lines in this shape (TITLE line then BODY line):\n"
+        "TITLE:<Chinese scene label up to 10 characters>\n"
+        "BODY:<English narration>\n\n"
         "Original narration:\n"
         f"{text}"
+    )
+
+
+def build_title_only_system_message() -> str:
+    return (
+        "You label a short movie scene for a study card. "
+        "Reply with one line only: at most 10 Chinese characters describing the scene. "
+        "No English, no quotes, no numbering, no explanation."
+    )
+
+
+def build_title_only_user_message(
+    *,
+    polished_english: str,
+    segment_duration_sec: float,
+) -> str:
+    return (
+        f"Segment length about {segment_duration_sec:.2f} seconds.\n"
+        "Polished English narration (for context only, do not translate it):\n"
+        f"{polished_english}\n\n"
+        "Give one Chinese scene title (max 10 characters)."
     )

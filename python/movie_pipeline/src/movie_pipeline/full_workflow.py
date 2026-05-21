@@ -21,6 +21,7 @@ from movie_pipeline.workflow_stages import (
     stage_subtitle_extraction,
     stage_video_package,
 )
+from movie_pipeline.workflow_exports import export_workflow_artifacts
 from movieteller_config.schema import Settings
 
 
@@ -350,4 +351,8 @@ def run_full_workflow(
         "subtitleContextIndexDir": subtitle_context_index_dir,
         "outputRoot": str(output_root),
     }
-    return payload
+    return export_workflow_artifacts(
+        payload=payload,
+        paths=paths,
+        output_root=output_root,
+    )

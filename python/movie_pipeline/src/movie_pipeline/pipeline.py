@@ -182,6 +182,15 @@ def narrate_analysis_candidates(
                     if getattr(polished, "timing_api_sec", None) is not None
                     else None
                 ),
+                scene_title_zh=(
+                    None
+                    if getattr(polished, "scene_title_zh", None) is None
+                    else (
+                        s
+                        if (s := str(getattr(polished, "scene_title_zh")).strip())
+                        else None
+                    )
+                ),
             )
         if speech_enabled:
             if call_synthesizer is None:
@@ -299,6 +308,7 @@ def _segments_to_payload(
                     "model": seg.polish.model,
                     "fitsDuration": seg.polish.fits_duration,
                     "timingApiSec": seg.polish.timing_api_sec,
+                    "sceneTitleZh": seg.polish.scene_title_zh,
                 }
                 if seg.polish is not None
                 else None

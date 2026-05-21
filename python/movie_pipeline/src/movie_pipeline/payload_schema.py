@@ -27,6 +27,7 @@ class NarratedSegmentPolishPayload(TypedDict, total=False):
     model: str
     fitsDuration: bool
     timingApiSec: float | None
+    sceneTitleZh: str | None
 
 
 class NarratedSegmentSpeechPayload(TypedDict, total=False):
@@ -122,6 +123,8 @@ class WorkflowArtifactsPayload(TypedDict, total=False):
     framePoolManifest: str | None
     subtitleContextIndexDir: str | None
     outputRoot: str
+    studyCardsHtmlPath: str | None
+    studyCardsHtmlError: str | None
 
 
 def _require_narrated_segments(data: dict[str, Any], *, kind: str) -> list[dict[str, Any]]:

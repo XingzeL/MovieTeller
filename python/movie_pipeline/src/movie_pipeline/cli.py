@@ -181,6 +181,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    import sys
+
+    argv = sys.argv[1:]
+    if argv and argv[0] == "export-study-html":
+        from movie_pipeline.study_cards_html import main as export_study_main
+
+        return export_study_main(argv[1:])
+
     ap = build_parser()
     args = ap.parse_args()
 
