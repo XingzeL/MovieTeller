@@ -6,6 +6,10 @@ from narration_polish.polish import (
     parse_polish_response,
     polish_narration_text,
 )
+from narration_polish.study_card_enrichment import (
+    generate_vocab_study_card,
+    parse_vocab_study_card_json,
+)
 from narration_polish.types import NarrationPolishResult
 
 __all__ = [
@@ -15,5 +19,7 @@ __all__ = [
     "count_words",
     "estimate_speech_duration_sec",
     "parse_polish_response",
+    "generate_vocab_study_card",
+    "parse_vocab_study_card_json",
     "polish_narration_text",
 ]

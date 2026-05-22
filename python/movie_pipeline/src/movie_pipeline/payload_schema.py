@@ -30,6 +30,10 @@ class NarratedSegmentPolishPayload(TypedDict, total=False):
     sceneTitleZh: str | None
 
 
+class NarratedSegmentStudyCardPayload(TypedDict, total=False):
+    vocab: dict[str, Any]
+
+
 class NarratedSegmentSpeechPayload(TypedDict, total=False):
     text: str
     audioPath: str
@@ -72,6 +76,7 @@ class NarratedSegmentPayload(TypedDict, total=False):
     speechText: str
     prevSubtitleText: str | None
     nextSubtitleText: str | None
+    studyCard: NarratedSegmentStudyCardPayload | None
     polish: NarratedSegmentPolishPayload | None
     speech: NarratedSegmentSpeechPayload | None
     timingExtractSec: float | None

@@ -6,6 +6,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 from video_frame_pool.types import FramePoolEntry
 
@@ -39,6 +40,103 @@ def _subtitle_display(value: str | None) -> str:
         return "（无）"
     s = str(value).strip()
     return s if s else "（无）"
+
+
+def _ranges_overlap(a: tuple[int, int], b: tuple[int, int]) -> bool:
+    return not (a[1] <= b[0] or a[0] >= b[1])
+
+
+def _vocab_tooltip_inner_html(h: dict[str, Any], phrase_plain: str) -> str:
+    """Build tooltip body; *phrase_plain* is the full highlighted span as in the passage."""
+    esc = lambda s: html.escape(str(s or ""), quote=False)
+    title = esc(phrase_plain.strip() or str(h.get("match_text", "") or "").strip())
+    parts: list[str] = [f"<strong>{title}</strong>"]
+    pos = esc(h.get("pos", "") or "")
+    root = esc(h.get("word_root", "") or "")
+    meta_bits = [b for b in (pos, root) if b]
+    if meta_bits:
+        parts.append(f'<span class="vocab-tip-meta">{" · ".join(meta_bits)}</span>')
+    defn = esc(h.get("definition", "") or "")
+    if defn:
+        parts.append(f'<span class="vocab-tip-def">{defn}</span>')
+    note = esc(h.get("note", "") or "")
+    if note:
+        parts.append(f'<small class="vocab-tip-note">{note}</small>')
+    return "<br>".join(parts)
+
+
+def _annotate_narration_html(narration_plain: str, vocab: dict[str, Any] | None) -> str:
+    """Wrap ``match_text`` hits from *vocab* in interactive spans; escape-safe."""
+    if not vocab or not isinstance(vocab, dict):
+        return html.escape(narration_plain, quote=False)
+    data = vocab.get("data")
+    if not isinstance(data, list) or not data:
+        return html.escape(narration_plain, quote=False)
+    items: list[dict[str, Any]] = []
+    for h in data:
+        if not isinstance(h, dict):
+            continue
+        mt = h.get("match_text")
+        if not isinstance(mt, str) or not mt.strip():
+            continue
+        items.append(h)
+    if not items:
+        return html.escape(narration_plain, quote=False)
+    items.sort(key=lambda h: -len(str(h["match_text"])))
+    used: list[tuple[int, int]] = []
+    placements: list[tuple[int, int, dict[str, Any]]] = []
+    text = narration_plain
+    for h in items:
+        needle = str(h["match_text"])
+        start_search = 0
+        while True:
+            i = text.find(needle, start_search)
+            if i < 0:
+                break
+            end = i + len(needle)
+            cand = (i, end)
+            if any(_ranges_overlap(cand, u) for u in used):
+                start_search = i + 1
+                continue
+            used.append(cand)
+            placements.append((i, end, h))
+            break
+    placements.sort(key=lambda x: x[0])
+    parts: list[str] = []
+    cursor = 0
+    for start_idx, end, h in placements:
+        parts.append(html.escape(text[cursor:start_idx], quote=False))
+        phrase_plain = text[start_idx:end]
+        inner = html.escape(phrase_plain, quote=False)
+        tip_inner = _vocab_tooltip_inner_html(h, phrase_plain)
+        parts.append(
+            '<span class="vocab-hl" role="button" tabindex="0" aria-expanded="false">'
+            f"{inner}"
+            f'<span class="vocab-tooltip" role="tooltip">{tip_inner}</span>'
+            "</span>"
+        )
+        cursor = end
+    parts.append(html.escape(text[cursor:], quote=False))
+    return "".join(parts)
+
+
+def _translation_block_html(seg: StudyCardSegment) -> str:
+    vc = seg.vocab_study_card
+    if not vc or not isinstance(vc, dict):
+        return ""
+    ft = vc.get("full_translation")
+    if not isinstance(ft, str):
+        return ""
+    trans = ft.strip()
+    if not trans:
+        return ""
+    inner = html.escape(trans, quote=False)
+    return (
+        '<details class="vocab-translation">\n'
+        '  <summary class="vocab-translation-summary">参考译文</summary>\n'
+        f'  <div class="vocab-translation-inner">{inner}</div>\n'
+        "</details>\n"
+    )
 
 
 def _segment_title(segment_index: int, scene_title_zh: str | None) -> str:
@@ -117,7 +215,8 @@ def _render_segment_card(
 
     # Study cards intentionally show the original vision narration, not polished/TTS text.
     narration = seg.narration_text.strip()
-    narration_html = html.escape(narration, quote=False)
+    narration_html = _annotate_narration_html(narration, seg.vocab_study_card)
+    translation_html = _translation_block_html(seg)
 
     prev_line = _subtitle_display(seg.prev_subtitle_text)
     next_line = _subtitle_display(seg.next_subtitle_text)
@@ -147,6 +246,7 @@ def _render_segment_card(
         '      <div class="text-column">\n'
         '        <div class="column-title">【画面理解生成的原始旁白】</div>\n'
         f'        <div class="content-text">{narration_html}</div>\n'
+        f"{translation_html}"
         "      </div>\n"
         "    </div>\n"
         "  </div>\n"
@@ -313,10 +413,60 @@ def export_study_cards_html(
         "    apply();\n"
         "  });\n"
         "}\n"
-        "if (document.readyState === 'loading') {\n"
-        "  document.addEventListener('DOMContentLoaded', initFrameCarousels);\n"
-        "} else {\n"
+        "function initVocabTooltips() {\n"
+        "  document.addEventListener('click', (e) => {\n"
+        "    const t = e.target;\n"
+        "    if (!(t instanceof Element)) return;\n"
+        "    const hl = t.closest('.vocab-hl');\n"
+        "    if (hl) {\n"
+        "      const was = hl.classList.contains('active');\n"
+        "      document.querySelectorAll('.vocab-hl.active').forEach((el) => {\n"
+        "        el.classList.remove('active');\n"
+        "        el.setAttribute('aria-expanded', 'false');\n"
+        "      });\n"
+        "      if (!was) {\n"
+        "        hl.classList.add('active');\n"
+        "        hl.setAttribute('aria-expanded', 'true');\n"
+        "      }\n"
+        "      return;\n"
+        "    }\n"
+        "    document.querySelectorAll('.vocab-hl.active').forEach((el) => {\n"
+        "      el.classList.remove('active');\n"
+        "      el.setAttribute('aria-expanded', 'false');\n"
+        "    });\n"
+        "  });\n"
+        "  document.addEventListener('keydown', (e) => {\n"
+        "    if (e.key === 'Escape') {\n"
+        "      document.querySelectorAll('.vocab-hl.active').forEach((el) => {\n"
+        "        el.classList.remove('active');\n"
+        "        el.setAttribute('aria-expanded', 'false');\n"
+        "      });\n"
+        "      return;\n"
+        "    }\n"
+        "    const t = e.target;\n"
+        "    if (!(t instanceof Element)) return;\n"
+        "    const hl = t.closest('.vocab-hl');\n"
+        "    if (!hl || (e.key !== 'Enter' && e.key !== ' ')) return;\n"
+        "    e.preventDefault();\n"
+        "    const was = hl.classList.contains('active');\n"
+        "    document.querySelectorAll('.vocab-hl.active').forEach((el) => {\n"
+        "      el.classList.remove('active');\n"
+        "      el.setAttribute('aria-expanded', 'false');\n"
+        "    });\n"
+        "    if (!was) {\n"
+        "      hl.classList.add('active');\n"
+        "      hl.setAttribute('aria-expanded', 'true');\n"
+        "    }\n"
+        "  });\n"
+        "}\n"
+        "function initStudyCardsPage() {\n"
         "  initFrameCarousels();\n"
+        "  initVocabTooltips();\n"
+        "}\n"
+        "if (document.readyState === 'loading') {\n"
+        "  document.addEventListener('DOMContentLoaded', initStudyCardsPage);\n"
+        "} else {\n"
+        "  initStudyCardsPage();\n"
         "}\n"
         "</script>\n"
         "</body>\n"

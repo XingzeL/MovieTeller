@@ -76,7 +76,7 @@ header h1 {
     border: 1px solid var(--border-color);
     border-radius: 12px;
     margin-bottom: 40px;
-    overflow: hidden;
+    overflow: visible;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
@@ -273,6 +273,7 @@ header h1 {
     padding: 20px;
     height: 100%;
     box-sizing: border-box;
+    overflow: visible;
 }
 
 .column-title {
@@ -291,4 +292,104 @@ header h1 {
     color: var(--text-main);
     text-align: justify;
     letter-spacing: 0.3px;
+    overflow: visible;
 }
+
+.vocab-hl {
+    position: relative;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: var(--gold-dim);
+    text-underline-offset: 3px;
+    background: rgba(212, 175, 55, 0.12);
+    border-radius: 3px;
+    padding: 0 2px;
+}
+
+.vocab-hl:hover,
+.vocab-hl:focus-visible {
+    background: rgba(212, 175, 55, 0.22);
+    outline: none;
+}
+
+.vocab-hl:focus-visible {
+    box-shadow: 0 0 0 2px var(--gold-primary);
+}
+
+.vocab-hl .vocab-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 6px;
+    min-width: 11rem;
+    max-width: min(24rem, 90vw);
+    padding: 10px 12px;
+    box-sizing: border-box;
+    background: var(--card-bg);
+    border: 1px solid var(--gold-dim);
+    border-radius: 8px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+    font-size: 0.88rem;
+    line-height: 1.45;
+    color: var(--text-main);
+    z-index: 60;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    text-align: left;
+    white-space: normal;
+    font-weight: normal;
+    text-decoration: none;
+}
+
+.vocab-hl.active .vocab-tooltip {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.vocab-hl .vocab-tooltip strong {
+    color: var(--gold-primary);
+    font-size: 0.95rem;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.vocab-tip-meta {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.vocab-tip-def {
+    display: block;
+    margin-top: 6px;
+}
+
+.vocab-tip-note {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+.vocab-translation {
+    margin-top: 14px;
+    font-size: 0.92rem;
+    color: var(--text-muted);
+    border-top: 1px dashed var(--border-color);
+    padding-top: 10px;
+}
+
+.vocab-translation-summary {
+    cursor: pointer;
+    color: var(--gold-primary);
+    font-weight: 600;
+}
+
+.vocab-translation-inner {
+    margin-top: 8px;
+    color: var(--text-main);
+    line-height: 1.55;
+}
+

@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import re
 import time
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable
 
 from model_gateway import polish_text as gateway_polish_text
 from movieteller_config.schema import NarrationPolishOptions
@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from movieteller_config.schema import Settings
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
-
 
 def count_words(text: str) -> int:
     return len(_WORD_RE.findall(text))

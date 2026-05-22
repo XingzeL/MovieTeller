@@ -27,6 +27,7 @@
       <sourceFolder url="file://$MODULE_DIR$/python/video_frame_pool/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/python/movie_pipeline/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/python/narration_polish/.venv" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.12 (MovieTeller)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

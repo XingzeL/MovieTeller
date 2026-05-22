@@ -263,7 +263,6 @@ def main() -> int:
         subtitle_context_index_dir=args.subtitle_context_index_dir,
         build_subtitle_context=args.build_subtitle_context,
         speech_output_dir=speech_output_dir,
-        embed_video=args.embed_video,
     )
     if args.embed_video:
         payload = render_video_from_narration_payload(

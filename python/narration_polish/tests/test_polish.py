@@ -7,7 +7,9 @@ from narration_polish import (
     compute_target_word_count,
     count_words,
     estimate_speech_duration_sec,
+    generate_vocab_study_card,
     parse_polish_response,
+    parse_vocab_study_card_json,
     polish_narration_text,
 )
 
@@ -51,6 +53,68 @@ def test_parse_polish_response_legacy_plain():
     assert body == "Just plain English narration here."
 
 
+def test_parse_vocab_json_plain_object():
+    raw = (
+        '{"passage_id":"p1","highlights_count":1,'
+        '"data":[{"match_text":"hello","word_root":"hello","pos":"intj",'
+        '"definition":"你好","note":""}],"full_translation":"你好世界"}'
+    )
+    out = parse_vocab_study_card_json(raw)
+    assert out is not None
+    assert out["passage_id"] == "p1"
+    assert out["highlights_count"] == 1
+    assert len(out["data"]) == 1
+    assert out["data"][0]["match_text"] == "hello"
+    assert out["full_translation"] == "你好世界"
+
+
+def test_parse_vocab_json_strips_markdown_fence():
+    raw = """```json
+{"passage_id":"x","highlights_count":0,"data":[],"full_translation":""}
+```"""
+    out = parse_vocab_study_card_json(raw)
+    assert out is not None
+    assert out["data"] == []
+
+
+def test_parse_vocab_json_invalid_returns_none():
+    assert parse_vocab_study_card_json("") is None
+    assert parse_vocab_study_card_json("not json") is None
+    assert parse_vocab_study_card_json('{"data": "bad"}') is None
+
+
+def test_generate_vocab_study_card_uses_dedicated_enrichment_call():
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "newapi"},
+            "api_keys": {"newapi": "sk-test"},
+            "api_providers": {"newapi": "https://example.test/v1"},
+            "model_defaults": {"polish": "seed-vision"},
+        }
+    )
+    fake_client = MagicMock()
+    response = MagicMock()
+    response.choices = [MagicMock()]
+    response.choices[0].message.content = (
+        '{"passage_id":"seg","highlights_count":1,'
+        '"data":[{"match_text":"outside","word_root":"outside","pos":"adv.",'
+        '"definition":"在外面","note":""}],"full_translation":"女孩在外面。"}'
+    )
+    fake_client.chat.completions.create.return_value = response
+
+    card, elapsed = generate_vocab_study_card(
+        "A girl stands outside.",
+        cefr_level="B1",
+        settings=settings,
+        client_factory=lambda _k, _b: fake_client,
+    )
+
+    assert elapsed >= 0
+    assert card is not None
+    assert card["data"][0]["match_text"] == "outside"
+    assert fake_client.chat.completions.create.call_count == 1
+
+
 def test_polish_narration_uses_injected_client_and_enforces_budget():
     settings = settings_from_dict(
         {
@@ -65,12 +129,12 @@ def test_polish_narration_uses_injected_client_and_enforces_budget():
         }
     )
     fake_client = MagicMock()
-    fake_resp = MagicMock()
-    fake_resp.choices = [MagicMock()]
-    fake_resp.choices[0].message.content = (
+    resp_polish = MagicMock()
+    resp_polish.choices = [MagicMock()]
+    resp_polish.choices[0].message.content = (
         "A girl stands outside with a backpack while someone writes in a notebook by a desk."
     )
-    fake_client.chat.completions.create.return_value = fake_resp
+    fake_client.chat.completions.create.return_value = resp_polish
 
     options = settings.narration_polish_options()
     result = polish_narration_text(
@@ -85,7 +149,7 @@ def test_polish_narration_uses_injected_client_and_enforces_budget():
     assert result.target_word_count == 5
     assert count_words(result.polished_text) <= result.target_word_count
     assert result.fits_duration
-    fake_client.chat.completions.create.assert_called_once()
+    assert fake_client.chat.completions.create.call_count == 1
 
 
 def test_polish_narration_structured_sets_scene_title_zh():
@@ -102,13 +166,13 @@ def test_polish_narration_structured_sets_scene_title_zh():
         }
     )
     fake_client = MagicMock()
-    fake_resp = MagicMock()
-    fake_resp.choices = [MagicMock()]
-    fake_resp.choices[0].message.content = (
+    resp_polish = MagicMock()
+    resp_polish.choices = [MagicMock()]
+    resp_polish.choices[0].message.content = (
         "TITLE:窗外女孩\n"
         "BODY:A girl stands outside with a backpack while someone writes in a notebook by a desk."
     )
-    fake_client.chat.completions.create.return_value = fake_resp
+    fake_client.chat.completions.create.return_value = resp_polish
 
     options = settings.narration_polish_options()
     result = polish_narration_text(
@@ -121,7 +185,7 @@ def test_polish_narration_structured_sets_scene_title_zh():
     assert result.scene_title_zh == "窗外女孩"
     assert count_words(result.polished_text) <= result.target_word_count
     assert "outside" in result.polished_text.lower()
-    fake_client.chat.completions.create.assert_called_once()
+    assert fake_client.chat.completions.create.call_count == 1
 
 
 def test_polish_narration_title_only_retry_when_title_too_long():
@@ -173,10 +237,10 @@ def test_polish_narration_respects_explicit_model_override():
 
     def fake_client_factory(_k, _b):
         client = MagicMock()
-        resp = MagicMock()
-        resp.choices = [MagicMock()]
-        resp.choices[0].message.content = "A student looks down at a letter."
-        client.chat.completions.create.return_value = resp
+        resp_polish = MagicMock()
+        resp_polish.choices = [MagicMock()]
+        resp_polish.choices[0].message.content = "A student looks down at a letter."
+        client.chat.completions.create.return_value = resp_polish
         return client
 
     options = settings.narration_polish_options()
@@ -203,10 +267,10 @@ def test_polish_narration_uses_dedicated_provider_and_catalog_index():
 
     def fake_client_factory(_k, _b):
         client = MagicMock()
-        resp = MagicMock()
-        resp.choices = [MagicMock()]
-        resp.choices[0].message.content = "A student reads a letter."
-        client.chat.completions.create.return_value = resp
+        resp_polish = MagicMock()
+        resp_polish.choices = [MagicMock()]
+        resp_polish.choices[0].message.content = "A student reads a letter."
+        client.chat.completions.create.return_value = resp_polish
         return client
 
     options = settings.narration_polish_options()

@@ -129,7 +129,6 @@ def stage_narration_pipeline(
         subtitle_context_index_dir=subtitle_context_index_dir,
         build_subtitle_context=False,
         speech_output_dir=paths.speech_output_dir,
-        embed_video=False,
         narrator=narrator,
         polisher=polisher,
         synthesizer=synthesizer,

@@ -20,11 +20,17 @@ def build_study_cards_document(
                 continue
             polish = raw.get("polish")
             scene_title_zh: str | None = None
+            vocab_study_card: dict[str, Any] | None = None
             if isinstance(polish, dict):
                 candidate = polish.get("sceneTitleZh")
                 if isinstance(candidate, str):
                     candidate = candidate.strip()
                     scene_title_zh = candidate or None
+            study_card = raw.get("studyCard")
+            if isinstance(study_card, dict):
+                vc = study_card.get("vocab")
+                if isinstance(vc, dict):
+                    vocab_study_card = vc
             segments.append(
                 StudyCardSegment(
                     start_sec=float(raw["startSec"]),
@@ -33,6 +39,7 @@ def build_study_cards_document(
                     prev_subtitle_text=_optional_str(raw.get("prevSubtitleText")),
                     next_subtitle_text=_optional_str(raw.get("nextSubtitleText")),
                     scene_title_zh=scene_title_zh,
+                    vocab_study_card=vocab_study_card,
                 )
             )
     return StudyCardsDocument(

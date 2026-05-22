@@ -457,6 +457,21 @@ def test_run_pipeline_ctx_can_polish_output():
         model = "gpt-4.1-mini"
         timing_api_sec = 0.12
 
+    vocab_study_card = {
+        "passage_id": "seg",
+        "highlights_count": 1,
+        "data": [
+            {
+                "match_text": "line",
+                "word_root": "line",
+                "pos": "n.",
+                "definition": "线",
+                "note": "",
+            }
+        ],
+        "full_translation": "短句。",
+    }
+
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
         return ("longer narration line here", end_sec - start_sec)
 
@@ -465,6 +480,11 @@ def test_run_pipeline_ctx_can_polish_output():
         assert duration_sec == 1.0
         assert kwargs["options"].prompt_style == "documentary"
         return FakePolishResult()
+
+    def fake_vocab_generator(passage, **kwargs):
+        assert passage == "short line"
+        assert kwargs["cefr_level"] == "A1"
+        return vocab_study_card, 0.01
 
     from tempfile import TemporaryDirectory
     settings = make_settings(narration_polish_enabled=True)
@@ -481,19 +501,28 @@ def test_run_pipeline_ctx_can_polish_output():
     with TemporaryDirectory() as tmp:
         srt = Path(tmp) / "demo.srt"
         srt.write_text(raw, encoding="utf-8")
-        payload = run_pipeline_ctx(
-            srt_path=str(srt),
-            video_path="demo.mp4",
-            ctx=ctx,
-            narrator=fake_narrator,
-            polisher=fake_polisher,
-        )
+        import movie_pipeline.pipeline as pipeline_module
+
+        original_vocab_generator = pipeline_module.generate_vocab_study_card
+        pipeline_module.generate_vocab_study_card = fake_vocab_generator
+        try:
+            payload = run_pipeline_ctx(
+                srt_path=str(srt),
+                video_path="demo.mp4",
+                ctx=ctx,
+                narrator=fake_narrator,
+                polisher=fake_polisher,
+            )
+        finally:
+            pipeline_module.generate_vocab_study_card = original_vocab_generator
     seg = payload["narratedSegments"][0]
     assert seg["text"] == "longer narration line here"
     assert seg["speechText"] == "short line"
     assert seg["polish"]["fitsDuration"] is True
     assert seg["polish"]["cefrLevel"] == "A1"
     assert seg["polish"]["sceneTitleZh"] is None
+    assert seg["studyCard"]["vocab"]["highlights_count"] == 1
+    assert seg["studyCard"]["vocab"]["data"][0]["match_text"] == "line"
 
 
 def test_run_pipeline_ctx_can_synthesize_speech():
@@ -636,7 +665,6 @@ def test_render_video_from_narration_payload_can_render_video():
             video_path="demo.mp4",
             ctx=ctx,
             speech_output_dir=str(Path(tmp) / "speech"),
-            embed_video=True,
             narrator=fake_narrator,
             synthesizer=fake_synthesizer,
         )

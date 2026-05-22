@@ -12,6 +12,7 @@ from movieteller_config.schema import (
 from pipeline_types import NarrationContext
 
 from narration.narrate import narrate_segment_with_duration
+from narration_polish import generate_vocab_study_card
 
 from movie_pipeline.runtime_context import RunContext
 from movie_pipeline.types import (
@@ -147,6 +148,7 @@ def narrate_analysis_candidates(
         )
         polish_details: NarrationPolishDetails | None = None
         speech_details: NarrationSpeechDetails | None = None
+        vocab_study_card: dict[str, Any] | None = None
         speech_text = text
         if polish_enabled:
             if call_polisher is None:
@@ -192,6 +194,12 @@ def narrate_analysis_candidates(
                     )
                 ),
             )
+            raw_vocab, _vocab_timing_sec = generate_vocab_study_card(
+                speech_text,
+                cefr_level=polish_details.cefr_level,
+                settings=settings,
+            )
+            vocab_study_card = raw_vocab if isinstance(raw_vocab, dict) else None
         if speech_enabled:
             if call_synthesizer is None:
                 raise RuntimeError("Narration speech synthesizer is not available")
@@ -256,6 +264,7 @@ def narrate_analysis_candidates(
                 speech_text=speech_text,
                 polish=polish_details,
                 speech=speech_details,
+                vocab_study_card=vocab_study_card,
                 timing_extract_sec=(
                     float(timings["extract_sec"]) if "extract_sec" in timings else None
                 ),
@@ -290,6 +299,11 @@ def _segments_to_payload(
             "speechText": seg.final_text,
             "prevSubtitleText": seg.prev_subtitle_text,
             "nextSubtitleText": seg.next_subtitle_text,
+            "studyCard": (
+                {"vocab": seg.vocab_study_card}
+                if seg.vocab_study_card is not None
+                else None
+            ),
             "polish": (
                 {
                     "text": seg.polish.text,
@@ -357,7 +371,6 @@ def run_pipeline_ctx(
     subtitle_context_index_dir: str | None = None,
     build_subtitle_context: bool = False,
     speech_output_dir: str | None = None,
-    embed_video: bool = False,
     narrator: Callable[..., tuple[str, float]] | None = None,
     polisher: Callable[..., object] | None = None,
     synthesizer: Callable[..., object] | None = None,
@@ -391,12 +404,12 @@ def run_pipeline_ctx(
             settings=resolved_settings,
         )
 
-    speech_requested = pipeline_config.speech_options is not None or embed_video
+    speech_requested = pipeline_config.speech_options is not None
     resolved_speech_output_dir = (speech_output_dir or "").strip() or None
     if speech_requested:
         if not resolved_speech_output_dir:
             raise ValueError(
-                "speech_output_dir is required when speech_options is set or embed_video is True"
+                "speech_output_dir is required when speech_options is set"
             )
 
     resolved_frame_source_options = pipeline_config.frame_source_options

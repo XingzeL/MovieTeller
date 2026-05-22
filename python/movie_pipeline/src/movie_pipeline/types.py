@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping, TypeAlias
+from typing import TYPE_CHECKING, Any, Mapping, TypeAlias
 
 from movieteller_config.schema import (
     FramePoolBuildOptions,
@@ -81,6 +81,7 @@ class NarratedSegment:
     speech_text: str | None = None
     polish: NarrationPolishDetails | None = None
     speech: NarrationSpeechDetails | None = None
+    vocab_study_card: dict[str, Any] | None = None
     timing_extract_sec: float | None = None
     timing_api_sec: float | None = None
     timing_total_sec: float | None = None
@@ -121,6 +122,7 @@ class StudyCardSegment:
     prev_subtitle_text: str | None
     next_subtitle_text: str | None
     scene_title_zh: str | None = None
+    vocab_study_card: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

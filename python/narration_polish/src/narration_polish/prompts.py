@@ -82,3 +82,35 @@ def build_title_only_user_message(
         f"{polished_english}\n\n"
         "Give one Chinese scene title (max 10 characters)."
     )
+
+
+def build_vocab_highlight_system_message() -> str:
+    return (
+        "You extract study-vocabulary highlights from a short English narration passage. "
+        "Pick words or short phrases that are useful for a learner at the CEFR level given "
+        "in the user message (not trivial at that level; include useful collocations when apt). "
+        "Your reply MUST be one JSON object only: no markdown, no code fences, no text before "
+        "or after the JSON.\n\n"
+        "Required JSON shape:\n"
+        '- passage_id: string (use "seg" if you have no better id)\n'
+        "- highlights_count: integer, must equal the length of data\n"
+        "- data: array of objects, each with:\n"
+        "  - match_text: exact substring copied from the passage (case-sensitive)\n"
+        "  - word_root: lemma or stem (English)\n"
+        "  - pos: short part-of-speech label (e.g. n., v., adj.)\n"
+        "  - definition: concise Chinese gloss for the highlighted span\n"
+        "  - note: optional short Chinese learning tip (may be \"\")\n"
+        "- full_translation: fluent Chinese translation of the entire passage\n\n"
+        "Rules: match_text must appear verbatim in the passage. Avoid redundant overlaps. "
+        "Prefer a modest number of high-quality items (often about 3–10 for a short passage)."
+    )
+
+
+def build_vocab_highlight_user_message(*, passage: str, cefr_level: str) -> str:
+    level = (cefr_level or "").strip() or "B1"
+    return (
+        f"CEFR level for selection difficulty: {level}.\n\n"
+        "Passage (English):\n"
+        f"{passage.rstrip()}\n\n"
+        "Respond with one JSON object only, following the schema from the system message."
+    )

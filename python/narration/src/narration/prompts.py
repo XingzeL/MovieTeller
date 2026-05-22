@@ -4,12 +4,11 @@ from typing import Sequence
 
 # Words per minute style hints (used only for target length, not hard limits)
 _WORDS_PER_MIN: dict[str, float] = {
-    "documentary": 130.0,
-    "cinematic": 100.0,
-    "concise": 160.0,
-    "educational": 140.0,
-    "movie_commentary": 145.0,
-    "movie-commentary": 145.0,
+    "documentary": 65.0,
+    "cinematic": 50.0,
+    "concise": 80.0,
+    "educational": 70.0,
+    "movie_commentary": 300.0
 }
 
 _DEFAULT_SYSTEM = """You are a professional film narrator. Describe what is visible in the \
@@ -67,7 +66,7 @@ def build_user_text(
     parts = [
         (
         f"This segment is about {duration_sec:.2f} seconds long "
-        f"(use roughly {words} words as a soft target, not a hard count). "
+        f"(use roughly {words} words as a soft target, not a hard count), but you must generate less than {2 * words} words !!"
         f"You are given {frame_count} evenly spaced key frames from this segment. "
         "Write continuous narration that flows across the segment."
         )
