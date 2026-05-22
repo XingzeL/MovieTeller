@@ -75,6 +75,13 @@ def _coerce_bool(value: Any, fallback: bool) -> bool:
     return fallback
 
 
+def _nested_int(data: dict[str, Any], section: str, key: str, fallback: int) -> int:
+    nested = data.get(section)
+    if isinstance(nested, dict) and key in nested:
+        return _coerce_int(nested.get(key), fallback)
+    return fallback
+
+
 @dataclass(frozen=True)
 class NarrationOptions:
     """Prompt-only options; narration model/provider come from gateway ``settings``."""
@@ -145,6 +152,21 @@ class FramePoolBuildOptions:
 
 
 @dataclass(frozen=True)
+class WorkflowParallelismOptions:
+    segment_group_size: int
+    segment_group_concurrency: int
+
+
+@dataclass(frozen=True)
+class CapabilityConcurrencyOptions:
+    narration: int
+    polish: int
+    study_enrichment: int
+    tts: int
+    subtitle_context: int
+
+
+@dataclass(frozen=True)
 class Settings:
     max_frames_per_segment: int
     narration_frame_max_edge: int
@@ -187,6 +209,8 @@ class Settings:
     video_default_speech_audio_volume: float
     narration_video_background_audio_volume: float
     narration_video_speech_audio_volume: float
+    workflow_parallelism: WorkflowParallelismOptions
+    capability_concurrency: CapabilityConcurrencyOptions
 
     def get_api_key(self, provider: str) -> str | None:
         key = str(provider or "").strip().lower()
@@ -394,6 +418,12 @@ class Settings:
             dialogue_overlap_threshold=dialogue_overlap_threshold,
             pyscenedetect_merge_sec=pyscenedetect_merge_sec,
         )
+
+    def workflow_parallelism_options(self) -> WorkflowParallelismOptions:
+        return self.workflow_parallelism
+
+    def capability_concurrency_options(self) -> CapabilityConcurrencyOptions:
+        return self.capability_concurrency
 
 
 def _normalize_api_keys_dict(data: dict[str, Any]) -> dict[str, str]:
@@ -706,6 +736,29 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
                     else video_defaults_cfg.get("speech_audio_volume"),
                     1.0,
                 ),
+            ),
+        ),
+        workflow_parallelism=WorkflowParallelismOptions(
+            segment_group_size=max(
+                1,
+                _nested_int(data, "workflow_parallelism", "segment_group_size", 3),
+            ),
+            segment_group_concurrency=max(
+                1,
+                _nested_int(data, "workflow_parallelism", "segment_group_concurrency", 2),
+            ),
+        ),
+        capability_concurrency=CapabilityConcurrencyOptions(
+            narration=max(1, _nested_int(data, "capability_concurrency", "narration", 2)),
+            polish=max(1, _nested_int(data, "capability_concurrency", "polish", 2)),
+            study_enrichment=max(
+                1,
+                _nested_int(data, "capability_concurrency", "study_enrichment", 2),
+            ),
+            tts=max(1, _nested_int(data, "capability_concurrency", "tts", 2)),
+            subtitle_context=max(
+                1,
+                _nested_int(data, "capability_concurrency", "subtitle_context", 4),
             ),
         ),
     )

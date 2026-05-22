@@ -204,6 +204,17 @@ ffmpeg_path: /usr/bin/ffmpeg
                 "subtitle_context_history_window_sec": "480",
                 "subtitle_context_top_k": "8",
                 "subtitle_context_summary_enabled": "true",
+                "workflow_parallelism": {
+                    "segment_group_size": "4",
+                    "segment_group_concurrency": "3",
+                },
+                "capability_concurrency": {
+                    "narration": "1",
+                    "polish": "2",
+                    "study_enrichment": "3",
+                    "tts": "1",
+                    "subtitle_context": "5",
+                },
             }
         )
         self.assertEqual(s.max_frames_per_segment, 12)
@@ -219,6 +230,13 @@ ffmpeg_path: /usr/bin/ffmpeg
         self.assertEqual(s.subtitle_context_history_window_sec, 480.0)
         self.assertEqual(s.subtitle_context_top_k, 8)
         self.assertTrue(s.subtitle_context_summary_enabled)
+        self.assertEqual(s.workflow_parallelism.segment_group_size, 4)
+        self.assertEqual(s.workflow_parallelism.segment_group_concurrency, 3)
+        self.assertEqual(s.capability_concurrency.narration, 1)
+        self.assertEqual(s.capability_concurrency.polish, 2)
+        self.assertEqual(s.capability_concurrency.study_enrichment, 3)
+        self.assertEqual(s.capability_concurrency.tts, 1)
+        self.assertEqual(s.capability_concurrency.subtitle_context, 5)
 
     def test_modelscope_env(self):
         with mock.patch("movieteller_config.loader._load_repo_dotenv", lambda: None):

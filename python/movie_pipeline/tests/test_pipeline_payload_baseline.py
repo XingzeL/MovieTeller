@@ -42,6 +42,7 @@ _EXPECTED_SEGMENT_KEYS = frozenset(
         "speechText",
         "prevSubtitleText",
         "nextSubtitleText",
+        "studyCard",
         "polish",
         "speech",
         "timingExtractSec",
@@ -104,6 +105,7 @@ def test_run_pipeline_ctx_payload_top_level_and_segment_keys():
     assert set(seg0.keys()) == _EXPECTED_SEGMENT_KEYS
     assert seg0["text"] == "narration"
     assert seg0["speechText"] == "narration"
+    assert seg0["studyCard"] is None
     assert seg0["polish"] is None
     assert seg0["speech"] is None
 

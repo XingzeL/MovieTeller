@@ -46,3 +46,14 @@ tts_defaults:
 video_defaults:
   background_audio_volume: 0.35
   speech_audio_volume: 1.0
+
+workflow_parallelism:
+  segment_group_size: 3
+  segment_group_concurrency: 2
+
+capability_concurrency:
+  narration: 2
+  polish: 2
+  study_enrichment: 2
+  tts: 2
+  subtitle_context: 4

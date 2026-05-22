@@ -49,3 +49,14 @@ video_default_background_audio_volume: 0.35
 video_default_speech_audio_volume: 1.0
 narration_video_background_audio_volume: 0.35
 narration_video_speech_audio_volume: 1.0
+
+workflow_parallelism:
+  segment_group_size: 4
+  segment_group_concurrency: 8
+
+capability_concurrency:
+  narration: 8
+  polish: 8
+  study_enrichment: 8
+  tts: 2
+  subtitle_context: 8

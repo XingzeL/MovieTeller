@@ -1,5 +1,7 @@
 from dataclasses import replace
 from pathlib import Path
+from threading import Lock
+import time
 
 from frame_source import FrameSourceOptions
 from movieteller_config.schema import settings_from_dict
@@ -149,6 +151,93 @@ b
     assert calls[0].prev_subtitle_text == "a"
     assert calls[0].next_subtitle_text == "b"
     assert calls[0].retrieved_context_texts == ()
+
+
+def test_narrate_analysis_candidates_runs_contiguous_groups_in_parallel_and_preserves_output_order():
+    raw = """1
+00:00:00,000 --> 00:00:01,000
+a
+
+2
+00:00:04,000 --> 00:00:05,000
+b
+
+3
+00:00:08,000 --> 00:00:09,000
+c
+
+4
+00:00:12,000 --> 00:00:13,000
+d
+"""
+    analysis = analyze_srt_text(
+        raw,
+        video_duration_sec=16.0,
+        min_gap_sec=1.0,
+        subtitle_guard_sec=0.25,
+    )
+    settings = make_settings(
+        workflow_parallelism={
+            "segment_group_size": 2,
+            "segment_group_concurrency": 2,
+        },
+        capability_concurrency={
+            "narration": 2,
+            "polish": 1,
+            "study_enrichment": 1,
+            "tts": 1,
+            "subtitle_context": 1,
+        },
+    )
+    frame_source_options = settings_to_frame_source_options(settings)
+    ctx = RunContext(
+        settings=settings,
+        pipeline=NarrationPipelineConfig(
+            video_duration_sec=16.0,
+            min_gap_sec=1.0,
+            subtitle_guard_sec=0.25,
+            narration_options=settings.narration_options(),
+            frame_source_options=frame_source_options,
+        ),
+    )
+    active = 0
+    peak = 0
+    lock = Lock()
+    call_order: list[float] = []
+
+    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+            call_order.append(start_sec)
+        if start_sec < 6:
+            time.sleep(0.04)
+        else:
+            time.sleep(0.01)
+        with lock:
+            active -= 1
+        return (f"segment-{start_sec:.0f}", end_sec - start_sec)
+
+    segments = narrate_analysis_candidates(
+        analysis,
+        ctx=ctx,
+        video_path="demo.mp4",
+        frame_source_options=frame_source_options,
+        narrator=fake_narrator,
+    )
+
+    assert [segment.narration_text for segment in segments] == [
+        "segment-1",
+        "segment-5",
+        "segment-9",
+        "segment-13",
+    ]
+    assert peak == 2
+    first_group = [segment.start_sec for segment in segments[:2]]
+    second_group = [segment.start_sec for segment in segments[2:]]
+    assert call_order.index(first_group[0]) < call_order.index(first_group[1])
+    assert call_order.index(second_group[0]) < call_order.index(second_group[1])
 
 
 def test_run_pipeline_ctx_returns_timed_json_payload():
@@ -482,7 +571,7 @@ def test_run_pipeline_ctx_can_polish_output():
         return FakePolishResult()
 
     def fake_vocab_generator(passage, **kwargs):
-        assert passage == "short line"
+        assert passage == "longer narration line here"
         assert kwargs["cefr_level"] == "A1"
         return vocab_study_card, 0.01
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -9,12 +10,13 @@ from movieteller_config.schema import (
     SubtitleContextRetrieveOptions,
     settings_from_dict,
 )
-from pipeline_types import NarrationContext
+from pipeline_types import NarrationCandidate, NarrationContext
 
 from narration.narrate import narrate_segment_with_duration
 from narration_polish import generate_vocab_study_card
 
 from movie_pipeline.runtime_context import RunContext
+from movie_pipeline.stage_executor import CapabilityLimiters, StageExecutor
 from movie_pipeline.types import (
     NarrationPipelineConfig,
     NarratedSegment,
@@ -73,92 +75,75 @@ def _retrieve_context_texts_for_segment(
     )
 
 
-def narrate_analysis_candidates(
-    analysis: SubtitleAnalysisResult,
-    *,
-    ctx: RunContext,
-    video_path: str,
-    subtitle_context_index_dir: str | None = None,
-    resolved_speech_output_dir: str | None = None,
-    frame_source_options: FrameSourceOptions | None = None,
-    narrator: Callable[..., tuple[str, float]] | None = None,
-    polisher: Callable[..., object] | None = None,
-    synthesizer: Callable[..., object] | None = None,
-) -> tuple[NarratedSegment, ...]:
-    """Narrate all analysis candidates using a single :class:`RunContext` (no separate settings/options)."""
-    settings = ctx.settings
-    pipeline_config = ctx.pipeline
-    narration_options = pipeline_config.narration_options
-    retrieve_options = pipeline_config.subtitle_context_retrieve_options
-    polish_options = pipeline_config.polish_options
-    speech_requested = pipeline_config.speech_options is not None
-    speech_options = pipeline_config.speech_options if speech_requested else None
-    call_narrator = narrator or narrate_segment_with_duration
-    polish_enabled = polish_options is not None
-    call_polisher: Callable[..., object] | None = polisher
-    if polish_enabled and call_polisher is None:
-        from narration_polish import polish_narration_text as _default_polisher
+@dataclass(frozen=True)
+class _CandidateWorkItem:
+    index: int
+    candidate: NarrationCandidate
 
-        call_polisher = _default_polisher
-    speech_enabled = speech_options is not None
-    call_synthesizer: Callable[..., object] | None = synthesizer
-    if speech_enabled and call_synthesizer is None:
-        from narration_speech import synthesize_narration_text as _default_synthesizer
 
-        call_synthesizer = _default_synthesizer
-    resolved_frame = (
-        frame_source_options
-        or pipeline_config.frame_source_options
-    )
-    if resolved_frame is None:
-        raise ValueError(
-            "frame_source_options is required on NarrationPipelineConfig or pass frame_source_options=..."
-        )
-    speech_dir = Path(resolved_speech_output_dir) if resolved_speech_output_dir else None
-    if speech_dir is not None:
-        speech_dir.mkdir(parents=True, exist_ok=True)
+@dataclass(frozen=True)
+class _CandidateWorker:
+    ctx: RunContext
+    video_path: str
+    subtitle_context_index_dir: str | None
+    resolved_speech_output_dir: str | None
+    frame_source_options: Any
+    narrator: Callable[..., tuple[str, float]]
+    polisher: Callable[..., object] | None
+    synthesizer: Callable[..., object] | None
+    limiters: CapabilityLimiters
 
-    candidates = analysis.narration_candidates
-
-    out: list[NarratedSegment] = []
-    for idx, seg in enumerate(candidates, start=1):
+    def run_candidate(self, item: _CandidateWorkItem) -> NarratedSegment:
+        settings = self.ctx.settings
+        pipeline_config = self.ctx.pipeline
+        narration_options = pipeline_config.narration_options
+        retrieve_options = pipeline_config.subtitle_context_retrieve_options
+        polish_options = pipeline_config.polish_options
+        speech_options = pipeline_config.speech_options
+        polish_enabled = polish_options is not None
+        speech_enabled = speech_options is not None
+        seg = item.candidate
         timings: dict[str, Any] = {}
+        with self.limiters.subtitle_context:
+            retrieved_context_texts = _retrieve_context_texts_for_segment(
+                subtitle_context_index_dir=self.subtitle_context_index_dir,
+                segment_start_sec=seg.start_sec,
+                query_text=seg.prev_subtitle_text,
+                settings=settings,
+                retrieve_options=retrieve_options,
+            )
         narration_context = NarrationContext(
             segment_start_sec=seg.start_sec,
             segment_end_sec=seg.end_sec,
             prev_subtitle_text=seg.prev_subtitle_text,
             next_subtitle_text=seg.next_subtitle_text,
-            retrieved_context_texts=_retrieve_context_texts_for_segment(
-                subtitle_context_index_dir=subtitle_context_index_dir,
-                segment_start_sec=seg.start_sec,
-                query_text=seg.prev_subtitle_text,
+            retrieved_context_texts=retrieved_context_texts,
+        )
+        with self.limiters.narration:
+            text, _duration = self.narrator(
+                self.video_path,
+                seg.start_sec,
+                seg.end_sec,
+                options=narration_options,
+                frame_source_options=self.frame_source_options,
                 settings=settings,
-                retrieve_options=retrieve_options,
-            ),
-        )
-        text, _duration = call_narrator(
-            video_path,
-            seg.start_sec,
-            seg.end_sec,
-            options=narration_options,
-            frame_source_options=resolved_frame,
-            settings=settings,
-            timings_out=timings,
-            narration_context=narration_context,
-        )
+                timings_out=timings,
+                narration_context=narration_context,
+            )
         polish_details: NarrationPolishDetails | None = None
         speech_details: NarrationSpeechDetails | None = None
         vocab_study_card: dict[str, Any] | None = None
         speech_text = text
         if polish_enabled:
-            if call_polisher is None:
+            if self.polisher is None:
                 raise RuntimeError("Narration polisher is not available")
-            polished = call_polisher(
-                text,
-                seg.duration_sec,
-                options=polish_options,
-                settings=settings,
-            )
+            with self.limiters.polish:
+                polished = self.polisher(
+                    text,
+                    seg.duration_sec,
+                    options=polish_options,
+                    settings=settings,
+                )
             speech_text = str(getattr(polished, "polished_text"))
             polish_details = NarrationPolishDetails(
                 text=speech_text,
@@ -194,21 +179,23 @@ def narrate_analysis_candidates(
                     )
                 ),
             )
-            raw_vocab, _vocab_timing_sec = generate_vocab_study_card(
-                speech_text,
-                cefr_level=polish_details.cefr_level,
-                settings=settings,
-            )
+            with self.limiters.study_enrichment:
+                raw_vocab, _vocab_timing_sec = generate_vocab_study_card(
+                    text,
+                    cefr_level=polish_details.cefr_level,
+                    settings=settings,
+                )
             vocab_study_card = raw_vocab if isinstance(raw_vocab, dict) else None
         if speech_enabled:
-            if call_synthesizer is None:
+            if self.synthesizer is None:
                 raise RuntimeError("Narration speech synthesizer is not available")
-            if speech_dir is None:
+            if not self.resolved_speech_output_dir:
                 raise ValueError(
                     "resolved_speech_output_dir is required when speech synthesis is enabled"
                 )
+            speech_dir = Path(self.resolved_speech_output_dir)
             filename = (
-                f"segment_{idx:03d}_"
+                f"segment_{item.index:03d}_"
                 f"{round(seg.start_sec * 1000):08d}_"
                 f"{round(seg.end_sec * 1000):08d}.mp3"
             )
@@ -219,15 +206,16 @@ def narrate_analysis_candidates(
                 if polish_details is not None
                 else seg.duration_sec
             )
-            spoken = call_synthesizer(
-                speech_text,
-                seg.duration_sec,
-                output_path=str(audio_path),
-                metadata_path=str(metadata_path),
-                target_duration_sec=target_duration_sec,
-                options=speech_options,
-                settings=settings,
-            )
+            with self.limiters.tts:
+                spoken = self.synthesizer(
+                    speech_text,
+                    seg.duration_sec,
+                    output_path=str(audio_path),
+                    metadata_path=str(metadata_path),
+                    target_duration_sec=target_duration_sec,
+                    options=speech_options,
+                    settings=settings,
+                )
             speech_details = NarrationSpeechDetails(
                 text=str(getattr(spoken, "text")),
                 audio_path=str(getattr(spoken, "audio_path")),
@@ -254,32 +242,124 @@ def narrate_analysis_candidates(
                     else None
                 ),
             )
-        out.append(
-            NarratedSegment(
-                start_sec=seg.start_sec,
-                end_sec=seg.end_sec,
-                narration_text=text,
-                prev_subtitle_text=seg.prev_subtitle_text,
-                next_subtitle_text=seg.next_subtitle_text,
-                speech_text=speech_text,
-                polish=polish_details,
-                speech=speech_details,
-                vocab_study_card=vocab_study_card,
-                timing_extract_sec=(
-                    float(timings["extract_sec"]) if "extract_sec" in timings else None
-                ),
-                timing_api_sec=(
-                    float(timings["api_sec"]) if "api_sec" in timings else None
-                ),
-                timing_total_sec=(
-                    float(timings["total_sec"]) if "total_sec" in timings else None
-                ),
-                frame_count=int(timings["frame_count"])
-                if "frame_count" in timings
-                else None,
-            )
+        return NarratedSegment(
+            start_sec=seg.start_sec,
+            end_sec=seg.end_sec,
+            narration_text=text,
+            prev_subtitle_text=seg.prev_subtitle_text,
+            next_subtitle_text=seg.next_subtitle_text,
+            speech_text=speech_text,
+            polish=polish_details,
+            speech=speech_details,
+            vocab_study_card=vocab_study_card,
+            timing_extract_sec=(
+                float(timings["extract_sec"]) if "extract_sec" in timings else None
+            ),
+            timing_api_sec=float(timings["api_sec"]) if "api_sec" in timings else None,
+            timing_total_sec=(
+                float(timings["total_sec"]) if "total_sec" in timings else None
+            ),
+            frame_count=int(timings["frame_count"])
+            if "frame_count" in timings
+            else None,
         )
+
+
+def _group_candidate_work(
+    candidates: tuple[NarrationCandidate, ...],
+    *,
+    group_size: int,
+) -> tuple[tuple[_CandidateWorkItem, ...], ...]:
+    size = max(1, int(group_size))
+    items = tuple(
+        _CandidateWorkItem(index=index, candidate=candidate)
+        for index, candidate in enumerate(candidates, start=1)
+    )
+    return tuple(items[index : index + size] for index in range(0, len(items), size))
+
+
+def _run_candidate_group(
+    group: tuple[_CandidateWorkItem, ...],
+    *,
+    worker: _CandidateWorker,
+) -> tuple[NarratedSegment, ...]:
+    out: list[NarratedSegment] = []
+    for item in group:
+        try:
+            out.append(worker.run_candidate(item))
+        except Exception as exc:
+            raise RuntimeError(f"segment {item.index} failed") from exc
     return tuple(out)
+
+
+def narrate_analysis_candidates(
+    analysis: SubtitleAnalysisResult,
+    *,
+    ctx: RunContext,
+    video_path: str,
+    subtitle_context_index_dir: str | None = None,
+    resolved_speech_output_dir: str | None = None,
+    frame_source_options: FrameSourceOptions | None = None,
+    narrator: Callable[..., tuple[str, float]] | None = None,
+    polisher: Callable[..., object] | None = None,
+    synthesizer: Callable[..., object] | None = None,
+) -> tuple[NarratedSegment, ...]:
+    """Narrate all analysis candidates using a single :class:`RunContext` (no separate settings/options)."""
+    settings = ctx.settings
+    pipeline_config = ctx.pipeline
+    polish_options = pipeline_config.polish_options
+    call_narrator = narrator or narrate_segment_with_duration
+    polish_enabled = polish_options is not None
+    call_polisher: Callable[..., object] | None = polisher
+    if polish_enabled and call_polisher is None:
+        from narration_polish import polish_narration_text as _default_polisher
+
+        call_polisher = _default_polisher
+    speech_enabled = pipeline_config.speech_options is not None
+    call_synthesizer: Callable[..., object] | None = synthesizer
+    if speech_enabled and call_synthesizer is None:
+        from narration_speech import synthesize_narration_text as _default_synthesizer
+
+        call_synthesizer = _default_synthesizer
+    resolved_frame = (
+        frame_source_options
+        or pipeline_config.frame_source_options
+    )
+    if resolved_frame is None:
+        raise ValueError(
+            "frame_source_options is required on NarrationPipelineConfig or pass frame_source_options=..."
+        )
+    speech_dir = Path(resolved_speech_output_dir) if resolved_speech_output_dir else None
+    if speech_dir is not None:
+        speech_dir.mkdir(parents=True, exist_ok=True)
+
+    candidates = analysis.narration_candidates
+    if not candidates:
+        return ()
+
+    parallelism = settings.workflow_parallelism_options()
+    groups = _group_candidate_work(
+        candidates,
+        group_size=parallelism.segment_group_size,
+    )
+    worker = _CandidateWorker(
+        ctx=ctx,
+        video_path=video_path,
+        subtitle_context_index_dir=subtitle_context_index_dir,
+        resolved_speech_output_dir=resolved_speech_output_dir,
+        frame_source_options=resolved_frame,
+        narrator=call_narrator,
+        polisher=call_polisher,
+        synthesizer=call_synthesizer,
+        limiters=CapabilityLimiters.from_options(settings.capability_concurrency_options()),
+    )
+    group_results = StageExecutor().map_ordered(
+        groups,
+        lambda group: _run_candidate_group(group, worker=worker),
+        concurrency=parallelism.segment_group_concurrency,
+        stage_name="narration_group",
+    )
+    return tuple(segment for group in group_results for segment in group)
 
 
 def _segments_to_payload(
