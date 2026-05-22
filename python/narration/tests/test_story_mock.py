@@ -24,7 +24,6 @@ def test_generate_narration_uses_injected_client():
         system_message="sys",
         user_text="user",
         frames_base64_png=["ZmFrZQ=="],  # "fake" base64
-        model="gpt-4o-mini",
         settings=settings,
         client_factory=lambda _k, _b: fake_client,
     )
