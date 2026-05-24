@@ -114,6 +114,47 @@ class JobPaths:
 
 
 @dataclass(frozen=True)
+class JobStore:
+    paths: JobPaths
+
+    @staticmethod
+    def resolve(*, jobs_root: str | Path, job_id: str) -> JobStore:
+        return JobStore(paths=JobPaths.resolve(jobs_root=jobs_root, job_id=job_id))
+
+    def ensure_dirs(self) -> None:
+        self.paths.ensure_dirs()
+
+    def write(self, record: JobRecord) -> JobRecord:
+        write_job_record(record, self.paths.workflow_json_path)
+        return record
+
+    def read(self) -> JobRecord:
+        return read_job_record(self.paths.workflow_json_path)
+
+    def write_initial(
+        self,
+        *,
+        status: JobStatus,
+        input_video_path: str | Path,
+        user_id: str | None = None,
+        current_stage: str | None = None,
+    ) -> JobRecord:
+        now = utc_now_iso()
+        return self.write(
+            JobRecord(
+                job_id=self.paths.job_id,
+                status=status,
+                input_video_path=str(input_video_path),
+                output_root=self.paths.root,
+                user_id=user_id,
+                current_stage=current_stage,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+
+
+@dataclass(frozen=True)
 class WorkflowArtifacts:
     video_path: str
     srt_path: str

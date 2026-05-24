@@ -50,22 +50,26 @@ def _configure_workflow_logging(
     *,
     settings: Settings,
     job_id: str,
-) -> None:
+    output_root: Path,
+) -> str | None:
     log_opts = settings.pipeline_logging_options()
+    log_file = log_opts.file or str(output_root / "logs" / "workflow.jsonl")
     configure_async_logging(
         enabled=log_opts.enabled,
         level=log_opts.level,
         format=log_opts.format,
         stderr=log_opts.stderr,
-        file=log_opts.file,
+        file=log_file,
     )
     if log_opts.enabled:
-        emit_event(log_events.WORKFLOW_LOGGING_CONFIGURED, job_id=job_id, status="ok")
-
-
-def _workflow_log_path(settings: Settings) -> str | None:
-    log_opts = settings.pipeline_logging_options()
-    return log_opts.file if log_opts.enabled and log_opts.file else None
+        emit_event(
+            log_events.WORKFLOW_LOGGING_CONFIGURED,
+            job_id=job_id,
+            status="ok",
+            x_log_path=log_file,
+        )
+        return log_file
+    return None
 
 
 def _write_workflow_manifest(
@@ -362,9 +366,12 @@ def run_full_workflow(
     ).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
     job_id = _default_job_id(resolved_context, output_root)
-    _configure_workflow_logging(settings=resolved_settings, job_id=job_id)
+    workflow_log_path = _configure_workflow_logging(
+        settings=resolved_settings,
+        job_id=job_id,
+        output_root=output_root,
+    )
     workflow_json_path = output_root / "workflow.json"
-    workflow_log_path = _workflow_log_path(resolved_settings)
     log_token = bind_pipeline_log_context(
         job_id=job_id,
         stage="workflow",

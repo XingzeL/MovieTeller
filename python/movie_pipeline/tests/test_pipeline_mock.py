@@ -531,6 +531,57 @@ def test_run_full_workflow_writes_failed_workflow_manifest(tmp_path):
     assert job.error["error_code"] == "artifact_missing"
 
 
+def test_run_full_workflow_defaults_log_to_output_root_logs(tmp_path):
+    video = tmp_path / "demo.mp4"
+    video.write_bytes(b"video")
+    srt = tmp_path / "demo.extracted.srt"
+    srt.write_text(_SINGLE_GAP_SRT, encoding="utf-8")
+    pool_dir = tmp_path / "demo.frame_pool"
+    pool_dir.mkdir()
+    (pool_dir / "manifest.jsonl").write_text("", encoding="utf-8")
+    ctx_dir = tmp_path / "demo.subtitle_context"
+    ctx_dir.mkdir()
+    (ctx_dir / "chunks.jsonl").write_text("", encoding="utf-8")
+
+    import numpy as np
+
+    np.save(ctx_dir / "embeddings.npy", np.zeros((0, 0), dtype=np.float32))
+
+    settings = make_settings(
+        logging={
+            "enabled": True,
+            "level": "INFO",
+            "format": "jsonl",
+            "stderr": False,
+        }
+    )
+    request = WorkflowRequest(video_path=str(video), output_root=str(tmp_path), user_id="user-log")
+    resolved_context = resolved_run_context_from_request(request=request, settings=settings)
+    resolved_context = type(resolved_context)(
+        config=replace(
+            resolved_context.config,
+            execution=replace(
+                resolved_context.execution,
+                pipeline=replace(
+                    resolved_context.execution.pipeline,
+                    video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
+                ),
+            ),
+        )
+    )
+
+    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
+        return ("narration", end_sec - start_sec)
+
+    run_full_workflow(resolved_context=resolved_context, narrator=fake_narrator)
+
+    default_log = tmp_path / "logs" / "workflow.jsonl"
+    assert default_log.is_file()
+    job = read_job_record(tmp_path / "workflow.json")
+    assert job.progress["status"] == "succeeded"
+    assert job.progress["job_id"] == "user-log"
+
+
 def test_run_pipeline_ctx_requires_explicit_frame_source_options():
     def fake_narrator(video_path, start_sec, end_sec, **kwargs):
         return ("narration", end_sec - start_sec)

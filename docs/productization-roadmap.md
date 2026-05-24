@@ -46,7 +46,7 @@ WorkflowRequest
 
 - 修复 `ContextVar` 在线程池中的上下文传播，确保 `job_id`、`group_index`、`segment_index` 在并行 worker 中完整保留。
 - 将日志初始化从中层 pipeline 上移到 workflow/job 入口，底层模块只负责 `emit_event()`。
-- 为每个 Job 生成独立日志文件，例如 `artifacts/{job_id}/logs/workflow.jsonl`。
+- 为每个 Job 生成独立日志文件，例如 `artifacts/{job_id}/logs/workflow.jsonl`。当前已支持未显式配置 `logging.file` 时默认写到 `{output_root}/logs/workflow.jsonl`。
 - 在 Job 结束、失败、取消时显式 flush/shutdown 日志队列。
 - 统一事件命名为 `domain.action.status`，例如 `gateway.chat.start`、`segment.study.failed`。
 - 补齐关键阶段日志：subtitle extraction、subtitle analysis、frame pool、narration、polish、study enrichment、tts、subtitle merge、render、export。
@@ -113,6 +113,8 @@ artifacts/{job_id}/
 - 定义 `WorkflowArtifacts` 数据结构。已落地为 `movie_pipeline.job.WorkflowArtifacts`，与现有 `workflowArtifacts` payload camelCase 字段保持等价互转。
 - 统一 output root 生成规则。
 - 写出 `workflow.json` Job manifest。已落地为 `write_job_record/read_job_record`，`run_full_workflow` 成功和失败都会写出当前 JobRecord。
+- 提供轻量 Job 执行入口。已落地为 `movie_pipeline.job_runner.run_workflow_job`，负责把 `job_id + jobs_root + video_path` 绑定成 `WorkflowRequest/ResolvedRunContext`，再复用 `run_full_workflow`；暂不引入 HTTP、队列或数据库。
+- 建立文件态 Job 状态闭环。已落地为 `movie_pipeline.job.JobStore`，runner 启动前先写 `running`，结束状态继续由 `run_full_workflow` 写 `succeeded/failed`，API 层可直接读取 `{job_root}/workflow.json`。
 - 每个 stage 只写自己的 artifact，不跨阶段隐式修改别人的文件。
 - manual script 只作为 smoke test，不再承担主入口职责。
 
@@ -165,6 +167,7 @@ WorkflowRequest
 - 定义 `PolicyContext`。
 - 定义 resolver，将 request/settings/policy 合成为 `ResolvedRunContext`。
 - 收口 `run_full_workflow()` 调用形式，最终只传 `ctx`。
+- 提供服务端 Job 入口。已落地为 `build_job_request/run_workflow_job`，调用方不再手动拼 `output_root/workspace_id`。
 - 移除重复 option 对象和历史兼容字段。
 
 验收标准：

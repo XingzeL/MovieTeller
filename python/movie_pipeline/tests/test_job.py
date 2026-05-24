@@ -7,6 +7,7 @@ import pytest
 from movie_pipeline.job import (
     JobPaths,
     JobRecord,
+    JobStore,
     WorkflowArtifacts,
     job_record_from_dict,
     read_job_record,
@@ -118,6 +119,28 @@ def test_job_paths_ensure_dirs_creates_standard_directories(tmp_path) -> None:
 def test_job_paths_reject_unsafe_job_id(tmp_path) -> None:
     with pytest.raises(ValueError, match="unsafe job_id"):
         JobPaths.resolve(jobs_root=tmp_path, job_id="../bad")
+
+
+def test_job_store_writes_initial_running_record(tmp_path) -> None:
+    store = JobStore.resolve(jobs_root=tmp_path / "jobs", job_id="job-running")
+    store.ensure_dirs()
+
+    record = store.write_initial(
+        status="running",
+        input_video_path="/tmp/demo.mp4",
+        user_id="user-1",
+        current_stage="workflow",
+    )
+    parsed = store.read()
+
+    assert parsed == record
+    assert parsed.job_id == "job-running"
+    assert parsed.status == "running"
+    assert parsed.input_video_path == "/tmp/demo.mp4"
+    assert parsed.output_root == store.paths.root
+    assert parsed.user_id == "user-1"
+    assert parsed.current_stage == "workflow"
+    assert parsed.created_at == parsed.updated_at
 
 
 def test_workflow_artifacts_round_trip_payload_dict() -> None:

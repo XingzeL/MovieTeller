@@ -8,12 +8,14 @@ from movie_pipeline.job import (
     JobPaths,
     JobRecord,
     JobStatus,
+    JobStore,
     WorkflowArtifacts,
     job_record_from_dict,
     read_job_record,
     write_job_record,
     workflow_artifacts_from_payload,
 )
+from movie_pipeline.job_runner import build_job_request, run_workflow_job
 from movie_pipeline.payload_schema import (
     NarratedSegmentPayload,
     PipelineRenderPayload,
@@ -69,6 +71,7 @@ __all__ = [
     "JobRecord",
     "JobPaths",
     "JobStatus",
+    "JobStore",
     "NarrationPipelineConfig",
     "NarratedSegment",
     "NarratedSegmentPayload",
@@ -91,6 +94,7 @@ __all__ = [
     "WorkflowArtifactsPayload",
     "WorkflowArtifacts",
     "WorkflowPayload",
+    "build_job_request",
     "default_policy_context_for_request",
     "deep_copy_payload",
     "job_record_from_dict",
@@ -109,6 +113,7 @@ __all__ = [
     "resolve_workflow_config",
     "resolved_run_context_from_request",
     "run_full_workflow",
+    "run_workflow_job",
     "run_pipeline_ctx",
     "serialize_pipeline_render_payload",
     "serialize_pipeline_speech_payload",
