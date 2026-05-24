@@ -18,6 +18,7 @@ from movie_pipeline import (
     narrate_analysis_candidates,
     run_pipeline_ctx,
 )
+from movie_pipeline.payload_schema import validate_workflow_artifacts_dict
 from movie_pipeline.runtime_context import RunContext
 from subtitle_analysis import analyze_srt_text
 
@@ -415,6 +416,7 @@ def test_run_full_workflow_accepts_resolved_context(tmp_path):
 
     assert payload["workflowArtifacts"]["videoPath"] == str(video)
     assert payload["workflowArtifacts"]["srtPath"] == str(srt)
+    validate_workflow_artifacts_dict(payload["workflowArtifacts"])
     assert captured["video_path"] == str(video)
     assert captured["frame_pool_manifest"] == str(pool_dir / "manifest.jsonl")
     artifacts = payload["workflowArtifacts"]
@@ -879,6 +881,7 @@ def test_run_full_workflow_reuses_existing_artifacts_and_runs_pipeline(tmp_path)
     assert payload["workflowArtifacts"]["srtPath"] == str(srt)
     assert payload["workflowArtifacts"]["framePoolManifest"] == str(pool_dir / "manifest.jsonl")
     assert payload["workflowArtifacts"]["subtitleContextIndexDir"] == str(ctx_dir)
+    validate_workflow_artifacts_dict(payload["workflowArtifacts"])
     assert payload["narratedSegments"][0]["text"] == "narration"
     assert captured["frame_pool_manifest"] == str(pool_dir / "manifest.jsonl")
     artifacts = payload["workflowArtifacts"]

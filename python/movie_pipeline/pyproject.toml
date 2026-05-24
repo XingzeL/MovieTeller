@@ -11,6 +11,7 @@ requires-python = ">=3.9"
 dependencies = [
   "frame_source",
   "video_frame_pool",
+  "movieteller_logging",
   "movieteller_config",
   "narration",
   "narration_polish",

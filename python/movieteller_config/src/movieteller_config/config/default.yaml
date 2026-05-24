@@ -1,7 +1,7 @@
 # See movieteller_config README and repository root .env.example.
 # api_keys / api_providers: arbitrary provider slugs. Env supports PREFIX_API_KEY,
 # PREFIX_BASE_URL, API_KEYS_JSON, API_PROVIDERS_JSON.
-# Use api_keys.openai and api_providers.openai instead of legacy top-level openai_* keys.
+# Configure provider slugs through api_keys and api_providers.
 
 max_frames_per_segment: 32
 narration_frame_max_edge: 512
@@ -51,12 +51,12 @@ narration_video_background_audio_volume: 0.35
 narration_video_speech_audio_volume: 1.0
 
 workflow_parallelism:
-  segment_group_size: 4
-  segment_group_concurrency: 8
+  segment_group_size: 1
+  segment_group_concurrency: 1
 
 capability_concurrency:
-  narration: 8
-  polish: 8
-  study_enrichment: 8
-  tts: 2
-  subtitle_context: 8
+  narration: 1
+  polish: 1
+  study_enrichment: 1
+  tts: 1
+  subtitle_context: 1

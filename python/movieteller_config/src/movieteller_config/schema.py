@@ -167,6 +167,17 @@ class CapabilityConcurrencyOptions:
 
 
 @dataclass(frozen=True)
+class PipelineLoggingOptions:
+    """Async JSONL logging (QueueHandler + QueueListener). YAML key: ``logging``."""
+
+    enabled: bool = False
+    level: str = "INFO"
+    format: str = "jsonl"
+    stderr: bool = True
+    file: str | None = None
+
+
+@dataclass(frozen=True)
 class Settings:
     max_frames_per_segment: int
     narration_frame_max_edge: int
@@ -211,6 +222,7 @@ class Settings:
     narration_video_speech_audio_volume: float
     workflow_parallelism: WorkflowParallelismOptions
     capability_concurrency: CapabilityConcurrencyOptions
+    pipeline_logging: PipelineLoggingOptions
 
     def get_api_key(self, provider: str) -> str | None:
         key = str(provider or "").strip().lower()
@@ -224,7 +236,7 @@ class Settings:
         if not value:
             raise ValueError(
                 f"API key for provider '{provider}' is not configured. "
-                "Use API_KEYS_JSON, OPENAI_API_KEY, ANTHROPIC_API_KEY, etc., or api_keys in YAML."
+                "Use api_keys in YAML, API_KEYS_JSON, or <PROVIDER>_API_KEY environment variables."
             )
         return value
 
@@ -425,6 +437,9 @@ class Settings:
     def capability_concurrency_options(self) -> CapabilityConcurrencyOptions:
         return self.capability_concurrency
 
+    def pipeline_logging_options(self) -> PipelineLoggingOptions:
+        return self.pipeline_logging
+
 
 def _normalize_api_keys_dict(data: dict[str, Any]) -> dict[str, str]:
     raw: dict[str, str] = {}
@@ -480,6 +495,19 @@ def _normalize_model_defaults(data: dict[str, Any]) -> dict[str, str]:
     return raw
 
 
+def _parse_pipeline_logging(data: dict[str, Any]) -> PipelineLoggingOptions:
+    raw = data.get("logging")
+    if not isinstance(raw, dict):
+        return PipelineLoggingOptions()
+    return PipelineLoggingOptions(
+        enabled=_coerce_bool(raw.get("enabled"), False),
+        level=str(raw.get("level") or "INFO").strip().upper() or "INFO",
+        format=str(raw.get("format") or "jsonl").strip().lower() or "jsonl",
+        stderr=_coerce_bool(raw.get("stderr"), True),
+        file=_expand_optional_env_str(raw.get("file")),
+    )
+
+
 def settings_from_dict(data: dict[str, Any]) -> Settings:
     gateway_cfg = data.get("gateway") if isinstance(data.get("gateway"), dict) else {}
     tts_defaults_cfg = (
@@ -508,6 +536,7 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
     explicit_nested_video_defaults = _looks_like_explicit_nested_video_defaults(data)
     pool_min = max(1, _coerce_int(data.get("pool_frames_per_shot_min"), 1))
     pool_max = max(pool_min, _coerce_int(data.get("pool_frames_per_shot_max"), 3))
+    pipe_log = _parse_pipeline_logging(data)
     return Settings(
         max_frames_per_segment=_coerce_int(data.get("max_frames_per_segment"), 24),
         narration_frame_max_edge=_coerce_int(data.get("narration_frame_max_edge"), 768),
@@ -761,4 +790,5 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
                 _nested_int(data, "capability_concurrency", "subtitle_context", 4),
             ),
         ),
+        pipeline_logging=pipe_log,
     )

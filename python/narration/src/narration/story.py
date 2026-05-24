@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import sys
 from typing import TYPE_CHECKING, Any, Callable
+
+from movieteller_logging import emit_event
 
 from model_gateway import generate_narration as gateway_generate_narration
 
@@ -22,13 +23,12 @@ def generate_narration(
     """
     default_provider = settings.default_provider()
     default_model = settings.default_model_for_capability("narration")
-    print(
-        "[narration.api] "
-        f"slug={default_provider!r} "
-        f"model={default_model!r} "
-        f"base_url={settings.get_api_base_url(default_provider)!r} "
-        f"frames={len(frames_base64_png)}",
-        file=sys.stderr,
+    emit_event(
+        "narration.api",
+        slug=default_provider,
+        model=default_model,
+        base_url=settings.get_api_base_url(default_provider),
+        frames=len(frames_base64_png),
     )
     content: list[dict[str, Any]] = [{"type": "text", "text": user_text}]
     for b64 in frames_base64_png:

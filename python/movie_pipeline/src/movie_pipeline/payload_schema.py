@@ -68,6 +68,14 @@ class RenderedVideoPayload(TypedDict, total=False):
     timingRenderSec: float | None
 
 
+class SubtitleMergePayload(TypedDict, total=False):
+    sourceSrtPath: str
+    speechVideoJsonPath: str
+    outputSrtPath: str
+    insertedCueCount: int
+    totalCueCount: int
+
+
 class NarratedSegmentPayload(TypedDict, total=False):
     startSec: float
     endSec: float
@@ -128,8 +136,150 @@ class WorkflowArtifactsPayload(TypedDict, total=False):
     framePoolManifest: str | None
     subtitleContextIndexDir: str | None
     outputRoot: str
+    textJsonPath: str | None
+    speechJsonPath: str | None
+    renderJsonPath: str | None
+    finalSrtPath: str | None
     studyCardsHtmlPath: str | None
     studyCardsHtmlError: str | None
+
+
+class WorkflowPayload(TypedDict, total=False):
+    """Full workflow output: one pipeline payload plus workflow-level artifacts."""
+
+    videoDurationSec: float
+    subtitleSpans: list[dict[str, Any]]
+    rawGaps: list[dict[str, Any]]
+    narrationCandidates: list[dict[str, Any]]
+    speechOutputDir: str | None
+    subtitleContextIndexDir: str | None
+    narratedSegments: list[NarratedSegmentPayload]
+    renderedVideo: RenderedVideoPayload
+    subtitleMerge: SubtitleMergePayload
+    workflowArtifacts: WorkflowArtifactsPayload
+
+
+_TEXT_TOP_LEVEL_KEYS = frozenset(
+    {
+        "videoDurationSec",
+        "subtitleSpans",
+        "rawGaps",
+        "narrationCandidates",
+        "narratedSegments",
+        "speechOutputDir",
+        "subtitleContextIndexDir",
+    }
+)
+
+_RENDER_TOP_LEVEL_KEYS = _TEXT_TOP_LEVEL_KEYS | {"renderedVideo"}
+
+_WORKFLOW_TOP_LEVEL_KEYS = _RENDER_TOP_LEVEL_KEYS | {"subtitleMerge", "workflowArtifacts"}
+
+_SEGMENT_KEYS = frozenset(
+    {
+        "startSec",
+        "endSec",
+        "durationSec",
+        "text",
+        "speechText",
+        "prevSubtitleText",
+        "nextSubtitleText",
+        "studyCard",
+        "polish",
+        "speech",
+        "timingExtractSec",
+        "timingApiSec",
+        "timingTotalSec",
+        "frameCount",
+    }
+)
+
+_POLISH_KEYS = frozenset(NarratedSegmentPolishPayload.__annotations__)
+_SPEECH_KEYS = frozenset(NarratedSegmentSpeechPayload.__annotations__)
+_RENDERED_VIDEO_KEYS = frozenset(RenderedVideoPayload.__annotations__)
+_SUBTITLE_MERGE_KEYS = frozenset(SubtitleMergePayload.__annotations__)
+_WORKFLOW_ARTIFACTS_KEYS = frozenset(WorkflowArtifactsPayload.__annotations__)
+
+
+def _reject_unknown_keys(
+    obj: dict[str, Any],
+    *,
+    allowed: frozenset[str],
+    path: str,
+) -> None:
+    extra = sorted(set(obj) - allowed)
+    if extra:
+        raise ValueError(f"{path} contains unexpected keys: {', '.join(extra)}")
+
+
+def _require_keys(obj: dict[str, Any], *, keys: tuple[str, ...], path: str) -> None:
+    for key in keys:
+        if key not in obj:
+            raise ValueError(f"{path} missing required key {key!r}")
+
+
+def _validate_segment_shape(seg: dict[str, Any], *, index: int) -> None:
+    path = f"narratedSegments[{index}]"
+    _reject_unknown_keys(seg, allowed=_SEGMENT_KEYS, path=path)
+    _require_keys(
+        seg,
+        keys=("startSec", "endSec", "durationSec", "text", "speechText"),
+        path=path,
+    )
+    if not str(seg.get("text") or "").strip():
+        raise ValueError(f"{path}.text must be non-empty")
+    polish = seg.get("polish")
+    if polish is not None:
+        if not isinstance(polish, dict):
+            raise ValueError(f"{path}.polish must be an object or null")
+        _reject_unknown_keys(polish, allowed=_POLISH_KEYS, path=f"{path}.polish")
+    speech = seg.get("speech")
+    if speech is not None:
+        if not isinstance(speech, dict):
+            raise ValueError(f"{path}.speech must be an object or null")
+        _reject_unknown_keys(speech, allowed=_SPEECH_KEYS, path=f"{path}.speech")
+
+
+def _validate_pipeline_common(data: dict[str, Any], *, kind: str) -> list[dict[str, Any]]:
+    _require_keys(data, keys=("narratedSegments",), path=f"{kind} payload")
+    segs = _require_narrated_segments(data, kind=kind)
+    for i, seg in enumerate(segs):
+        _validate_segment_shape(seg, index=i)
+    return segs
+
+
+def validate_workflow_artifacts_dict(data: dict[str, Any] | None) -> WorkflowArtifactsPayload | None:
+    if data is None:
+        return None
+    if not isinstance(data, dict):
+        raise ValueError("workflowArtifacts must be an object")
+    _reject_unknown_keys(data, allowed=_WORKFLOW_ARTIFACTS_KEYS, path="workflowArtifacts")
+    _require_keys(
+        data,
+        keys=("videoPath", "srtPath", "framePoolManifest", "subtitleContextIndexDir", "outputRoot"),
+        path="workflowArtifacts",
+    )
+    return data  # type: ignore[return-value]
+
+
+def validate_subtitle_merge_dict(data: dict[str, Any] | None) -> SubtitleMergePayload | None:
+    if data is None:
+        return None
+    if not isinstance(data, dict):
+        raise ValueError("subtitleMerge must be an object")
+    _reject_unknown_keys(data, allowed=_SUBTITLE_MERGE_KEYS, path="subtitleMerge")
+    _require_keys(
+        data,
+        keys=(
+            "sourceSrtPath",
+            "speechVideoJsonPath",
+            "outputSrtPath",
+            "insertedCueCount",
+            "totalCueCount",
+        ),
+        path="subtitleMerge",
+    )
+    return data  # type: ignore[return-value]
 
 
 def _require_narrated_segments(data: dict[str, Any], *, kind: str) -> list[dict[str, Any]]:
@@ -145,30 +295,23 @@ def _require_narrated_segments(data: dict[str, Any], *, kind: str) -> list[dict[
 
 
 def parse_pipeline_text_dict(data: dict[str, Any]) -> PipelineTextPayload:
-    """Validate minimal keys for a text-stage pipeline JSON dict."""
-    segs = _require_narrated_segments(data, kind="text")
-    for i, seg in enumerate(segs):
-        for key in ("startSec", "endSec", "text"):
-            if key not in seg:
-                raise ValueError(f"narratedSegments[{i}] missing required key {key!r}")
-    if "renderedVideo" in data:
-        raise ValueError("text payload must not contain renderedVideo")
+    """Validate the text-stage pipeline JSON contract."""
+    _reject_unknown_keys(data, allowed=_TEXT_TOP_LEVEL_KEYS, path="text payload")
+    _validate_pipeline_common(data, kind="text")
     return data  # type: ignore[return-value]
 
 
 def parse_rendered_video_dict(data: dict[str, Any] | None) -> RenderedVideoPayload | None:
     if data is None:
         return None
-    for key in ("videoPath", "outputPath"):
-        if key not in data:
-            raise ValueError(f"renderedVideo missing required key {key!r}")
+    _reject_unknown_keys(data, allowed=_RENDERED_VIDEO_KEYS, path="renderedVideo")
+    _require_keys(data, keys=("videoPath", "outputPath"), path="renderedVideo")
     return data  # type: ignore[return-value]
 
 
 def parse_pipeline_speech_dict(data: dict[str, Any]) -> PipelineSpeechPayload:
-    segs = _require_narrated_segments(data, kind="speech")
-    if "renderedVideo" in data:
-        raise ValueError("speech payload must not contain renderedVideo")
+    _reject_unknown_keys(data, allowed=_TEXT_TOP_LEVEL_KEYS, path="speech payload")
+    segs = _validate_pipeline_common(data, kind="speech")
     for i, seg in enumerate(segs):
         sp = seg.get("speech")
         if not isinstance(sp, dict):
@@ -179,11 +322,38 @@ def parse_pipeline_speech_dict(data: dict[str, Any]) -> PipelineSpeechPayload:
 
 
 def parse_pipeline_render_dict(data: dict[str, Any]) -> PipelineRenderPayload:
-    _require_narrated_segments(data, kind="render")
+    _reject_unknown_keys(data, allowed=_RENDER_TOP_LEVEL_KEYS, path="render payload")
+    _validate_pipeline_common(data, kind="render")
     inner = data.get("renderedVideo")
     if not isinstance(inner, dict):
         raise ValueError("render payload requires renderedVideo object")
     parse_rendered_video_dict(inner)
+    return data  # type: ignore[return-value]
+
+
+def parse_workflow_payload_dict(data: dict[str, Any]) -> WorkflowPayload:
+    """Validate full workflow output with workflowArtifacts attached."""
+    _reject_unknown_keys(data, allowed=_WORKFLOW_TOP_LEVEL_KEYS, path="workflow payload")
+    artifacts = data.get("workflowArtifacts")
+    if not isinstance(artifacts, dict):
+        raise ValueError("workflow payload requires workflowArtifacts object")
+    validate_workflow_artifacts_dict(artifacts)
+    merge_payload = data.get("subtitleMerge")
+    if merge_payload is not None:
+        validate_subtitle_merge_dict(merge_payload)
+
+    pipeline_part = {
+        k: v for k, v in data.items() if k not in {"workflowArtifacts", "subtitleMerge"}
+    }
+    if "renderedVideo" in pipeline_part:
+        parse_pipeline_render_dict(pipeline_part)
+    elif any(
+        isinstance(seg, dict) and isinstance(seg.get("speech"), dict)
+        for seg in pipeline_part.get("narratedSegments") or []
+    ):
+        parse_pipeline_speech_dict(pipeline_part)
+    else:
+        parse_pipeline_text_dict(pipeline_part)
     return data  # type: ignore[return-value]
 
 
@@ -208,6 +378,13 @@ def parse_pipeline_render_json_path(path: str | Path) -> PipelineRenderPayload:
     return parse_pipeline_render_dict(raw)
 
 
+def parse_workflow_payload_json_path(path: str | Path) -> WorkflowPayload:
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("workflow JSON root must be an object")
+    return parse_workflow_payload_dict(raw)
+
+
 def serialize_pipeline_text_payload(payload: PipelineTextPayload) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
@@ -217,4 +394,8 @@ def serialize_pipeline_speech_payload(payload: PipelineSpeechPayload) -> str:
 
 
 def serialize_pipeline_render_payload(payload: PipelineRenderPayload) -> str:
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def serialize_workflow_payload(payload: WorkflowPayload) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)

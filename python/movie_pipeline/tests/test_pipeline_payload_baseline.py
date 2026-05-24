@@ -8,10 +8,14 @@ from tempfile import TemporaryDirectory
 from frame_source import FrameSourceOptions
 from movie_pipeline import (
     NarrationPipelineConfig,
+    parse_pipeline_render_dict,
     parse_pipeline_speech_dict,
     parse_pipeline_text_dict,
+    parse_rendered_video_dict,
+    parse_workflow_payload_dict,
     run_pipeline_ctx,
 )
+from movie_pipeline.payload_schema import validate_workflow_artifacts_dict
 from movie_pipeline.runtime_context import RunContext
 from movieteller_config.schema import settings_from_dict
 
@@ -120,9 +124,32 @@ def test_parse_pipeline_text_dict_rejects_rendered_video_key():
     try:
         parse_pipeline_text_dict(payload)
     except ValueError as exc:
-        assert "must not contain renderedVideo" in str(exc)
+        assert "unexpected keys" in str(exc)
+        assert "renderedVideo" in str(exc)
     else:
         raise AssertionError("text payload should reject renderedVideo")
+
+
+def test_parse_pipeline_text_dict_rejects_unknown_segment_key():
+    payload = {
+        "narratedSegments": [
+            {
+                "startSec": 0.0,
+                "endSec": 1.0,
+                "durationSec": 1.0,
+                "text": "x",
+                "speechText": "x",
+                "extra": True,
+            }
+        ],
+    }
+    try:
+        parse_pipeline_text_dict(payload)
+    except ValueError as exc:
+        assert "narratedSegments[0] contains unexpected keys" in str(exc)
+        assert "extra" in str(exc)
+    else:
+        raise AssertionError("text payload should reject unknown segment keys")
 
 
 def test_parse_pipeline_speech_dict_requires_speech_audio_path():
@@ -131,7 +158,9 @@ def test_parse_pipeline_speech_dict_requires_speech_audio_path():
             {
                 "startSec": 0.0,
                 "endSec": 1.0,
+                "durationSec": 1.0,
                 "text": "x",
+                "speechText": "x",
                 "speech": {},
             }
         ]
@@ -142,3 +171,150 @@ def test_parse_pipeline_speech_dict_requires_speech_audio_path():
         assert "speech missing audioPath" in str(exc)
     else:
         raise AssertionError("speech payload should require audioPath")
+
+
+def test_parse_pipeline_speech_dict_rejects_rendered_video_key():
+    payload = {
+        "narratedSegments": [
+            {
+                "startSec": 0.0,
+                "endSec": 1.0,
+                "durationSec": 1.0,
+                "text": "x",
+                "speechText": "x",
+                "speech": {"audioPath": "x.mp3"},
+            }
+        ],
+        "renderedVideo": {"outputPath": "bad.mp4"},
+    }
+    try:
+        parse_pipeline_speech_dict(payload)
+    except ValueError as exc:
+        assert "speech payload contains unexpected keys" in str(exc)
+        assert "renderedVideo" in str(exc)
+    else:
+        raise AssertionError("speech payload should reject renderedVideo")
+
+
+def test_parse_pipeline_render_dict_requires_rendered_video_contract():
+    payload = {
+        "narratedSegments": [
+            {
+                "startSec": 0.0,
+                "endSec": 1.0,
+                "durationSec": 1.0,
+                "text": "x",
+                "speechText": "x",
+                "speech": {"audioPath": "x.mp3"},
+            }
+        ],
+        "renderedVideo": {"videoPath": "in.mp4"},
+    }
+    try:
+        parse_pipeline_render_dict(payload)
+    except ValueError as exc:
+        assert "renderedVideo missing required key 'outputPath'" in str(exc)
+    else:
+        raise AssertionError("render payload should require renderedVideo.outputPath")
+
+
+def test_parse_rendered_video_dict_rejects_unknown_keys():
+    try:
+        parse_rendered_video_dict(
+            {"videoPath": "in.mp4", "outputPath": "out.mp4", "extra": True}
+        )
+    except ValueError as exc:
+        assert "renderedVideo contains unexpected keys" in str(exc)
+        assert "extra" in str(exc)
+    else:
+        raise AssertionError("renderedVideo should reject unknown keys")
+
+
+def test_validate_workflow_artifacts_dict_contract():
+    artifacts = validate_workflow_artifacts_dict(
+        {
+            "videoPath": "demo.mp4",
+            "srtPath": "demo.srt",
+            "framePoolManifest": None,
+            "subtitleContextIndexDir": None,
+            "outputRoot": "/tmp/out",
+            "textJsonPath": "text.json",
+            "speechJsonPath": None,
+            "renderJsonPath": None,
+            "finalSrtPath": None,
+            "studyCardsHtmlPath": None,
+            "studyCardsHtmlError": None,
+        }
+    )
+
+    assert artifacts is not None
+    assert artifacts["textJsonPath"] == "text.json"
+
+
+def test_parse_workflow_payload_dict_accepts_workflow_artifacts_overlay():
+    payload = {
+        "videoDurationSec": 1.0,
+        "subtitleSpans": [],
+        "rawGaps": [],
+        "narrationCandidates": [],
+        "narratedSegments": [
+            {
+                "startSec": 0.0,
+                "endSec": 1.0,
+                "durationSec": 1.0,
+                "text": "x",
+                "speechText": "x",
+                "prevSubtitleText": None,
+                "nextSubtitleText": None,
+                "studyCard": None,
+                "polish": None,
+                "speech": None,
+                "timingExtractSec": None,
+                "timingApiSec": None,
+                "timingTotalSec": None,
+                "frameCount": None,
+            }
+        ],
+        "speechOutputDir": None,
+        "subtitleContextIndexDir": None,
+        "subtitleMerge": {
+            "sourceSrtPath": "demo.srt",
+            "speechVideoJsonPath": "speech.json",
+            "outputSrtPath": "final.srt",
+            "insertedCueCount": 1,
+            "totalCueCount": 2,
+        },
+        "workflowArtifacts": {
+            "videoPath": "demo.mp4",
+            "srtPath": "demo.srt",
+            "framePoolManifest": None,
+            "subtitleContextIndexDir": None,
+            "outputRoot": "/tmp/out",
+            "studyCardsHtmlPath": None,
+            "studyCardsHtmlError": None,
+        },
+    }
+
+    parsed = parse_workflow_payload_dict(payload)
+
+    assert parsed["workflowArtifacts"]["videoPath"] == "demo.mp4"
+    assert parsed["subtitleMerge"]["outputSrtPath"] == "final.srt"
+
+
+def test_validate_workflow_artifacts_dict_rejects_unknown_keys():
+    try:
+        validate_workflow_artifacts_dict(
+            {
+                "videoPath": "demo.mp4",
+                "srtPath": "demo.srt",
+                "framePoolManifest": None,
+                "subtitleContextIndexDir": None,
+                "outputRoot": "/tmp/out",
+                "bad": True,
+            }
+        )
+    except ValueError as exc:
+        assert "workflowArtifacts contains unexpected keys" in str(exc)
+        assert "bad" in str(exc)
+    else:
+        raise AssertionError("workflowArtifacts should reject unknown keys")

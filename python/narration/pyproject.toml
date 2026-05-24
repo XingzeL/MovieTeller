@@ -12,6 +12,7 @@ dependencies = [
     "frame_source",
     "media_utils",
     "model_gateway",
+    "movieteller_logging",
     "movieteller_config",
     "openai>=1.30.0",
     "pipeline_types",

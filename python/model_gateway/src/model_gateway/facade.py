@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any, Callable
+
+from movieteller_logging import emit_event
 
 from model_gateway.adapters.edge_tts import synthesize_speech as _synthesize_speech_via_edge_tts
 from model_gateway.adapters.openai_compatible import (
@@ -23,7 +27,6 @@ from model_gateway.router import (
     _resolve_speech_endpoint,
     resolve_capability_model_endpoint,
 )
-from model_gateway.telemetry import emit_gateway_event
 from model_gateway.types import (
     ChatRequest,
     ChatResult,
@@ -39,6 +42,7 @@ def _generate_chat(
     *,
     settings,
     client_factory: Callable[[str, str | None], Any] | None = None,
+    capability: str = "chat",
 ) -> ChatResult:
     if not str(request.model).strip():
         raise GatewayConfigError("chat model is empty")
@@ -47,6 +51,7 @@ def _generate_chat(
         raise GatewayUnsupportedCapabilityError(
             f"Unsupported chat adapter '{endpoint.adapter}'"
         )
+
     def _run() -> ChatResult:
         with limited(endpoint.adapter):
             return _generate_chat_via_openai_compatible(
@@ -54,7 +59,33 @@ def _generate_chat(
                 endpoint,
                 client_factory=client_factory,
             )
-    result, retry_count = execute_with_retry(_run)
+
+    emit_event(
+        "gateway.chat.start",
+        capability=capability,
+        provider=endpoint.provider,
+        model=endpoint.model,
+        adapter=endpoint.adapter,
+    )
+    t0 = time.perf_counter()
+    try:
+        result, retry_count = execute_with_retry(_run)
+    except BaseException as exc:
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        emit_event(
+            "gateway.chat.failed",
+            level=logging.ERROR,
+            capability=capability,
+            provider=endpoint.provider,
+            model=endpoint.model,
+            adapter=endpoint.adapter,
+            duration_ms=duration_ms,
+            status="error",
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        raise
+    duration_ms = int((time.perf_counter() - t0) * 1000)
     result = ChatResult(
         text=result.text,
         finish_reason=result.finish_reason,
@@ -68,11 +99,14 @@ def _generate_chat(
         ),
         raw=result.raw,
     )
-    emit_gateway_event(
-        "chat",
+    emit_event(
+        "gateway.chat.done",
+        capability=capability,
         provider=endpoint.provider,
         model=endpoint.model,
         adapter=endpoint.adapter,
+        duration_ms=duration_ms,
+        status="ok",
         retry_count=retry_count,
     )
     return result
@@ -83,6 +117,7 @@ def _embed_texts(
     *,
     settings,
     client_factory: Callable[[str, str | None], Any] | None = None,
+    capability: str = "embedding",
 ) -> EmbeddingResult:
     if not str(request.model).strip():
         raise GatewayConfigError("embedding model is empty")
@@ -91,6 +126,7 @@ def _embed_texts(
         raise GatewayUnsupportedCapabilityError(
             f"Unsupported embedding adapter '{endpoint.adapter}'"
         )
+
     def _run() -> EmbeddingResult:
         with limited(endpoint.adapter):
             return _embed_texts_via_openai_compatible(
@@ -98,7 +134,33 @@ def _embed_texts(
                 endpoint,
                 client_factory=client_factory,
             )
-    result, retry_count = execute_with_retry(_run)
+
+    emit_event(
+        "gateway.embedding.start",
+        capability=capability,
+        provider=endpoint.provider,
+        model=endpoint.model,
+        adapter=endpoint.adapter,
+    )
+    t0 = time.perf_counter()
+    try:
+        result, retry_count = execute_with_retry(_run)
+    except BaseException as exc:
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        emit_event(
+            "gateway.embedding.failed",
+            level=logging.ERROR,
+            capability=capability,
+            provider=endpoint.provider,
+            model=endpoint.model,
+            adapter=endpoint.adapter,
+            duration_ms=duration_ms,
+            status="error",
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        raise
+    duration_ms = int((time.perf_counter() - t0) * 1000)
     result = EmbeddingResult(
         vectors=result.vectors,
         usage=result.usage,
@@ -111,11 +173,14 @@ def _embed_texts(
         ),
         raw=result.raw,
     )
-    emit_gateway_event(
-        "embedding",
+    emit_event(
+        "gateway.embedding.done",
+        capability=capability,
         provider=endpoint.provider,
         model=endpoint.model,
         adapter=endpoint.adapter,
+        duration_ms=duration_ms,
+        status="ok",
         retry_count=retry_count,
     )
     return result
@@ -126,50 +191,79 @@ def _synthesize_speech(
     *,
     settings,
     communicator_factory: Callable[..., Any] | None = None,
+    capability: str = "tts",
 ) -> SpeechResult:
     endpoint = _resolve_speech_endpoint(request, settings)
-    if endpoint.adapter == "edge_tts":
-
-        def _run_edge() -> SpeechResult:
-            with limited(endpoint.adapter):
-                return _synthesize_speech_via_edge_tts(
-                    request,
-                    endpoint,
-                    communicator_factory_override=communicator_factory,
-                )
-
-        result, retry_count = execute_with_retry(_run_edge)
-    elif endpoint.adapter == "dashscope_tts":
-
-        def _run_dashscope() -> SpeechResult:
-            with limited(endpoint.adapter):
-                return _synthesize_speech_via_dashscope(
-                    request,
-                    endpoint,
-                    client_factory=communicator_factory,
-                )
-
-        result, retry_count = execute_with_retry(_run_dashscope)
-    elif endpoint.adapter == "volcengine_tts":
-
-        def _run_volc() -> SpeechResult:
-            with limited(endpoint.adapter):
-                return _synthesize_speech_via_volcengine(
-                    request,
-                    endpoint,
-                    client_factory=communicator_factory,
-                )
-
-        result, retry_count = execute_with_retry(_run_volc)
-    else:
-        raise GatewayUnsupportedCapabilityError(
-            f"Unsupported speech provider '{endpoint.provider}' via adapter '{endpoint.adapter}'"
-        )
-    emit_gateway_event(
-        "speech",
+    emit_event(
+        "gateway.speech.start",
+        capability=capability,
         provider=endpoint.provider,
         model=endpoint.model,
         adapter=endpoint.adapter,
+    )
+    t0 = time.perf_counter()
+    try:
+        if endpoint.adapter == "edge_tts":
+
+            def _run_edge() -> SpeechResult:
+                with limited(endpoint.adapter):
+                    return _synthesize_speech_via_edge_tts(
+                        request,
+                        endpoint,
+                        communicator_factory_override=communicator_factory,
+                    )
+
+            result, retry_count = execute_with_retry(_run_edge)
+        elif endpoint.adapter == "dashscope_tts":
+
+            def _run_dashscope() -> SpeechResult:
+                with limited(endpoint.adapter):
+                    return _synthesize_speech_via_dashscope(
+                        request,
+                        endpoint,
+                        client_factory=communicator_factory,
+                    )
+
+            result, retry_count = execute_with_retry(_run_dashscope)
+        elif endpoint.adapter == "volcengine_tts":
+
+            def _run_volc() -> SpeechResult:
+                with limited(endpoint.adapter):
+                    return _synthesize_speech_via_volcengine(
+                        request,
+                        endpoint,
+                        client_factory=communicator_factory,
+                    )
+
+            result, retry_count = execute_with_retry(_run_volc)
+        else:
+            raise GatewayUnsupportedCapabilityError(
+                f"Unsupported speech provider '{endpoint.provider}' via adapter '{endpoint.adapter}'"
+            )
+    except BaseException as exc:
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        emit_event(
+            "gateway.speech.failed",
+            level=logging.ERROR,
+            capability=capability,
+            provider=endpoint.provider,
+            model=endpoint.model,
+            adapter=endpoint.adapter,
+            duration_ms=duration_ms,
+            status="error",
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        raise
+    duration_ms = int((time.perf_counter() - t0) * 1000)
+    emit_event(
+        "gateway.speech.done",
+        capability=capability,
+        provider=endpoint.provider,
+        model=endpoint.model,
+        adapter=endpoint.adapter,
+        duration_ms=duration_ms,
+        status="ok",
         retry_count=retry_count,
     )
     return SpeechResult(
@@ -216,7 +310,12 @@ def generate_narration(
         response_format=response_format,
         meta=meta,
     )
-    return _generate_chat(request, settings=settings, client_factory=client_factory)
+    return _generate_chat(
+        request,
+        settings=settings,
+        client_factory=client_factory,
+        capability="narration",
+    )
 
 
 def polish_text(
@@ -245,7 +344,12 @@ def polish_text(
         response_format=response_format,
         meta=meta,
     )
-    return _generate_chat(request, settings=settings, client_factory=client_factory)
+    return _generate_chat(
+        request,
+        settings=settings,
+        client_factory=client_factory,
+        capability="polish",
+    )
 
 
 def embed_texts_for_capability(

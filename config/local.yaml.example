@@ -57,3 +57,11 @@ capability_concurrency:
   study_enrichment: 2
   tts: 2
   subtitle_context: 4
+
+# Async JSONL logging (QueueHandler + QueueListener). Optional.
+# logging:
+#   enabled: true
+#   level: INFO
+#   format: jsonl
+#   stderr: true
+#   file: test_artifacts/logs/movieteller.log.jsonl

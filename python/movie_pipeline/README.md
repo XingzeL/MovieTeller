@@ -56,6 +56,3 @@ the subtitle/frame artifacts yourself.
 
 See [docs/archive/runtime-config-architecture.md](../docs/archive/runtime-config-architecture.md)
 for diagrams and payload helpers.
-
-`analyze_and_narrate(...)` is compatibility-only for older call sites and should not
-be used for new integration code.

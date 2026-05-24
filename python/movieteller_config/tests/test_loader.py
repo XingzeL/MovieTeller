@@ -119,10 +119,10 @@ ffmpeg_path: /usr/bin/ffmpeg
             finally:
                 os.chdir(cwd)
 
-    def test_require_api_key_openai_raises_when_missing(self):
+    def test_require_api_key_raises_when_provider_key_missing(self):
         s = settings_from_dict({"api_keys": {}})
         with self.assertRaises(ValueError):
-            s.require_api_key("openai")
+            s.require_api_key("demo_provider")
 
     def test_default_provider_raises_when_gateway_empty(self):
         s = settings_from_dict({})

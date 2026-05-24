@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import time
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
@@ -8,6 +7,7 @@ from frame_source import FrameRequest, FrameSourceOptions, get_frames_for_segmen
 from media_utils import ffprobe_path_for, segment_duration_sec
 from movieteller_config import load_settings
 from movieteller_config.schema import NarrationOptions
+from movieteller_logging import emit_event
 from pipeline_types import FrameBatch, NarrationContext, NarrationResult
 
 from narration.prompts import build_system_message, build_user_text
@@ -171,14 +171,13 @@ def narrate_segment_with_duration(
         settings=settings,
         subprocess_run=run,
     )
-    print(
-        "[narration.frames] "
-        f"source={frames.source!r} "
-        f"start={win_start:.3f} "
-        f"end={win_end:.3f} "
-        f"duration={frames.duration_sec:.3f} "
-        f"frames={len(frames.frames_base64_png)}",
-        file=sys.stderr,
+    emit_event(
+        "narration.frames",
+        source=frames.source,
+        win_start=win_start,
+        win_end=win_end,
+        duration_sec=frames.duration_sec,
+        frames=len(frames.frames_base64_png),
     )
     t_extract1 = time.perf_counter()
     result = narrate_from_frames(

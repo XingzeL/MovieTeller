@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from movieteller_config.loader import load_flat_dict
+from frame_source.router import FrameSourceOptions
 from movieteller_config.schema import (
     Settings,
     SubtitleContextRetrieveOptions,
-    settings_from_dict,
+)
+from movieteller_logging import (
+    bind_pipeline_log_context,
+    configure_async_logging,
+    emit_event,
+    merge_pipeline_context,
+    reset_pipeline_log_context,
 )
 from pipeline_types import NarrationCandidate, NarrationContext
 
@@ -94,175 +101,227 @@ class _CandidateWorker:
     limiters: CapabilityLimiters
 
     def run_candidate(self, item: _CandidateWorkItem) -> NarratedSegment:
-        settings = self.ctx.settings
-        pipeline_config = self.ctx.pipeline
-        narration_options = pipeline_config.narration_options
-        retrieve_options = pipeline_config.subtitle_context_retrieve_options
-        polish_options = pipeline_config.polish_options
-        speech_options = pipeline_config.speech_options
-        polish_enabled = polish_options is not None
-        speech_enabled = speech_options is not None
         seg = item.candidate
-        timings: dict[str, Any] = {}
-        with self.limiters.subtitle_context:
-            retrieved_context_texts = _retrieve_context_texts_for_segment(
-                subtitle_context_index_dir=self.subtitle_context_index_dir,
+        log_token = merge_pipeline_context(segment_index=item.index)
+        try:
+            emit_event(
+                "segment.start",
+                stage="narration",
+                win_start=seg.start_sec,
+                win_end=seg.end_sec,
+                duration_sec=seg.duration_sec,
+            )
+            settings = self.ctx.settings
+            pipeline_config = self.ctx.pipeline
+            narration_options = pipeline_config.narration_options
+            retrieve_options = pipeline_config.subtitle_context_retrieve_options
+            polish_options = pipeline_config.polish_options
+            speech_options = pipeline_config.speech_options
+            polish_enabled = polish_options is not None
+            speech_enabled = speech_options is not None
+            timings: dict[str, Any] = {}
+            with self.limiters.subtitle_context:
+                retrieved_context_texts = _retrieve_context_texts_for_segment(
+                    subtitle_context_index_dir=self.subtitle_context_index_dir,
+                    segment_start_sec=seg.start_sec,
+                    query_text=seg.prev_subtitle_text,
+                    settings=settings,
+                    retrieve_options=retrieve_options,
+                )
+            narration_context = NarrationContext(
                 segment_start_sec=seg.start_sec,
-                query_text=seg.prev_subtitle_text,
-                settings=settings,
-                retrieve_options=retrieve_options,
+                segment_end_sec=seg.end_sec,
+                prev_subtitle_text=seg.prev_subtitle_text,
+                next_subtitle_text=seg.next_subtitle_text,
+                retrieved_context_texts=retrieved_context_texts,
             )
-        narration_context = NarrationContext(
-            segment_start_sec=seg.start_sec,
-            segment_end_sec=seg.end_sec,
-            prev_subtitle_text=seg.prev_subtitle_text,
-            next_subtitle_text=seg.next_subtitle_text,
-            retrieved_context_texts=retrieved_context_texts,
-        )
-        with self.limiters.narration:
-            text, _duration = self.narrator(
-                self.video_path,
-                seg.start_sec,
-                seg.end_sec,
-                options=narration_options,
-                frame_source_options=self.frame_source_options,
-                settings=settings,
-                timings_out=timings,
-                narration_context=narration_context,
-            )
-        polish_details: NarrationPolishDetails | None = None
-        speech_details: NarrationSpeechDetails | None = None
-        vocab_study_card: dict[str, Any] | None = None
-        speech_text = text
-        if polish_enabled:
-            if self.polisher is None:
-                raise RuntimeError("Narration polisher is not available")
-            with self.limiters.polish:
-                polished = self.polisher(
-                    text,
-                    seg.duration_sec,
-                    options=polish_options,
+            with self.limiters.narration:
+                text, _duration = self.narrator(
+                    self.video_path,
+                    seg.start_sec,
+                    seg.end_sec,
+                    options=narration_options,
+                    frame_source_options=self.frame_source_options,
                     settings=settings,
+                    timings_out=timings,
+                    narration_context=narration_context,
                 )
-            speech_text = str(getattr(polished, "polished_text"))
-            polish_details = NarrationPolishDetails(
-                text=speech_text,
-                segment_duration_sec=float(getattr(polished, "segment_duration_sec")),
-                target_duration_sec=float(getattr(polished, "target_duration_sec")),
-                safety_margin_sec=float(getattr(polished, "safety_margin_sec")),
-                speaking_rate_wpm=int(getattr(polished, "speaking_rate_wpm")),
-                target_word_count=int(getattr(polished, "target_word_count")),
-                original_word_count=int(getattr(polished, "original_word_count")),
-                polished_word_count=int(getattr(polished, "polished_word_count")),
-                estimated_original_duration_sec=float(
-                    getattr(polished, "estimated_original_duration_sec")
+            emit_event(
+                "segment.narration.done",
+                stage="narration",
+                status="ok",
+                duration_sec=(
+                    float(timings["total_sec"]) if "total_sec" in timings else None
                 ),
-                estimated_polished_duration_sec=float(
-                    getattr(polished, "estimated_polished_duration_sec")
-                ),
-                cefr_level=str(getattr(polished, "cefr_level")),
-                strength=str(getattr(polished, "strength")),
-                provider=str(getattr(polished, "provider")),
-                model=str(getattr(polished, "model")),
-                timing_api_sec=(
-                    float(getattr(polished, "timing_api_sec"))
-                    if getattr(polished, "timing_api_sec", None) is not None
-                    else None
-                ),
-                scene_title_zh=(
-                    None
-                    if getattr(polished, "scene_title_zh", None) is None
-                    else (
-                        s
-                        if (s := str(getattr(polished, "scene_title_zh")).strip())
-                        else None
+            )
+            polish_details: NarrationPolishDetails | None = None
+            speech_details: NarrationSpeechDetails | None = None
+            vocab_study_card: dict[str, Any] | None = None
+            speech_text = text
+            if polish_enabled:
+                if self.polisher is None:
+                    raise RuntimeError("Narration polisher is not available")
+                with self.limiters.polish:
+                    polished = self.polisher(
+                        text,
+                        seg.duration_sec,
+                        options=polish_options,
+                        settings=settings,
                     )
-                ),
-            )
-            with self.limiters.study_enrichment:
-                raw_vocab, _vocab_timing_sec = generate_vocab_study_card(
-                    text,
-                    cefr_level=polish_details.cefr_level,
-                    settings=settings,
+                speech_text = str(getattr(polished, "polished_text"))
+                polish_details = NarrationPolishDetails(
+                    text=speech_text,
+                    segment_duration_sec=float(getattr(polished, "segment_duration_sec")),
+                    target_duration_sec=float(getattr(polished, "target_duration_sec")),
+                    safety_margin_sec=float(getattr(polished, "safety_margin_sec")),
+                    speaking_rate_wpm=int(getattr(polished, "speaking_rate_wpm")),
+                    target_word_count=int(getattr(polished, "target_word_count")),
+                    original_word_count=int(getattr(polished, "original_word_count")),
+                    polished_word_count=int(getattr(polished, "polished_word_count")),
+                    estimated_original_duration_sec=float(
+                        getattr(polished, "estimated_original_duration_sec")
+                    ),
+                    estimated_polished_duration_sec=float(
+                        getattr(polished, "estimated_polished_duration_sec")
+                    ),
+                    cefr_level=str(getattr(polished, "cefr_level")),
+                    strength=str(getattr(polished, "strength")),
+                    provider=str(getattr(polished, "provider")),
+                    model=str(getattr(polished, "model")),
+                    timing_api_sec=(
+                        float(getattr(polished, "timing_api_sec"))
+                        if getattr(polished, "timing_api_sec", None) is not None
+                        else None
+                    ),
+                    scene_title_zh=(
+                        None
+                        if getattr(polished, "scene_title_zh", None) is None
+                        else (
+                            s
+                            if (s := str(getattr(polished, "scene_title_zh")).strip())
+                            else None
+                        )
+                    ),
                 )
-            vocab_study_card = raw_vocab if isinstance(raw_vocab, dict) else None
-        if speech_enabled:
-            if self.synthesizer is None:
-                raise RuntimeError("Narration speech synthesizer is not available")
-            if not self.resolved_speech_output_dir:
-                raise ValueError(
-                    "resolved_speech_output_dir is required when speech synthesis is enabled"
+                emit_event(
+                    "segment.polish.done",
+                    stage="narration",
+                    capability="polish",
+                    provider=polish_details.provider,
+                    model=polish_details.model,
+                    status="ok",
                 )
-            speech_dir = Path(self.resolved_speech_output_dir)
-            filename = (
-                f"segment_{item.index:03d}_"
-                f"{round(seg.start_sec * 1000):08d}_"
-                f"{round(seg.end_sec * 1000):08d}.mp3"
-            )
-            audio_path = speech_dir / filename
-            metadata_path = audio_path.with_suffix(audio_path.suffix + ".jsonl")
-            target_duration_sec = (
-                polish_details.target_duration_sec
-                if polish_details is not None
-                else seg.duration_sec
-            )
-            with self.limiters.tts:
-                spoken = self.synthesizer(
-                    speech_text,
-                    seg.duration_sec,
-                    output_path=str(audio_path),
-                    metadata_path=str(metadata_path),
-                    target_duration_sec=target_duration_sec,
-                    options=speech_options,
-                    settings=settings,
+                with self.limiters.study_enrichment:
+                    raw_vocab, _vocab_timing_sec = generate_vocab_study_card(
+                        text,
+                        cefr_level=polish_details.cefr_level,
+                        settings=settings,
+                    )
+                vocab_study_card = raw_vocab if isinstance(raw_vocab, dict) else None
+                emit_event(
+                    "segment.study.done",
+                    stage="narration",
+                    capability="study_enrichment",
+                    status="ok",
                 )
-            speech_details = NarrationSpeechDetails(
-                text=str(getattr(spoken, "text")),
-                audio_path=str(getattr(spoken, "audio_path")),
-                metadata_path=getattr(spoken, "metadata_path", None),
-                segment_duration_sec=float(getattr(spoken, "segment_duration_sec")),
-                target_duration_sec=float(getattr(spoken, "target_duration_sec")),
-                raw_duration_sec=float(getattr(spoken, "raw_duration_sec")),
-                audio_duration_sec=float(getattr(spoken, "audio_duration_sec")),
-                provider=str(getattr(spoken, "provider")),
-                voice=str(getattr(spoken, "voice")),
-                rate=str(getattr(spoken, "rate")),
-                volume=str(getattr(spoken, "volume")),
-                pitch=str(getattr(spoken, "pitch")),
-                boundary=str(getattr(spoken, "boundary")),
-                fit_applied=bool(getattr(spoken, "fit_applied")),
-                timing_tts_sec=(
-                    float(getattr(spoken, "timing_tts_sec"))
-                    if getattr(spoken, "timing_tts_sec", None) is not None
-                    else None
+            if speech_enabled:
+                if self.synthesizer is None:
+                    raise RuntimeError("Narration speech synthesizer is not available")
+                if not self.resolved_speech_output_dir:
+                    raise ValueError(
+                        "resolved_speech_output_dir is required when speech synthesis is enabled"
+                    )
+                speech_dir = Path(self.resolved_speech_output_dir)
+                filename = (
+                    f"segment_{item.index:03d}_"
+                    f"{round(seg.start_sec * 1000):08d}_"
+                    f"{round(seg.end_sec * 1000):08d}.mp3"
+                )
+                audio_path = speech_dir / filename
+                metadata_path = audio_path.with_suffix(audio_path.suffix + ".jsonl")
+                target_duration_sec = (
+                    polish_details.target_duration_sec
+                    if polish_details is not None
+                    else seg.duration_sec
+                )
+                with self.limiters.tts:
+                    spoken = self.synthesizer(
+                        speech_text,
+                        seg.duration_sec,
+                        output_path=str(audio_path),
+                        metadata_path=str(metadata_path),
+                        target_duration_sec=target_duration_sec,
+                        options=speech_options,
+                        settings=settings,
+                    )
+                speech_details = NarrationSpeechDetails(
+                    text=str(getattr(spoken, "text")),
+                    audio_path=str(getattr(spoken, "audio_path")),
+                    metadata_path=getattr(spoken, "metadata_path", None),
+                    segment_duration_sec=float(getattr(spoken, "segment_duration_sec")),
+                    target_duration_sec=float(getattr(spoken, "target_duration_sec")),
+                    raw_duration_sec=float(getattr(spoken, "raw_duration_sec")),
+                    audio_duration_sec=float(getattr(spoken, "audio_duration_sec")),
+                    provider=str(getattr(spoken, "provider")),
+                    voice=str(getattr(spoken, "voice")),
+                    rate=str(getattr(spoken, "rate")),
+                    volume=str(getattr(spoken, "volume")),
+                    pitch=str(getattr(spoken, "pitch")),
+                    boundary=str(getattr(spoken, "boundary")),
+                    fit_applied=bool(getattr(spoken, "fit_applied")),
+                    timing_tts_sec=(
+                        float(getattr(spoken, "timing_tts_sec"))
+                        if getattr(spoken, "timing_tts_sec", None) is not None
+                        else None
+                    ),
+                    timing_fit_sec=(
+                        float(getattr(spoken, "timing_fit_sec"))
+                        if getattr(spoken, "timing_fit_sec", None) is not None
+                        else None
+                    ),
+                )
+                emit_event(
+                    "segment.tts.done",
+                    stage="narration",
+                    capability="tts",
+                    provider=speech_details.provider,
+                    status="ok",
+                )
+            narrated = NarratedSegment(
+                start_sec=seg.start_sec,
+                end_sec=seg.end_sec,
+                narration_text=text,
+                prev_subtitle_text=seg.prev_subtitle_text,
+                next_subtitle_text=seg.next_subtitle_text,
+                speech_text=speech_text,
+                polish=polish_details,
+                speech=speech_details,
+                vocab_study_card=vocab_study_card,
+                timing_extract_sec=(
+                    float(timings["extract_sec"]) if "extract_sec" in timings else None
                 ),
-                timing_fit_sec=(
-                    float(getattr(spoken, "timing_fit_sec"))
-                    if getattr(spoken, "timing_fit_sec", None) is not None
-                    else None
+                timing_api_sec=float(timings["api_sec"]) if "api_sec" in timings else None,
+                timing_total_sec=(
+                    float(timings["total_sec"]) if "total_sec" in timings else None
                 ),
+                frame_count=int(timings["frame_count"])
+                if "frame_count" in timings
+                else None,
             )
-        return NarratedSegment(
-            start_sec=seg.start_sec,
-            end_sec=seg.end_sec,
-            narration_text=text,
-            prev_subtitle_text=seg.prev_subtitle_text,
-            next_subtitle_text=seg.next_subtitle_text,
-            speech_text=speech_text,
-            polish=polish_details,
-            speech=speech_details,
-            vocab_study_card=vocab_study_card,
-            timing_extract_sec=(
-                float(timings["extract_sec"]) if "extract_sec" in timings else None
-            ),
-            timing_api_sec=float(timings["api_sec"]) if "api_sec" in timings else None,
-            timing_total_sec=(
-                float(timings["total_sec"]) if "total_sec" in timings else None
-            ),
-            frame_count=int(timings["frame_count"])
-            if "frame_count" in timings
-            else None,
-        )
+            emit_event("segment.done", stage="narration", status="ok")
+            return narrated
+        except BaseException as exc:
+            emit_event(
+                "segment.failed",
+                level=logging.ERROR,
+                stage="narration",
+                status="error",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+            raise
+        finally:
+            reset_pipeline_log_context(log_token)
 
 
 def _group_candidate_work(
@@ -303,63 +362,79 @@ def narrate_analysis_candidates(
     narrator: Callable[..., tuple[str, float]] | None = None,
     polisher: Callable[..., object] | None = None,
     synthesizer: Callable[..., object] | None = None,
+    job_id: str | None = None,
 ) -> tuple[NarratedSegment, ...]:
     """Narrate all analysis candidates using a single :class:`RunContext` (no separate settings/options)."""
     settings = ctx.settings
-    pipeline_config = ctx.pipeline
-    polish_options = pipeline_config.polish_options
-    call_narrator = narrator or narrate_segment_with_duration
-    polish_enabled = polish_options is not None
-    call_polisher: Callable[..., object] | None = polisher
-    if polish_enabled and call_polisher is None:
-        from narration_polish import polish_narration_text as _default_polisher
-
-        call_polisher = _default_polisher
-    speech_enabled = pipeline_config.speech_options is not None
-    call_synthesizer: Callable[..., object] | None = synthesizer
-    if speech_enabled and call_synthesizer is None:
-        from narration_speech import synthesize_narration_text as _default_synthesizer
-
-        call_synthesizer = _default_synthesizer
-    resolved_frame = (
-        frame_source_options
-        or pipeline_config.frame_source_options
+    log_opts = settings.pipeline_logging_options()
+    configure_async_logging(
+        enabled=log_opts.enabled,
+        level=log_opts.level,
+        format=log_opts.format,
+        stderr=log_opts.stderr,
+        file=log_opts.file,
     )
-    if resolved_frame is None:
-        raise ValueError(
-            "frame_source_options is required on NarrationPipelineConfig or pass frame_source_options=..."
+    log_fields: dict[str, Any] = {"stage": "narration_candidates"}
+    if job_id:
+        log_fields["job_id"] = job_id
+    pipeline_token = bind_pipeline_log_context(**log_fields)
+    try:
+        pipeline_config = ctx.pipeline
+        polish_options = pipeline_config.polish_options
+        call_narrator = narrator or narrate_segment_with_duration
+        polish_enabled = polish_options is not None
+        call_polisher: Callable[..., object] | None = polisher
+        if polish_enabled and call_polisher is None:
+            from narration_polish import polish_narration_text as _default_polisher
+
+            call_polisher = _default_polisher
+        speech_enabled = pipeline_config.speech_options is not None
+        call_synthesizer: Callable[..., object] | None = synthesizer
+        if speech_enabled and call_synthesizer is None:
+            from narration_speech import synthesize_narration_text as _default_synthesizer
+
+            call_synthesizer = _default_synthesizer
+        resolved_frame = (
+            frame_source_options
+            or pipeline_config.frame_source_options
         )
-    speech_dir = Path(resolved_speech_output_dir) if resolved_speech_output_dir else None
-    if speech_dir is not None:
-        speech_dir.mkdir(parents=True, exist_ok=True)
+        if resolved_frame is None:
+            raise ValueError(
+                "frame_source_options is required on NarrationPipelineConfig or pass frame_source_options=..."
+            )
+        speech_dir = Path(resolved_speech_output_dir) if resolved_speech_output_dir else None
+        if speech_dir is not None:
+            speech_dir.mkdir(parents=True, exist_ok=True)
 
-    candidates = analysis.narration_candidates
-    if not candidates:
-        return ()
+        candidates = analysis.narration_candidates
+        if not candidates:
+            return ()
 
-    parallelism = settings.workflow_parallelism_options()
-    groups = _group_candidate_work(
-        candidates,
-        group_size=parallelism.segment_group_size,
-    )
-    worker = _CandidateWorker(
-        ctx=ctx,
-        video_path=video_path,
-        subtitle_context_index_dir=subtitle_context_index_dir,
-        resolved_speech_output_dir=resolved_speech_output_dir,
-        frame_source_options=resolved_frame,
-        narrator=call_narrator,
-        polisher=call_polisher,
-        synthesizer=call_synthesizer,
-        limiters=CapabilityLimiters.from_options(settings.capability_concurrency_options()),
-    )
-    group_results = StageExecutor().map_ordered(
-        groups,
-        lambda group: _run_candidate_group(group, worker=worker),
-        concurrency=parallelism.segment_group_concurrency,
-        stage_name="narration_group",
-    )
-    return tuple(segment for group in group_results for segment in group)
+        parallelism = settings.workflow_parallelism_options()
+        groups = _group_candidate_work(
+            candidates,
+            group_size=parallelism.segment_group_size,
+        )
+        worker = _CandidateWorker(
+            ctx=ctx,
+            video_path=video_path,
+            subtitle_context_index_dir=subtitle_context_index_dir,
+            resolved_speech_output_dir=resolved_speech_output_dir,
+            frame_source_options=resolved_frame,
+            narrator=call_narrator,
+            polisher=call_polisher,
+            synthesizer=call_synthesizer,
+            limiters=CapabilityLimiters.from_options(settings.capability_concurrency_options()),
+        )
+        group_results = StageExecutor().map_ordered(
+            groups,
+            lambda group: _run_candidate_group(group, worker=worker),
+            concurrency=parallelism.segment_group_concurrency,
+            stage_name="narration_group",
+        )
+        return tuple(segment for group in group_results for segment in group)
+    finally:
+        reset_pipeline_log_context(pipeline_token)
 
 
 def _segments_to_payload(
@@ -454,6 +529,7 @@ def run_pipeline_ctx(
     narrator: Callable[..., tuple[str, float]] | None = None,
     polisher: Callable[..., object] | None = None,
     synthesizer: Callable[..., object] | None = None,
+    job_id: str | None = None,
 ) -> dict[str, object]:
     """Run the text/speech narration pipeline using a single :class:`RunContext`."""
     pipeline_config = ctx.pipeline
@@ -507,6 +583,7 @@ def run_pipeline_ctx(
         narrator=narrator,
         polisher=polisher,
         synthesizer=synthesizer,
+        job_id=job_id,
     )
     payload = _segments_to_payload(
         analysis=analysis,

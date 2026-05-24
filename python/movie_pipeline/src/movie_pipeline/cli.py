@@ -58,11 +58,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--ffprobe-bin", default="ffprobe", help="ffprobe executable path")
     ap.add_argument(
-        "--narrate",
-        action="store_true",
-        help="Reserved compatibility flag. Pipeline always narrates derived candidates.",
-    )
-    ap.add_argument(
         "--prompt-style",
         default=None,
         help="Prompt style for narration (default: movieteller_config default_prompt_style)",

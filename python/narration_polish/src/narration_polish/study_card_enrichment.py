@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from typing import TYPE_CHECKING, Any, Callable
+
+from movieteller_logging import emit_event
 
 from model_gateway import polish_text as gateway_polish_text
 
@@ -31,26 +34,54 @@ def generate_vocab_study_card(
     text = str(passage or "").strip()
     if not text:
         return None, 0.0
-    start = time.perf_counter()
-    result = gateway_polish_text(
-        messages=[
-            {
-                "role": "system",
-                "content": build_vocab_highlight_system_message(),
-            },
-            {
-                "role": "user",
-                "content": build_vocab_highlight_user_message(
-                    passage=text,
-                    cefr_level=cefr_level,
-                ),
-            },
-        ],
-        settings=settings,
-        client_factory=client_factory,
+    emit_event(
+        "study_card.start",
+        capability="study_enrichment",
+        passage_chars=len(text),
+        status="ok",
     )
+    start = time.perf_counter()
+    try:
+        result = gateway_polish_text(
+            messages=[
+                {
+                    "role": "system",
+                    "content": build_vocab_highlight_system_message(),
+                },
+                {
+                    "role": "user",
+                    "content": build_vocab_highlight_user_message(
+                        passage=text,
+                        cefr_level=cefr_level,
+                    ),
+                },
+            ],
+            settings=settings,
+            client_factory=client_factory,
+        )
+    except BaseException as exc:
+        elapsed = time.perf_counter() - start
+        emit_event(
+            "study_card.failed",
+            level=logging.ERROR,
+            capability="study_enrichment",
+            passage_chars=len(text),
+            duration_ms=int(elapsed * 1000),
+            status="error",
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        raise
     elapsed = time.perf_counter() - start
-    return parse_vocab_study_card_json(result.text), elapsed
+    parsed = parse_vocab_study_card_json(result.text)
+    emit_event(
+        "study_card.done",
+        capability="study_enrichment",
+        passage_chars=len(text),
+        duration_ms=int(elapsed * 1000),
+        status="ok",
+    )
+    return parsed, elapsed
 
 
 def parse_vocab_study_card_json(raw: str) -> dict[str, Any] | None:
