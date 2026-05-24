@@ -27,6 +27,9 @@ _EXTRA_KEYS = frozenset(
         "status",
         "error_type",
         "error_message",
+        "error_code",
+        "retryable",
+        "fatal",
         "retry_count",
         "completed",
         "total",
@@ -72,7 +75,9 @@ _LOGRECORD_RESERVED = frozenset(
 _queue: queue.Queue[logging.LogRecord | None] | None = None
 _listener: logging.handlers.QueueListener | None = None
 _root: logging.Logger | None = None
+_handlers: list[logging.Handler] = []
 _enabled = False
+_atexit_registered = False
 
 
 class _JsonlFormatter(logging.Formatter):
@@ -88,7 +93,7 @@ class _JsonlFormatter(logging.Formatter):
         for key, value in record.__dict__.items():
             if key in _LOGRECORD_RESERVED or key.startswith("_"):
                 continue
-            if key in _EXTRA_KEYS and value is not None:
+            if value is not None and (key in _EXTRA_KEYS or key.startswith("x_")):
                 try:
                     json.dumps(value)
                 except (TypeError, ValueError):
@@ -107,7 +112,7 @@ def configure_async_logging(
     file: str | None = None,
 ) -> None:
     """Start QueueListener + QueueHandler for logger ``movieteller`` (idempotent restart)."""
-    global _queue, _listener, _root, _enabled
+    global _queue, _listener, _root, _enabled, _handlers, _atexit_registered
     shutdown_async_logging()
     if not enabled:
         _enabled = False
@@ -136,23 +141,30 @@ def configure_async_logging(
         fh.setLevel(level_no)
         handlers.append(fh)
     if not handlers:
+        root.handlers.clear()
         _enabled = False
         return
     _listener = logging.handlers.QueueListener(_queue, *handlers, respect_handler_level=True)
     _listener.start()
+    _handlers = handlers
     _root = root
     _enabled = True
-    atexit.register(shutdown_async_logging)
+    if not _atexit_registered:
+        atexit.register(shutdown_async_logging)
+        _atexit_registered = True
 
 
 def shutdown_async_logging() -> None:
-    global _queue, _listener, _root, _enabled
+    global _queue, _listener, _root, _enabled, _handlers
     if _listener is not None:
         _listener.stop()
         _listener = None
     if _root is not None:
         _root.handlers.clear()
         _root = None
+    for handler in _handlers:
+        handler.close()
+    _handlers = []
     _queue = None
     _enabled = False
 

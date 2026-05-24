@@ -6,7 +6,8 @@ import re
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
-from movieteller_logging import emit_event
+from movieteller_logging import classify_error, emit_event
+from movieteller_logging import events as log_events
 
 from model_gateway import polish_text as gateway_polish_text
 
@@ -35,7 +36,7 @@ def generate_vocab_study_card(
     if not text:
         return None, 0.0
     emit_event(
-        "study_card.start",
+        log_events.STUDY_CARD_START,
         capability="study_enrichment",
         passage_chars=len(text),
         status="ok",
@@ -59,23 +60,23 @@ def generate_vocab_study_card(
             settings=settings,
             client_factory=client_factory,
         )
-    except BaseException as exc:
+    except Exception as exc:
         elapsed = time.perf_counter() - start
         emit_event(
-            "study_card.failed",
+            log_events.STUDY_CARD_FAILED,
             level=logging.ERROR,
             capability="study_enrichment",
             passage_chars=len(text),
             duration_ms=int(elapsed * 1000),
             status="error",
-            error_type=type(exc).__name__,
-            error_message=str(exc),
+            fatal=True,
+            **classify_error(exc),
         )
         raise
     elapsed = time.perf_counter() - start
     parsed = parse_vocab_study_card_json(result.text)
     emit_event(
-        "study_card.done",
+        log_events.STUDY_CARD_DONE,
         capability="study_enrichment",
         passage_chars=len(text),
         duration_ms=int(elapsed * 1000),

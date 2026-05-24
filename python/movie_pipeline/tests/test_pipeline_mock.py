@@ -1,5 +1,6 @@
 from dataclasses import replace
 from pathlib import Path
+import json
 from threading import Lock
 import time
 
@@ -428,6 +429,71 @@ def test_run_full_workflow_accepts_resolved_context(tmp_path):
     study_html = study_html_path.read_text(encoding="utf-8")
     assert study_html.startswith("<!DOCTYPE html>")
     assert "segment-card" in study_html
+
+
+def test_run_full_workflow_owns_logging_lifecycle(tmp_path):
+    video = tmp_path / "demo.mp4"
+    video.write_bytes(b"video")
+    srt = tmp_path / "demo.extracted.srt"
+    srt.write_text(_SINGLE_GAP_SRT, encoding="utf-8")
+    pool_dir = tmp_path / "demo.frame_pool"
+    pool_dir.mkdir()
+    (pool_dir / "manifest.jsonl").write_text("", encoding="utf-8")
+    ctx_dir = tmp_path / "demo.subtitle_context"
+    ctx_dir.mkdir()
+    (ctx_dir / "chunks.jsonl").write_text("", encoding="utf-8")
+
+    import numpy as np
+
+    np.save(ctx_dir / "embeddings.npy", np.zeros((0, 0), dtype=np.float32))
+
+    log_path = tmp_path / "workflow.jsonl"
+    settings = make_settings(
+        logging={
+            "enabled": True,
+            "level": "INFO",
+            "format": "jsonl",
+            "stderr": False,
+            "file": str(log_path),
+        }
+    )
+    request = WorkflowRequest(
+        video_path=str(video),
+        output_root=str(tmp_path),
+        user_id="user-1",
+    )
+    resolved_context = resolved_run_context_from_request(
+        request=request,
+        settings=settings,
+    )
+    resolved_context = type(resolved_context)(
+        config=replace(
+            resolved_context.config,
+            execution=replace(
+                resolved_context.execution,
+                pipeline=replace(
+                    resolved_context.execution.pipeline,
+                    video_duration_sec=_SINGLE_GAP_VIDEO_DUR,
+                ),
+            ),
+        )
+    )
+
+    def fake_narrator(video_path, start_sec, end_sec, **kwargs):
+        return ("narration", end_sec - start_sec)
+
+    run_full_workflow(resolved_context=resolved_context, narrator=fake_narrator)
+
+    rows = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    events = [row["event"] for row in rows]
+    assert events.count("workflow.start") == 1
+    assert events.count("workflow.done") == 1
+    assert "subtitle_extraction.done" in events
+    assert "frame_pool.done" in events
+    assert "subtitle_context.done" in events
+    assert "video_package.done" in events
+    assert "workflow_export.done" in events
+    assert any(row.get("event") == "segment.start" and row.get("job_id") == "user-1" for row in rows)
 
 
 def test_run_pipeline_ctx_requires_explicit_frame_source_options():

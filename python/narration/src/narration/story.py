@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from movieteller_logging import emit_event
 
 from model_gateway import generate_narration as gateway_generate_narration
+from movieteller_logging import events as log_events
 
 if TYPE_CHECKING:
     from movieteller_config.schema import Settings
@@ -24,7 +25,7 @@ def generate_narration(
     default_provider = settings.default_provider()
     default_model = settings.default_model_for_capability("narration")
     emit_event(
-        "narration.api",
+        log_events.GATEWAY_CHAT_PREPARE,
         slug=default_provider,
         model=default_model,
         base_url=settings.get_api_base_url(default_provider),

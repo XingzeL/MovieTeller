@@ -12,11 +12,12 @@ from movieteller_config.schema import (
 )
 from movieteller_logging import (
     bind_pipeline_log_context,
-    configure_async_logging,
+    classify_error,
     emit_event,
     merge_pipeline_context,
     reset_pipeline_log_context,
 )
+from movieteller_logging import events as log_events
 from pipeline_types import NarrationCandidate, NarrationContext
 
 from narration.narrate import narrate_segment_with_duration
@@ -105,7 +106,7 @@ class _CandidateWorker:
         log_token = merge_pipeline_context(segment_index=item.index)
         try:
             emit_event(
-                "segment.start",
+                log_events.SEGMENT_START,
                 stage="narration",
                 win_start=seg.start_sec,
                 win_end=seg.end_sec,
@@ -147,7 +148,7 @@ class _CandidateWorker:
                     narration_context=narration_context,
                 )
             emit_event(
-                "segment.narration.done",
+                log_events.SEGMENT_NARRATION_DONE,
                 stage="narration",
                 status="ok",
                 duration_sec=(
@@ -204,7 +205,7 @@ class _CandidateWorker:
                     ),
                 )
                 emit_event(
-                    "segment.polish.done",
+                    log_events.SEGMENT_POLISH_DONE,
                     stage="narration",
                     capability="polish",
                     provider=polish_details.provider,
@@ -219,7 +220,7 @@ class _CandidateWorker:
                     )
                 vocab_study_card = raw_vocab if isinstance(raw_vocab, dict) else None
                 emit_event(
-                    "segment.study.done",
+                    log_events.SEGMENT_STUDY_DONE,
                     stage="narration",
                     capability="study_enrichment",
                     status="ok",
@@ -281,7 +282,7 @@ class _CandidateWorker:
                     ),
                 )
                 emit_event(
-                    "segment.tts.done",
+                    log_events.SEGMENT_TTS_DONE,
                     stage="narration",
                     capability="tts",
                     provider=speech_details.provider,
@@ -308,16 +309,16 @@ class _CandidateWorker:
                 if "frame_count" in timings
                 else None,
             )
-            emit_event("segment.done", stage="narration", status="ok")
+            emit_event(log_events.SEGMENT_DONE, stage="narration", status="ok")
             return narrated
-        except BaseException as exc:
+        except Exception as exc:
             emit_event(
-                "segment.failed",
+                log_events.SEGMENT_FAILED,
                 level=logging.ERROR,
                 stage="narration",
                 status="error",
-                error_type=type(exc).__name__,
-                error_message=str(exc),
+                fatal=True,
+                **classify_error(exc),
             )
             raise
         finally:
@@ -366,14 +367,6 @@ def narrate_analysis_candidates(
 ) -> tuple[NarratedSegment, ...]:
     """Narrate all analysis candidates using a single :class:`RunContext` (no separate settings/options)."""
     settings = ctx.settings
-    log_opts = settings.pipeline_logging_options()
-    configure_async_logging(
-        enabled=log_opts.enabled,
-        level=log_opts.level,
-        format=log_opts.format,
-        stderr=log_opts.stderr,
-        file=log_opts.file,
-    )
     log_fields: dict[str, Any] = {"stage": "narration_candidates"}
     if job_id:
         log_fields["job_id"] = job_id

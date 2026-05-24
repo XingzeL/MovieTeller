@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import logging
 from pathlib import Path
 from typing import Any
 
 from frame_source import FrameSourceOptions
+from movieteller_logging import (
+    bind_pipeline_log_context,
+    classify_error,
+    configure_async_logging,
+    emit_event,
+    reset_pipeline_log_context,
+    shutdown_async_logging,
+)
+from movieteller_logging import events as log_events
 from movie_pipeline.types import (
     ArtifactPaths,
     NarrationPipelineConfig,
@@ -23,6 +33,32 @@ from movie_pipeline.workflow_stages import (
 )
 from movie_pipeline.workflow_exports import export_workflow_artifacts
 from movieteller_config.schema import Settings
+
+
+def _default_job_id(resolved_context: ResolvedRunContext, output_root: Path) -> str:
+    request = resolved_context.request
+    for value in (request.workspace_id, request.user_id, output_root.name):
+        text = str(value or "").strip()
+        if text:
+            return text
+    return output_root.name
+
+
+def _configure_workflow_logging(
+    *,
+    settings: Settings,
+    job_id: str,
+) -> None:
+    log_opts = settings.pipeline_logging_options()
+    configure_async_logging(
+        enabled=log_opts.enabled,
+        level=log_opts.level,
+        format=log_opts.format,
+        stderr=log_opts.stderr,
+        file=log_opts.file,
+    )
+    if log_opts.enabled:
+        emit_event(log_events.WORKFLOW_LOGGING_CONFIGURED, job_id=job_id, status="ok")
 
 
 def _base_workflow_options_from_settings(
@@ -291,68 +327,93 @@ def run_full_workflow(
         resolved_execution.output_root or Path(resolved_video_path).resolve().parent
     ).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
-
-    paths = ArtifactPaths.resolve(
-        output_root=output_root,
-        source_video=resolved_video_path,
-        enable_speech=resolved_execution.enable_speech,
-        enable_embed_video=resolved_execution.enable_embed_video,
+    job_id = _default_job_id(resolved_context, output_root)
+    _configure_workflow_logging(settings=resolved_settings, job_id=job_id)
+    log_token = bind_pipeline_log_context(
+        job_id=job_id,
+        stage="workflow",
+        x_video_path=str(resolved_video_path),
+        x_output_root=str(output_root),
     )
 
-    stage_subtitle_extraction(
-        paths=paths,
-        execution=resolved_execution,
-        resolved_settings=resolved_settings,
-    )
-    stage_frame_pool(
-        paths=paths,
-        execution=resolved_execution,
-        resolved_settings=resolved_settings,
-    )
+    try:
+        emit_event(log_events.WORKFLOW_START, status="ok")
+        paths = ArtifactPaths.resolve(
+            output_root=output_root,
+            source_video=resolved_video_path,
+            enable_speech=resolved_execution.enable_speech,
+            enable_embed_video=resolved_execution.enable_embed_video,
+        )
 
-    frame_pool_manifest = Path(paths.frame_pool_manifest)
-    pipeline_settings = resolved_settings
-    if frame_pool_manifest.is_file():
-        manifest_value = str(frame_pool_manifest)
-        if resolved_settings.frame_pool_manifest != manifest_value:
-            pipeline_settings = replace(
-                resolved_settings,
-                frame_pool_manifest=manifest_value,
-            )
+        stage_subtitle_extraction(
+            paths=paths,
+            execution=resolved_execution,
+            resolved_settings=resolved_settings,
+        )
+        stage_frame_pool(
+            paths=paths,
+            execution=resolved_execution,
+            resolved_settings=resolved_settings,
+        )
 
-    subtitle_context_index_dir = stage_subtitle_context(
-        paths=paths,
-        execution=resolved_execution,
-        pipeline_settings=pipeline_settings,
-    )
+        frame_pool_manifest = Path(paths.frame_pool_manifest)
+        pipeline_settings = resolved_settings
+        if frame_pool_manifest.is_file():
+            manifest_value = str(frame_pool_manifest)
+            if resolved_settings.frame_pool_manifest != manifest_value:
+                pipeline_settings = replace(
+                    resolved_settings,
+                    frame_pool_manifest=manifest_value,
+                )
 
-    payload = stage_narration_pipeline(
-        paths=paths,
-        execution=resolved_execution,
-        pipeline_settings=pipeline_settings,
-        subtitle_context_index_dir=subtitle_context_index_dir,
-        narrator=narrator,
-        polisher=polisher,
-        synthesizer=synthesizer,
-    )
-    payload = stage_video_package(
-        paths=paths,
-        execution=resolved_execution,
-        pipeline_settings=pipeline_settings,
-        payload=payload,
-        video_renderer=video_renderer,
-    )
-    payload["workflowArtifacts"] = {
-        "videoPath": paths.source_video,
-        "srtPath": paths.srt_path,
-        "framePoolManifest": (
-            paths.frame_pool_manifest if frame_pool_manifest.is_file() else None
-        ),
-        "subtitleContextIndexDir": subtitle_context_index_dir,
-        "outputRoot": str(output_root),
-    }
-    return export_workflow_artifacts(
-        payload=payload,
-        paths=paths,
-        output_root=output_root,
-    )
+        subtitle_context_index_dir = stage_subtitle_context(
+            paths=paths,
+            execution=resolved_execution,
+            pipeline_settings=pipeline_settings,
+        )
+
+        payload = stage_narration_pipeline(
+            paths=paths,
+            execution=resolved_execution,
+            pipeline_settings=pipeline_settings,
+            subtitle_context_index_dir=subtitle_context_index_dir,
+            job_id=job_id,
+            narrator=narrator,
+            polisher=polisher,
+            synthesizer=synthesizer,
+        )
+        payload = stage_video_package(
+            paths=paths,
+            execution=resolved_execution,
+            pipeline_settings=pipeline_settings,
+            payload=payload,
+            video_renderer=video_renderer,
+        )
+        payload["workflowArtifacts"] = {
+            "videoPath": paths.source_video,
+            "srtPath": paths.srt_path,
+            "framePoolManifest": (
+                paths.frame_pool_manifest if frame_pool_manifest.is_file() else None
+            ),
+            "subtitleContextIndexDir": subtitle_context_index_dir,
+            "outputRoot": str(output_root),
+        }
+        result = export_workflow_artifacts(
+            payload=payload,
+            paths=paths,
+            output_root=output_root,
+        )
+        emit_event(log_events.WORKFLOW_DONE, status="ok")
+        return result
+    except Exception as exc:
+        emit_event(
+            log_events.WORKFLOW_FAILED,
+            level=logging.ERROR,
+            status="error",
+            fatal=True,
+            **classify_error(exc),
+        )
+        raise
+    finally:
+        reset_pipeline_log_context(log_token)
+        shutdown_async_logging()

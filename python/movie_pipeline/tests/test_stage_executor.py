@@ -9,6 +9,11 @@ from movie_pipeline.stage_executor import (
     StageExecutionError,
     StageExecutor,
 )
+from movieteller_logging import (
+    bind_pipeline_log_context,
+    reset_pipeline_log_context,
+)
+from movieteller_logging.context import current_pipeline_extra
 from movieteller_config.schema import settings_from_dict
 
 
@@ -88,6 +93,21 @@ def test_capability_limiter_enforces_max_concurrency():
         range(6)
     )
     assert peak == 2
+
+
+def test_map_ordered_parallel_path_preserves_log_context():
+    token = bind_pipeline_log_context(job_id="job-ctx", stage="outer")
+    try:
+        result = StageExecutor().map_ordered(
+            [1, 2, 3],
+            lambda _item: current_pipeline_extra().get("job_id"),
+            concurrency=3,
+            stage_name="context",
+        )
+    finally:
+        reset_pipeline_log_context(token)
+
+    assert result == ("job-ctx", "job-ctx", "job-ctx")
 
 
 def test_capability_limiters_build_from_settings_options():

@@ -4,7 +4,8 @@ import logging
 import time
 from typing import Any, Callable
 
-from movieteller_logging import emit_event
+from movieteller_logging import classify_error, emit_event
+from movieteller_logging import events as log_events
 
 from model_gateway.adapters.edge_tts import synthesize_speech as _synthesize_speech_via_edge_tts
 from model_gateway.adapters.openai_compatible import (
@@ -61,7 +62,7 @@ def _generate_chat(
             )
 
     emit_event(
-        "gateway.chat.start",
+        log_events.GATEWAY_CHAT_START,
         capability=capability,
         provider=endpoint.provider,
         model=endpoint.model,
@@ -70,10 +71,10 @@ def _generate_chat(
     t0 = time.perf_counter()
     try:
         result, retry_count = execute_with_retry(_run)
-    except BaseException as exc:
+    except Exception as exc:
         duration_ms = int((time.perf_counter() - t0) * 1000)
         emit_event(
-            "gateway.chat.failed",
+            log_events.GATEWAY_CHAT_FAILED,
             level=logging.ERROR,
             capability=capability,
             provider=endpoint.provider,
@@ -81,8 +82,8 @@ def _generate_chat(
             adapter=endpoint.adapter,
             duration_ms=duration_ms,
             status="error",
-            error_type=type(exc).__name__,
-            error_message=str(exc),
+            fatal=True,
+            **classify_error(exc),
         )
         raise
     duration_ms = int((time.perf_counter() - t0) * 1000)
@@ -100,7 +101,7 @@ def _generate_chat(
         raw=result.raw,
     )
     emit_event(
-        "gateway.chat.done",
+        log_events.GATEWAY_CHAT_DONE,
         capability=capability,
         provider=endpoint.provider,
         model=endpoint.model,
@@ -136,7 +137,7 @@ def _embed_texts(
             )
 
     emit_event(
-        "gateway.embedding.start",
+        log_events.GATEWAY_EMBEDDING_START,
         capability=capability,
         provider=endpoint.provider,
         model=endpoint.model,
@@ -145,10 +146,10 @@ def _embed_texts(
     t0 = time.perf_counter()
     try:
         result, retry_count = execute_with_retry(_run)
-    except BaseException as exc:
+    except Exception as exc:
         duration_ms = int((time.perf_counter() - t0) * 1000)
         emit_event(
-            "gateway.embedding.failed",
+            log_events.GATEWAY_EMBEDDING_FAILED,
             level=logging.ERROR,
             capability=capability,
             provider=endpoint.provider,
@@ -156,8 +157,8 @@ def _embed_texts(
             adapter=endpoint.adapter,
             duration_ms=duration_ms,
             status="error",
-            error_type=type(exc).__name__,
-            error_message=str(exc),
+            fatal=True,
+            **classify_error(exc),
         )
         raise
     duration_ms = int((time.perf_counter() - t0) * 1000)
@@ -174,7 +175,7 @@ def _embed_texts(
         raw=result.raw,
     )
     emit_event(
-        "gateway.embedding.done",
+        log_events.GATEWAY_EMBEDDING_DONE,
         capability=capability,
         provider=endpoint.provider,
         model=endpoint.model,
@@ -195,7 +196,7 @@ def _synthesize_speech(
 ) -> SpeechResult:
     endpoint = _resolve_speech_endpoint(request, settings)
     emit_event(
-        "gateway.speech.start",
+        log_events.GATEWAY_SPEECH_START,
         capability=capability,
         provider=endpoint.provider,
         model=endpoint.model,
@@ -240,10 +241,10 @@ def _synthesize_speech(
             raise GatewayUnsupportedCapabilityError(
                 f"Unsupported speech provider '{endpoint.provider}' via adapter '{endpoint.adapter}'"
             )
-    except BaseException as exc:
+    except Exception as exc:
         duration_ms = int((time.perf_counter() - t0) * 1000)
         emit_event(
-            "gateway.speech.failed",
+            log_events.GATEWAY_SPEECH_FAILED,
             level=logging.ERROR,
             capability=capability,
             provider=endpoint.provider,
@@ -251,13 +252,13 @@ def _synthesize_speech(
             adapter=endpoint.adapter,
             duration_ms=duration_ms,
             status="error",
-            error_type=type(exc).__name__,
-            error_message=str(exc),
+            fatal=True,
+            **classify_error(exc),
         )
         raise
     duration_ms = int((time.perf_counter() - t0) * 1000)
     emit_event(
-        "gateway.speech.done",
+        log_events.GATEWAY_SPEECH_DONE,
         capability=capability,
         provider=endpoint.provider,
         model=endpoint.model,

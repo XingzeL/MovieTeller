@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import logging
 import time
+from contextvars import copy_context
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from threading import BoundedSemaphore
 from typing import cast, TypeVar
 
-from movieteller_logging import emit_event, merge_pipeline_context, reset_pipeline_log_context
+from movieteller_logging import (
+    classify_error,
+    emit_event,
+    merge_pipeline_context,
+    reset_pipeline_log_context,
+)
+from movieteller_logging import events as log_events
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -77,7 +84,7 @@ class StageExecutor:
 
         def _emit_progress(done: int) -> None:
             emit_event(
-                "stage.group.progress",
+                log_events.STAGE_GROUP_PROGRESS,
                 stage=stage_name,
                 completed=done,
                 total=total,
@@ -90,7 +97,7 @@ class StageExecutor:
             group_index = index + 1
             log_token = merge_pipeline_context(group_index=group_index)
             emit_event(
-                "stage.group.start",
+                log_events.STAGE_GROUP_START,
                 stage=stage_name,
                 group_index=group_index,
                 total=total,
@@ -98,24 +105,24 @@ class StageExecutor:
             t0 = time.perf_counter()
             try:
                 result = fn(item)
-            except BaseException as exc:
+            except Exception as exc:
                 duration_ms = int((time.perf_counter() - t0) * 1000)
                 emit_event(
-                    "stage.group.failed",
+                    log_events.STAGE_GROUP_FAILED,
                     level=logging.ERROR,
                     stage=stage_name,
                     group_index=group_index,
                     total=total,
                     duration_ms=duration_ms,
                     status="error",
-                    error_type=type(exc).__name__,
-                    error_message=str(exc),
+                    fatal=True,
+                    **classify_error(exc),
                 )
                 raise
             else:
                 duration_ms = int((time.perf_counter() - t0) * 1000)
                 emit_event(
-                    "stage.group.done",
+                    log_events.STAGE_GROUP_DONE,
                     stage=stage_name,
                     group_index=group_index,
                     total=total,
@@ -143,7 +150,7 @@ class StageExecutor:
         completed = 0
         with ThreadPoolExecutor(max_workers=min(workers, total)) as pool:
             future_to_index = {
-                pool.submit(_execute_one, index, item): index
+                pool.submit(copy_context().run, _execute_one, index, item): index
                 for index, item in enumerate(values)
             }
             for future in as_completed(future_to_index):

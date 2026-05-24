@@ -8,6 +8,7 @@ from media_utils import ffprobe_path_for, segment_duration_sec
 from movieteller_config import load_settings
 from movieteller_config.schema import NarrationOptions
 from movieteller_logging import emit_event
+from movieteller_logging import events as log_events
 from pipeline_types import FrameBatch, NarrationContext, NarrationResult
 
 from narration.prompts import build_system_message, build_user_text
@@ -172,7 +173,7 @@ def narrate_segment_with_duration(
         subprocess_run=run,
     )
     emit_event(
-        "narration.frames",
+        log_events.NARRATION_FRAMES_SELECTED,
         source=frames.source,
         win_start=win_start,
         win_end=win_end,
