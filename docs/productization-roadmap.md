@@ -108,9 +108,11 @@ artifacts/{job_id}/
 
 任务清单：
 
-- 定义 `JobRecord` 数据结构。
-- 定义 `WorkflowArtifacts` 数据结构。
+- 定义 `JobRecord` 数据结构。已落地为 `movie_pipeline.job.JobRecord`，先保持内存/JSON 形态，不引入数据库。
+- 定义 `JobPaths` 标准目录布局。已落地为 `movie_pipeline.job.JobPaths`，先只提供路径解析和目录创建，不接管现有 workflow 输出。
+- 定义 `WorkflowArtifacts` 数据结构。已落地为 `movie_pipeline.job.WorkflowArtifacts`，与现有 `workflowArtifacts` payload camelCase 字段保持等价互转。
 - 统一 output root 生成规则。
+- 写出 `workflow.json` Job manifest。已落地为 `write_job_record/read_job_record`，`run_full_workflow` 成功和失败都会写出当前 JobRecord。
 - 每个 stage 只写自己的 artifact，不跨阶段隐式修改别人的文件。
 - manual script 只作为 smoke test，不再承担主入口职责。
 
@@ -474,4 +476,3 @@ GET /jobs/{job_id}/logs
 - 过度可配置的 stage 插件系统。
 
 这些能力可以在 Job 化、日志、resume、API 稳定后再考虑。
-

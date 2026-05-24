@@ -4,6 +4,8 @@ import json
 from threading import Lock
 import time
 
+import pytest
+
 from frame_source import FrameSourceOptions
 from movieteller_config.schema import settings_from_dict
 
@@ -18,6 +20,7 @@ from movie_pipeline import (
     run_full_workflow,
     narrate_analysis_candidates,
     run_pipeline_ctx,
+    read_job_record,
 )
 from movie_pipeline.payload_schema import validate_workflow_artifacts_dict
 from movie_pipeline.runtime_context import RunContext
@@ -494,6 +497,38 @@ def test_run_full_workflow_owns_logging_lifecycle(tmp_path):
     assert "video_package.done" in events
     assert "workflow_export.done" in events
     assert any(row.get("event") == "segment.start" and row.get("job_id") == "user-1" for row in rows)
+    job = read_job_record(tmp_path / "workflow.json")
+    assert job.job_id == "user-1"
+    assert job.status == "succeeded"
+    assert job.input_video_path == str(video)
+    assert job.artifacts["videoPath"] == str(video)
+    assert job.progress["status"] == "succeeded"
+
+
+def test_run_full_workflow_writes_failed_workflow_manifest(tmp_path):
+    video = tmp_path / "demo.mp4"
+    video.write_bytes(b"video")
+    settings = make_settings()
+    request = WorkflowRequest(video_path=str(video), output_root=str(tmp_path), user_id="user-fail")
+    resolved_context = resolved_run_context_from_request(request=request, settings=settings)
+    resolved_context = type(resolved_context)(
+        config=replace(
+            resolved_context.config,
+            execution=replace(
+                resolved_context.execution,
+                extract_subtitles=False,
+            ),
+        )
+    )
+
+    with pytest.raises(FileNotFoundError):
+        run_full_workflow(resolved_context=resolved_context)
+
+    job = read_job_record(tmp_path / "workflow.json")
+    assert job.job_id == "user-fail"
+    assert job.status == "failed"
+    assert job.error is not None
+    assert job.error["error_code"] == "artifact_missing"
 
 
 def test_run_pipeline_ctx_requires_explicit_frame_source_options():

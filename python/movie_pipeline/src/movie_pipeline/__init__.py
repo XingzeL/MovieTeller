@@ -4,6 +4,16 @@ from movie_pipeline.full_workflow import (
     resolved_run_context_from_request,
     run_full_workflow,
 )
+from movie_pipeline.job import (
+    JobPaths,
+    JobRecord,
+    JobStatus,
+    WorkflowArtifacts,
+    job_record_from_dict,
+    read_job_record,
+    write_job_record,
+    workflow_artifacts_from_payload,
+)
 from movie_pipeline.payload_schema import (
     NarratedSegmentPayload,
     PipelineRenderPayload,
@@ -56,6 +66,9 @@ from movie_pipeline.types import (
 
 __all__ = [
     "ArtifactPaths",
+    "JobRecord",
+    "JobPaths",
+    "JobStatus",
     "NarrationPipelineConfig",
     "NarratedSegment",
     "NarratedSegmentPayload",
@@ -76,9 +89,11 @@ __all__ = [
     "SubtitleMergePayload",
     "WorkflowRequest",
     "WorkflowArtifactsPayload",
+    "WorkflowArtifacts",
     "WorkflowPayload",
     "default_policy_context_for_request",
     "deep_copy_payload",
+    "job_record_from_dict",
     "merge_subtitles_for_narration",
     "narrate_analysis_candidates",
     "parse_pipeline_render_dict",
@@ -103,4 +118,7 @@ __all__ = [
     "synthesize_speech_from_text_payload",
     "validate_subtitle_merge_dict",
     "validate_workflow_artifacts_dict",
+    "read_job_record",
+    "write_job_record",
+    "workflow_artifacts_from_payload",
 ]

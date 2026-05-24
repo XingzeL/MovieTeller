@@ -11,6 +11,7 @@ from movieteller_logging import (
     classify_error,
     configure_async_logging,
     emit_event,
+    progress_from_jsonl,
     reset_pipeline_log_context,
     shutdown_async_logging,
 )
@@ -24,6 +25,7 @@ from movie_pipeline.types import (
     ResolvedWorkflowConfig,
     WorkflowRequest,
 )
+from movie_pipeline.job import JobRecord, WorkflowArtifacts, write_job_record
 from movie_pipeline.workflow_stages import (
     stage_frame_pool,
     stage_narration_pipeline,
@@ -59,6 +61,38 @@ def _configure_workflow_logging(
     )
     if log_opts.enabled:
         emit_event(log_events.WORKFLOW_LOGGING_CONFIGURED, job_id=job_id, status="ok")
+
+
+def _workflow_log_path(settings: Settings) -> str | None:
+    log_opts = settings.pipeline_logging_options()
+    return log_opts.file if log_opts.enabled and log_opts.file else None
+
+
+def _write_workflow_manifest(
+    *,
+    path: Path,
+    status: str,
+    job_id: str,
+    input_video_path: str,
+    output_root: Path,
+    user_id: str | None,
+    log_path: str | None,
+    artifacts: dict[str, Any] | None = None,
+    error: dict[str, Any] | None = None,
+) -> None:
+    progress = progress_from_jsonl(log_path).to_dict() if log_path else {}
+    record = JobRecord(
+        job_id=job_id,
+        status=status,  # type: ignore[arg-type]
+        input_video_path=str(input_video_path),
+        output_root=str(output_root),
+        user_id=user_id,
+        current_stage=progress.get("current_stage"),
+        progress=progress,
+        error=error,
+        artifacts=artifacts or {},
+    )
+    write_job_record(record, path)
 
 
 def _base_workflow_options_from_settings(
@@ -329,6 +363,8 @@ def run_full_workflow(
     output_root.mkdir(parents=True, exist_ok=True)
     job_id = _default_job_id(resolved_context, output_root)
     _configure_workflow_logging(settings=resolved_settings, job_id=job_id)
+    workflow_json_path = output_root / "workflow.json"
+    workflow_log_path = _workflow_log_path(resolved_settings)
     log_token = bind_pipeline_log_context(
         job_id=job_id,
         stage="workflow",
@@ -389,29 +425,50 @@ def run_full_workflow(
             payload=payload,
             video_renderer=video_renderer,
         )
-        payload["workflowArtifacts"] = {
-            "videoPath": paths.source_video,
-            "srtPath": paths.srt_path,
-            "framePoolManifest": (
+        payload["workflowArtifacts"] = WorkflowArtifacts(
+            video_path=paths.source_video,
+            srt_path=paths.srt_path,
+            frame_pool_manifest=(
                 paths.frame_pool_manifest if frame_pool_manifest.is_file() else None
             ),
-            "subtitleContextIndexDir": subtitle_context_index_dir,
-            "outputRoot": str(output_root),
-        }
+            subtitle_context_index_dir=subtitle_context_index_dir,
+            output_root=str(output_root),
+        ).to_payload_dict()
         result = export_workflow_artifacts(
             payload=payload,
             paths=paths,
             output_root=output_root,
         )
         emit_event(log_events.WORKFLOW_DONE, status="ok")
+        _write_workflow_manifest(
+            path=workflow_json_path,
+            status="succeeded",
+            job_id=job_id,
+            input_video_path=resolved_video_path,
+            output_root=output_root,
+            user_id=resolved_context.request.user_id,
+            log_path=workflow_log_path,
+            artifacts=dict(result.get("workflowArtifacts") or {}),
+        )
         return result
     except Exception as exc:
+        error_fields = classify_error(exc)
         emit_event(
             log_events.WORKFLOW_FAILED,
             level=logging.ERROR,
             status="error",
             fatal=True,
-            **classify_error(exc),
+            **error_fields,
+        )
+        _write_workflow_manifest(
+            path=workflow_json_path,
+            status="failed",
+            job_id=job_id,
+            input_video_path=resolved_video_path,
+            output_root=output_root,
+            user_id=resolved_context.request.user_id,
+            log_path=workflow_log_path,
+            error=error_fields,
         )
         raise
     finally:

@@ -22,6 +22,10 @@ def classify_error(exc: BaseException, *, default_code: str | None = None) -> di
 
 
 def _code_from_message(*, error_type: str, lowered: str) -> str:
+    if error_type in {"FileNotFoundError"}:
+        return "artifact_missing"
+    if error_type in {"ValueError", "TypeError"}:
+        return "invalid_request"
     if "authentication" in error_type.lower() or "invalid token" in lowered or "401" in lowered:
         return "provider_auth_failed"
     if "rate" in lowered or "429" in lowered:
@@ -34,10 +38,6 @@ def _code_from_message(*, error_type: str, lowered: str) -> str:
         return "provider_not_found"
     if "json" in lowered and ("decode" in lowered or "parse" in lowered):
         return "invalid_model_response"
-    if error_type in {"FileNotFoundError"}:
-        return "artifact_missing"
-    if error_type in {"ValueError", "TypeError"}:
-        return "invalid_request"
     return "internal_error"
 
 
