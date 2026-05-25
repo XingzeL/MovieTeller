@@ -24,6 +24,12 @@ from typing import Any, Callable
 from movieteller_logging import classify_error, emit_event
 from movieteller_logging import events as log_events
 from movie_pipeline.pipeline import run_pipeline_ctx
+from movie_pipeline.resume_policy import (
+    FramePoolPolicy,
+    SubtitleContextPolicy,
+    SubtitleExtractionPolicy,
+    VideoPackagePolicy,
+)
 from movie_pipeline.runtime_context import RunContext
 from movie_pipeline.types import ArtifactPaths, ResolvedExecutionConfig
 from movie_pipeline.workflow_artifacts import (
@@ -61,9 +67,13 @@ def stage_subtitle_extraction(
     source_video = Path(paths.source_video)
     try:
         subtitle_check = check_subtitle_srt(srt_path)
-        needs_extract = execution.force_rebuild_subtitles or not subtitle_check.reusable
-        status = "run" if execution.extract_subtitles and needs_extract else "skipped"
-        if execution.extract_subtitles and needs_extract:
+        sub_policy = SubtitleExtractionPolicy.resolve(
+            extract_subtitles=execution.extract_subtitles,
+            force_rebuild_subtitles=execution.force_rebuild_subtitles,
+            check=subtitle_check,
+        )
+        status = sub_policy.log_status
+        if sub_policy.run_extract:
             so = execution.subtitle_extraction_options or resolved_settings.subtitle_extraction_options()
             extract_subtitles(
                 str(source_video),
@@ -73,7 +83,7 @@ def stage_subtitle_extraction(
                 language=so.language,
                 timeout_sec=so.timeout_sec,
             )
-        elif not subtitle_check.reusable:
+        elif sub_policy.artifact_missing:
             raise FileNotFoundError(
                 f"Reusable subtitle file not found and extraction disabled: {srt_path}"
             )
@@ -100,9 +110,13 @@ def stage_frame_pool(
     manifest = Path(paths.frame_pool_manifest)
     try:
         manifest_check = check_frame_pool_manifest(manifest)
-        needs_rebuild = execution.force_rebuild_frame_pool or not manifest_check.reusable
-        status = "run" if execution.build_frame_pool and needs_rebuild else "skipped"
-        if execution.build_frame_pool and needs_rebuild:
+        pool_policy = FramePoolPolicy.resolve(
+            build_frame_pool=execution.build_frame_pool,
+            force_rebuild_frame_pool=execution.force_rebuild_frame_pool,
+            check=manifest_check,
+        )
+        status = pool_policy.log_status
+        if pool_policy.run_build:
             fo = execution.frame_pool_build_options or resolved_settings.frame_pool_build_options()
             build_frame_pool(
                 video_path=paths.source_video,
@@ -142,9 +156,12 @@ def stage_subtitle_context(
             )
             return None
         context_check = check_subtitle_context_index(subtitle_context_dir)
-        needs_rebuild = execution.force_rebuild_subtitle_context or not context_check.reusable
-        status = "run" if needs_rebuild else "skipped"
-        if needs_rebuild:
+        ctx_policy = SubtitleContextPolicy.resolve(
+            force_rebuild_subtitle_context=execution.force_rebuild_subtitle_context,
+            check=context_check,
+        )
+        status = ctx_policy.log_status
+        if ctx_policy.run_build:
             build_subtitle_context_index(
                 srt_path=paths.srt_path,
                 output_dir=str(subtitle_context_dir),
@@ -215,12 +232,15 @@ def stage_video_package(
     start = time.perf_counter()
     emit_event(log_events.VIDEO_PACKAGE_START, stage="video_package")
     try:
-        if not execution.enable_embed_video:
+        video_policy = VideoPackagePolicy.resolve(
+            enable_embed_video=execution.enable_embed_video,
+        )
+        if not video_policy.run_render:
             emit_event(
                 log_events.VIDEO_PACKAGE_DONE,
                 stage="video_package",
                 duration_ms=int((time.perf_counter() - start) * 1000),
-                status="skipped",
+                status=video_policy.log_status,
             )
             return payload
         output_path = (paths.embed_output_path or "").strip()
@@ -238,7 +258,7 @@ def stage_video_package(
             log_events.VIDEO_PACKAGE_DONE,
             stage="video_package",
             duration_ms=int((time.perf_counter() - start) * 1000),
-            status="run",
+            status=video_policy.log_status,
             x_video_output_path=output_path,
         )
         return out
