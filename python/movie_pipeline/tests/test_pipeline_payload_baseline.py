@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from frame_source import FrameSourceOptions
 from movie_pipeline import (
     NarrationPipelineConfig,
+    NarratedSegment,
     parse_pipeline_render_dict,
     parse_pipeline_speech_dict,
     parse_pipeline_text_dict,
@@ -16,6 +17,15 @@ from movie_pipeline import (
     run_pipeline_ctx,
 )
 from movie_pipeline.payload_schema import validate_workflow_artifacts_dict
+from movie_pipeline.payload_schema import (
+    narrated_segment_to_payload,
+    pipeline_render_payload_from_dict,
+    pipeline_speech_payload_from_dict,
+    pipeline_text_payload_from_dict,
+    serialize_pipeline_render_payload,
+    serialize_pipeline_speech_payload,
+    serialize_pipeline_text_payload,
+)
 from movie_pipeline.runtime_context import RunContext
 from movieteller_config.schema import settings_from_dict
 
@@ -299,6 +309,102 @@ def test_parse_workflow_payload_dict_accepts_workflow_artifacts_overlay():
 
     assert parsed["workflowArtifacts"]["videoPath"] == "demo.mp4"
     assert parsed["subtitleMerge"]["outputSrtPath"] == "final.srt"
+
+
+def test_pipeline_payload_subset_helpers_strip_workflow_fields():
+    payload = {
+        "videoDurationSec": 1.0,
+        "subtitleSpans": [],
+        "rawGaps": [],
+        "narrationCandidates": [],
+        "narratedSegments": [
+            {
+                "startSec": 0.0,
+                "endSec": 1.0,
+                "durationSec": 1.0,
+                "text": "x",
+                "speechText": "x",
+                "prevSubtitleText": None,
+                "nextSubtitleText": None,
+                "studyCard": None,
+                "polish": None,
+                "speech": {
+                    "text": "x",
+                    "audioPath": "x.mp3",
+                    "metadataPath": None,
+                    "segmentDurationSec": 1.0,
+                    "targetDurationSec": 1.0,
+                    "rawDurationSec": 1.0,
+                    "audioDurationSec": 1.0,
+                    "durationDeltaSec": 0.0,
+                    "provider": "test",
+                    "voice": "v",
+                    "rate": "+0%",
+                    "volume": "+0%",
+                    "pitch": "+0Hz",
+                    "boundary": "SentenceBoundary",
+                    "fitApplied": False,
+                    "fitsDuration": True,
+                    "timingTtsSec": None,
+                    "timingFitSec": None,
+                },
+                "timingExtractSec": None,
+                "timingApiSec": None,
+                "timingTotalSec": None,
+                "frameCount": None,
+            }
+        ],
+        "speechOutputDir": "audio",
+        "subtitleContextIndexDir": None,
+        "renderedVideo": {"videoPath": "in.mp4", "outputPath": "out.mp4"},
+        "workflowArtifacts": {
+            "videoPath": "demo.mp4",
+            "srtPath": "demo.srt",
+            "framePoolManifest": None,
+            "subtitleContextIndexDir": None,
+            "outputRoot": "/tmp/out",
+        },
+    }
+
+    text_payload = pipeline_text_payload_from_dict(payload)
+    speech_payload = pipeline_speech_payload_from_dict(payload)
+    render_payload = pipeline_render_payload_from_dict(payload)
+
+    assert "workflowArtifacts" not in text_payload
+    assert "renderedVideo" not in text_payload
+    assert "workflowArtifacts" not in speech_payload
+    assert "renderedVideo" not in speech_payload
+    assert "workflowArtifacts" not in render_payload
+    assert render_payload["renderedVideo"]["outputPath"] == "out.mp4"
+
+    assert "workflowArtifacts" not in serialize_pipeline_text_payload(payload)
+    assert "workflowArtifacts" not in serialize_pipeline_speech_payload(payload)
+    assert "workflowArtifacts" not in serialize_pipeline_render_payload(payload)
+
+
+def test_narrated_segment_to_payload_is_the_segment_bridge():
+    segment = NarratedSegment(
+        start_sec=0.0,
+        end_sec=1.25,
+        narration_text="raw narration",
+        prev_subtitle_text=None,
+        next_subtitle_text="next",
+        speech_text="final narration",
+        timing_extract_sec=0.1,
+        timing_api_sec=0.2,
+        timing_total_sec=0.3,
+        frame_count=4,
+    )
+
+    payload = narrated_segment_to_payload(segment)
+
+    assert payload["startSec"] == 0.0
+    assert payload["endSec"] == 1.25
+    assert payload["durationSec"] == 1.25
+    assert payload["text"] == "raw narration"
+    assert payload["speechText"] == "final narration"
+    assert payload["nextSubtitleText"] == "next"
+    assert payload["frameCount"] == 4
 
 
 def test_validate_workflow_artifacts_dict_rejects_unknown_keys():

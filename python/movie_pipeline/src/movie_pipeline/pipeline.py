@@ -23,6 +23,7 @@ from pipeline_types import NarrationCandidate, NarrationContext
 from narration.narrate import narrate_segment_with_duration
 from narration_polish import generate_vocab_study_card
 
+from movie_pipeline.payload_schema import narrated_segment_to_payload
 from movie_pipeline.runtime_context import RunContext
 from movie_pipeline.stage_executor import CapabilityLimiters, StageExecutor
 from movie_pipeline.types import (
@@ -438,74 +439,7 @@ def _segments_to_payload(
     subtitle_context_index_dir: str | None,
 ) -> dict[str, object]:
     payload = result_to_dict(analysis)
-    payload["narratedSegments"] = [
-        {
-            "startSec": seg.start_sec,
-            "endSec": seg.end_sec,
-            "durationSec": seg.duration_sec,
-            "text": seg.narration_text,
-            "speechText": seg.final_text,
-            "prevSubtitleText": seg.prev_subtitle_text,
-            "nextSubtitleText": seg.next_subtitle_text,
-            "studyCard": (
-                {"vocab": seg.vocab_study_card}
-                if seg.vocab_study_card is not None
-                else None
-            ),
-            "polish": (
-                {
-                    "text": seg.polish.text,
-                    "segmentDurationSec": seg.polish.segment_duration_sec,
-                    "targetDurationSec": seg.polish.target_duration_sec,
-                    "safetyMarginSec": seg.polish.safety_margin_sec,
-                    "speakingRateWpm": seg.polish.speaking_rate_wpm,
-                    "targetWordCount": seg.polish.target_word_count,
-                    "originalWordCount": seg.polish.original_word_count,
-                    "polishedWordCount": seg.polish.polished_word_count,
-                    "estimatedOriginalDurationSec": seg.polish.estimated_original_duration_sec,
-                    "estimatedPolishedDurationSec": seg.polish.estimated_polished_duration_sec,
-                    "cefrLevel": seg.polish.cefr_level,
-                    "strength": seg.polish.strength,
-                    "provider": seg.polish.provider,
-                    "model": seg.polish.model,
-                    "fitsDuration": seg.polish.fits_duration,
-                    "timingApiSec": seg.polish.timing_api_sec,
-                    "sceneTitleZh": seg.polish.scene_title_zh,
-                }
-                if seg.polish is not None
-                else None
-            ),
-            "speech": (
-                {
-                    "text": seg.speech.text,
-                    "audioPath": seg.speech.audio_path,
-                    "metadataPath": seg.speech.metadata_path,
-                    "segmentDurationSec": seg.speech.segment_duration_sec,
-                    "targetDurationSec": seg.speech.target_duration_sec,
-                    "rawDurationSec": seg.speech.raw_duration_sec,
-                    "audioDurationSec": seg.speech.audio_duration_sec,
-                    "durationDeltaSec": seg.speech.duration_delta_sec,
-                    "provider": seg.speech.provider,
-                    "voice": seg.speech.voice,
-                    "rate": seg.speech.rate,
-                    "volume": seg.speech.volume,
-                    "pitch": seg.speech.pitch,
-                    "boundary": seg.speech.boundary,
-                    "fitApplied": seg.speech.fit_applied,
-                    "fitsDuration": seg.speech.fits_duration,
-                    "timingTtsSec": seg.speech.timing_tts_sec,
-                    "timingFitSec": seg.speech.timing_fit_sec,
-                }
-                if seg.speech is not None
-                else None
-            ),
-            "timingExtractSec": seg.timing_extract_sec,
-            "timingApiSec": seg.timing_api_sec,
-            "timingTotalSec": seg.timing_total_sec,
-            "frameCount": seg.frame_count,
-        }
-        for seg in narrated_segments
-    ]
+    payload["narratedSegments"] = [narrated_segment_to_payload(seg) for seg in narrated_segments]
     payload["speechOutputDir"] = speech_output_dir
     payload["subtitleContextIndexDir"] = subtitle_context_index_dir
     return payload

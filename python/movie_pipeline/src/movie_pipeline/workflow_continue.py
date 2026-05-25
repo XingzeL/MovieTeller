@@ -7,9 +7,12 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from movie_pipeline.payload_schema import (
-    parse_pipeline_speech_dict,
-    parse_pipeline_text_dict,
+    pipeline_speech_payload_from_dict,
+    pipeline_text_payload_from_dict,
+    rendered_video_to_payload,
+    speech_details_to_payload,
 )
+from movie_pipeline.types import NarrationSpeechDetails
 from narration_video import render_narrated_video
 from narration_speech import synthesize_narration_text
 from pipeline_types import NarrationAudioSegment
@@ -31,7 +34,7 @@ def synthesize_speech_from_text_payload(
     settings: Any,
 ) -> dict[str, Any]:
     """Deep-copy payload then add ``speech`` per segment and ``speechOutputDir``."""
-    out = deep_copy_payload(parse_pipeline_text_dict(dict(payload)))
+    out = deep_copy_payload(pipeline_text_payload_from_dict(dict(payload)))
     narrated_segments = out.get("narratedSegments")
     if not isinstance(narrated_segments, list) or not narrated_segments:
         raise ValueError("No narratedSegments found in payload")
@@ -67,26 +70,34 @@ def synthesize_speech_from_text_payload(
             options=speech_options,
             settings=settings,
         )
-        seg["speech"] = {
-            "text": result.text,
-            "audioPath": result.audio_path,
-            "metadataPath": result.metadata_path,
-            "segmentDurationSec": result.segment_duration_sec,
-            "targetDurationSec": result.target_duration_sec,
-            "rawDurationSec": result.raw_duration_sec,
-            "audioDurationSec": result.audio_duration_sec,
-            "durationDeltaSec": result.duration_delta_sec,
-            "fitsDuration": result.fits_duration,
-            "provider": result.provider,
-            "voice": result.voice,
-            "rate": result.rate,
-            "volume": result.volume,
-            "pitch": result.pitch,
-            "boundary": result.boundary,
-            "fitApplied": result.fit_applied,
-            "timingTtsSec": result.timing_tts_sec,
-            "timingFitSec": result.timing_fit_sec,
-        }
+        seg["speech"] = speech_details_to_payload(
+            NarrationSpeechDetails(
+                text=str(result.text),
+                audio_path=str(result.audio_path),
+                metadata_path=result.metadata_path,
+                segment_duration_sec=float(result.segment_duration_sec),
+                target_duration_sec=float(result.target_duration_sec),
+                raw_duration_sec=float(result.raw_duration_sec),
+                audio_duration_sec=float(result.audio_duration_sec),
+                provider=str(result.provider),
+                voice=str(result.voice),
+                rate=str(result.rate),
+                volume=str(result.volume),
+                pitch=str(result.pitch),
+                boundary=str(result.boundary),
+                fit_applied=bool(result.fit_applied),
+                timing_tts_sec=(
+                    float(result.timing_tts_sec)
+                    if result.timing_tts_sec is not None
+                    else None
+                ),
+                timing_fit_sec=(
+                    float(result.timing_fit_sec)
+                    if result.timing_fit_sec is not None
+                    else None
+                ),
+            )
+        )
 
     out["speechOutputDir"] = str(audio_output_dir)
     return out
@@ -102,7 +113,7 @@ def render_video_from_narration_payload(
     video_renderer: Any | None = None,
 ) -> dict[str, Any]:
     """Mix narration audio into video; set ``renderedVideo`` on a deep-copied payload."""
-    out = deep_copy_payload(parse_pipeline_speech_dict(dict(payload)))
+    out = deep_copy_payload(pipeline_speech_payload_from_dict(dict(payload)))
     narrated_segments = out.get("narratedSegments")
     if not isinstance(narrated_segments, list) or not narrated_segments:
         raise ValueError("No narratedSegments found in payload")
@@ -134,18 +145,5 @@ def render_video_from_narration_payload(
         options=settings.narration_video_options(),
         settings=settings,
     )
-    out["renderedVideo"] = {
-        "videoPath": str(render_result.video_path),
-        "outputPath": str(render_result.output_path),
-        "segmentCount": int(render_result.segment_count),
-        "videoDurationSec": float(render_result.video_duration_sec),
-        "backgroundAudioVolume": float(render_result.background_audio_volume),
-        "speechAudioVolume": float(render_result.speech_audio_volume),
-        "subtitleSrtPath": render_result.subtitle_srt_path,
-        "timingRenderSec": (
-            float(render_result.timing_render_sec)
-            if render_result.timing_render_sec is not None
-            else None
-        ),
-    }
+    out["renderedVideo"] = rendered_video_to_payload(render_result)
     return out
