@@ -169,6 +169,22 @@ def shutdown_async_logging() -> None:
     _enabled = False
 
 
+def flush_async_logging() -> None:
+    """Flush queued log records without changing logger handlers."""
+    global _queue, _listener
+    if _listener is None:
+        return
+    _listener.stop()
+    _listener = None
+    if _queue is not None and _handlers:
+        _listener = logging.handlers.QueueListener(
+            _queue,
+            *_handlers,
+            respect_handler_level=True,
+        )
+        _listener.start()
+
+
 def emit_event(event: str, level: int = logging.INFO, **fields: Any) -> None:
     """Enqueue one structured log line (merged with pipeline context). No-op if disabled."""
     if not _enabled or _root is None:

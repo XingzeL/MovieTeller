@@ -167,6 +167,7 @@ class WorkflowArtifacts:
     final_srt_path: str | None = None
     study_cards_html_path: str | None = None
     study_cards_html_error: str | None = None
+    artifact_manifest_path: str | None = None
 
     def to_payload_dict(self) -> dict[str, Any]:
         return {
@@ -181,6 +182,7 @@ class WorkflowArtifacts:
             "finalSrtPath": self.final_srt_path,
             "studyCardsHtmlPath": self.study_cards_html_path,
             "studyCardsHtmlError": self.study_cards_html_error,
+            "artifactManifestPath": self.artifact_manifest_path,
         }
 
 
@@ -197,6 +199,7 @@ def workflow_artifacts_from_payload(data: dict[str, Any]) -> WorkflowArtifacts:
         final_srt_path=_optional_str(data.get("finalSrtPath")),
         study_cards_html_path=_optional_str(data.get("studyCardsHtmlPath")),
         study_cards_html_error=_optional_str(data.get("studyCardsHtmlError")),
+        artifact_manifest_path=_optional_str(data.get("artifactManifestPath")),
     )
 
 

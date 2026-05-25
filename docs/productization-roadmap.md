@@ -207,8 +207,8 @@ Resume 规则：
 
 任务清单：
 
-- 为每个 stage 定义输入、输出、校验函数。
-- 建立 stage artifact manifest。
+- 为每个 stage 定义输入、输出、校验函数。已开始落地为 `movie_pipeline.workflow_artifacts`，集中校验字幕、frame pool manifest、subtitle context index 是否可复用。
+- 建立 stage artifact manifest。已落地第一版 `{stem}.artifact_manifest.json`，记录 subtitle/frame_pool/subtitle_context 的输入输出校验结果，并通过 `workflowArtifacts.artifactManifestPath` 暴露。
 - 实现 `resume_policy`，默认优先复用已存在且校验通过的 artifact。
 - 对 segment 级产物实现局部恢复，尤其是 TTS 和 study enrichment。
 - 将 payload schema 和 artifact schema 分开，避免一个大 dict 贯穿所有阶段。

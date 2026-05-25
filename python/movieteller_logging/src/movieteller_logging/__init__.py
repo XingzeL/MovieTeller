@@ -14,6 +14,7 @@ from movieteller_logging.reader import EventPage, read_jsonl_events, tail_jsonl_
 from movieteller_logging.runtime import (
     configure_async_logging,
     emit_event,
+    flush_async_logging,
     shutdown_async_logging,
 )
 
@@ -22,6 +23,7 @@ __all__ = [
     "classify_error",
     "configure_async_logging",
     "emit_event",
+    "flush_async_logging",
     "events",
     "EventPage",
     "JobProgress",

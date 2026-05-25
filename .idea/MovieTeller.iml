@@ -25,6 +25,7 @@
       <sourceFolder url="file://$MODULE_DIR$/python/subtitle_extraction" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/python/subtitle_extraction/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/python/video_frame_pool/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/python/movieteller_logging/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/python/movie_pipeline/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/python/narration_polish/.venv" />

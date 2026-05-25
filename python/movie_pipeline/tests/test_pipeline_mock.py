@@ -424,6 +424,11 @@ def test_run_full_workflow_accepts_resolved_context(tmp_path):
     assert captured["video_path"] == str(video)
     assert captured["frame_pool_manifest"] == str(pool_dir / "manifest.jsonl")
     artifacts = payload["workflowArtifacts"]
+    assert artifacts.get("artifactManifestPath")
+    artifact_manifest = json.loads(Path(artifacts["artifactManifestPath"]).read_text(encoding="utf-8"))
+    assert artifact_manifest["stages"]["subtitle_extraction"]["outputs"]["srt"]["reusable"] is True
+    assert artifact_manifest["stages"]["frame_pool"]["outputs"]["manifest"]["reusable"] is True
+    assert artifact_manifest["stages"]["subtitle_context"]["outputs"]["index"]["reusable"] is True
     assert artifacts.get("studyCardsHtmlPath")
     assert Path(artifacts["studyCardsHtmlPath"]).name == "demo.study_cards.html"
     assert artifacts.get("studyCardsHtmlError") is None

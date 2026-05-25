@@ -26,10 +26,14 @@ from movieteller_logging import events as log_events
 from movie_pipeline.pipeline import run_pipeline_ctx
 from movie_pipeline.runtime_context import RunContext
 from movie_pipeline.types import ArtifactPaths, ResolvedExecutionConfig
+from movie_pipeline.workflow_artifacts import (
+    check_frame_pool_manifest,
+    check_subtitle_context_index,
+    check_subtitle_srt,
+)
 from movie_pipeline.workflow_continue import render_video_from_narration_payload
 from movieteller_config.schema import Settings
 from subtitle_context import build_subtitle_context_index
-from subtitle_context.index import subtitle_context_index_is_complete
 from subtitle_extraction import extract_subtitles
 from video_frame_pool import build_frame_pool
 
@@ -56,7 +60,8 @@ def stage_subtitle_extraction(
     srt_path = Path(paths.srt_path)
     source_video = Path(paths.source_video)
     try:
-        needs_extract = execution.force_rebuild_subtitles or not srt_path.is_file()
+        subtitle_check = check_subtitle_srt(srt_path)
+        needs_extract = execution.force_rebuild_subtitles or not subtitle_check.reusable
         status = "run" if execution.extract_subtitles and needs_extract else "skipped"
         if execution.extract_subtitles and needs_extract:
             so = execution.subtitle_extraction_options or resolved_settings.subtitle_extraction_options()
@@ -68,9 +73,9 @@ def stage_subtitle_extraction(
                 language=so.language,
                 timeout_sec=so.timeout_sec,
             )
-        elif not srt_path.is_file():
+        elif not subtitle_check.reusable:
             raise FileNotFoundError(
-                f"Subtitle file not found and extraction disabled: {srt_path}"
+                f"Reusable subtitle file not found and extraction disabled: {srt_path}"
             )
         emit_event(
             log_events.SUBTITLE_EXTRACTION_DONE,
@@ -94,7 +99,8 @@ def stage_frame_pool(
     emit_event(log_events.FRAME_POOL_START, stage="frame_pool")
     manifest = Path(paths.frame_pool_manifest)
     try:
-        needs_rebuild = execution.force_rebuild_frame_pool or not manifest.is_file()
+        manifest_check = check_frame_pool_manifest(manifest)
+        needs_rebuild = execution.force_rebuild_frame_pool or not manifest_check.reusable
         status = "run" if execution.build_frame_pool and needs_rebuild else "skipped"
         if execution.build_frame_pool and needs_rebuild:
             fo = execution.frame_pool_build_options or resolved_settings.frame_pool_build_options()
@@ -135,10 +141,8 @@ def stage_subtitle_context(
                 status="skipped",
             )
             return None
-        needs_rebuild = (
-            execution.force_rebuild_subtitle_context
-            or not subtitle_context_index_is_complete(subtitle_context_dir)
-        )
+        context_check = check_subtitle_context_index(subtitle_context_dir)
+        needs_rebuild = execution.force_rebuild_subtitle_context or not context_check.reusable
         status = "run" if needs_rebuild else "skipped"
         if needs_rebuild:
             build_subtitle_context_index(

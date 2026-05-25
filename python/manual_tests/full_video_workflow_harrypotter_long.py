@@ -29,11 +29,12 @@ from __future__ import annotations
 import json
 import os
 import sys
+import movieteller_logging
 from pathlib import Path
 
 
 VIDEO_PATH = "test_artifacts/harrypotter_smoke1.mp4"
-OUTPUT_ROOT = "test_artifacts/smoke8SyncA4"
+OUTPUT_ROOT = "test_artifacts/smoke8SyncA7"
 ENABLE_SPEECH_AND_VIDEO = False
 
 

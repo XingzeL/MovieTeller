@@ -142,6 +142,7 @@ class WorkflowArtifactsPayload(TypedDict, total=False):
     finalSrtPath: str | None
     studyCardsHtmlPath: str | None
     studyCardsHtmlError: str | None
+    artifactManifestPath: str | None
 
 
 class WorkflowPayload(TypedDict, total=False):
@@ -301,6 +302,14 @@ def parse_pipeline_text_dict(data: dict[str, Any]) -> PipelineTextPayload:
     return data  # type: ignore[return-value]
 
 
+def pipeline_text_payload_from_dict(data: dict[str, Any]) -> PipelineTextPayload:
+    """Return the text-stage subset from a pipeline or workflow payload."""
+    if not isinstance(data, dict):
+        raise ValueError("pipeline payload must be an object")
+    text_part = {k: v for k, v in data.items() if k in _TEXT_TOP_LEVEL_KEYS}
+    return parse_pipeline_text_dict(text_part)
+
+
 def parse_rendered_video_dict(data: dict[str, Any] | None) -> RenderedVideoPayload | None:
     if data is None:
         return None
@@ -361,7 +370,7 @@ def parse_pipeline_text_json_path(path: str | Path) -> PipelineTextPayload:
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError("pipeline JSON root must be an object")
-    return parse_pipeline_text_dict(raw)
+    return pipeline_text_payload_from_dict(raw)
 
 
 def parse_pipeline_speech_json_path(path: str | Path) -> PipelineSpeechPayload:
@@ -386,7 +395,7 @@ def parse_workflow_payload_json_path(path: str | Path) -> WorkflowPayload:
 
 
 def serialize_pipeline_text_payload(payload: PipelineTextPayload) -> str:
-    return json.dumps(payload, ensure_ascii=False, indent=2)
+    return json.dumps(pipeline_text_payload_from_dict(dict(payload)), ensure_ascii=False, indent=2)
 
 
 def serialize_pipeline_speech_payload(payload: PipelineSpeechPayload) -> str:

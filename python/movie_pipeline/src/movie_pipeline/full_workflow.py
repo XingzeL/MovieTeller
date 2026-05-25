@@ -11,6 +11,7 @@ from movieteller_logging import (
     classify_error,
     configure_async_logging,
     emit_event,
+    flush_async_logging,
     progress_from_jsonl,
     reset_pipeline_log_context,
     shutdown_async_logging,
@@ -26,6 +27,7 @@ from movie_pipeline.types import (
     WorkflowRequest,
 )
 from movie_pipeline.job import JobRecord, WorkflowArtifacts, write_job_record
+from movie_pipeline.workflow_artifacts import write_stage_artifact_manifest
 from movie_pipeline.workflow_stages import (
     stage_frame_pool,
     stage_narration_pipeline,
@@ -432,6 +434,7 @@ def run_full_workflow(
             payload=payload,
             video_renderer=video_renderer,
         )
+        artifact_manifest_path = write_stage_artifact_manifest(paths=paths)
         payload["workflowArtifacts"] = WorkflowArtifacts(
             video_path=paths.source_video,
             srt_path=paths.srt_path,
@@ -440,6 +443,7 @@ def run_full_workflow(
             ),
             subtitle_context_index_dir=subtitle_context_index_dir,
             output_root=str(output_root),
+            artifact_manifest_path=artifact_manifest_path,
         ).to_payload_dict()
         result = export_workflow_artifacts(
             payload=payload,
@@ -447,6 +451,7 @@ def run_full_workflow(
             output_root=output_root,
         )
         emit_event(log_events.WORKFLOW_DONE, status="ok")
+        flush_async_logging()
         _write_workflow_manifest(
             path=workflow_json_path,
             status="succeeded",
@@ -467,6 +472,7 @@ def run_full_workflow(
             fatal=True,
             **error_fields,
         )
+        flush_async_logging()
         _write_workflow_manifest(
             path=workflow_json_path,
             status="failed",

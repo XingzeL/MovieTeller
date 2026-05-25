@@ -156,6 +156,7 @@ def test_workflow_artifacts_round_trip_payload_dict() -> None:
         final_srt_path="final.srt",
         study_cards_html_path="cards.html",
         study_cards_html_error=None,
+        artifact_manifest_path="artifact_manifest.json",
     )
 
     payload = artifacts.to_payload_dict()
@@ -174,6 +175,7 @@ def test_workflow_artifacts_round_trip_payload_dict() -> None:
         "finalSrtPath": "final.srt",
         "studyCardsHtmlPath": "cards.html",
         "studyCardsHtmlError": None,
+        "artifactManifestPath": "artifact_manifest.json",
     }
 
 

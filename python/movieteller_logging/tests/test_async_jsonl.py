@@ -9,6 +9,7 @@ from movieteller_logging import (
     bind_pipeline_log_context,
     configure_async_logging,
     emit_event,
+    flush_async_logging,
     reset_pipeline_log_context,
     shutdown_async_logging,
 )
@@ -60,6 +61,29 @@ def test_emit_event_writes_jsonl_record(tmp_path: Path) -> None:
 def test_emit_event_noop_when_disabled() -> None:
     configure_async_logging(enabled=False)
     emit_event("should.not.crash", level=logging.WARNING)
+
+
+def test_flush_async_logging_makes_queued_record_readable(tmp_path: Path) -> None:
+    log_path = tmp_path / "flush.jsonl"
+    configure_async_logging(
+        enabled=True,
+        level="INFO",
+        format="jsonl",
+        stderr=False,
+        file=str(log_path),
+    )
+    try:
+        emit_event("flush.before", status="ok")
+        flush_async_logging()
+        rows = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+        assert [row["event"] for row in rows] == ["flush.before"]
+
+        emit_event("flush.after", status="ok")
+        shutdown_async_logging()
+        rows = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+        assert [row["event"] for row in rows] == ["flush.before", "flush.after"]
+    finally:
+        shutdown_async_logging()
 
 
 def test_emit_event_writes_all_threaded_records(tmp_path: Path) -> None:
