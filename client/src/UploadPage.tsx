@@ -3,7 +3,13 @@ import { UploadForm } from './components/UploadForm'
 import type { InputMode } from './components/UploadForm'
 import { LevelSelector } from './components/LevelSelector'
 import { ResultDisplay } from './components/ResultDisplay'
+import { WorkflowProgressBar } from './components/WorkflowProgressBar'
 import type { GenerateResponse, NarrationLevel } from './types'
+
+function workflowOutputRootFromUrl(): string | null {
+  const raw = new URLSearchParams(window.location.search).get('outputRoot')
+  return raw?.trim() ? raw.trim() : null
+}
 
 function canSubmit(
   mode: InputMode,
@@ -89,6 +95,7 @@ export default class UploadPage extends Component<object, UploadPageState> {
   render() {
     const { mode, url, file, levels, loading, error, results } = this.state
     const submitEnabled = this.submitEnabled
+    const workflowOutputRoot = workflowOutputRootFromUrl()
 
     return (
       <>
@@ -155,6 +162,13 @@ export default class UploadPage extends Component<object, UploadPageState> {
             <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
               {error}
             </p>
+          )}
+
+          {workflowOutputRoot && (
+            <WorkflowProgressBar
+              outputRoot={workflowOutputRoot}
+              active={loading}
+            />
           )}
         </div>
 

@@ -25,6 +25,7 @@ from narration_polish import generate_vocab_study_card
 
 from movie_pipeline.payload_schema import narrated_segment_to_payload
 from movie_pipeline.runtime_context import RunContext
+from movie_pipeline.cli_progress import CliProgressReporter, group_progress_callback
 from movie_pipeline.stage_executor import CapabilityLimiters, StageExecutor
 from movie_pipeline.types import (
     NarrationPipelineConfig,
@@ -87,6 +88,7 @@ def _retrieve_context_texts_for_segment(
 @dataclass(frozen=True)
 class _CandidateWorkItem:
     index: int
+    total: int
     candidate: NarrationCandidate
 
 
@@ -101,6 +103,7 @@ class _CandidateWorker:
     polisher: Callable[..., object] | None
     synthesizer: Callable[..., object] | None
     limiters: CapabilityLimiters
+    cli_progress: CliProgressReporter | None = None
 
     def run_candidate(self, item: _CandidateWorkItem) -> NarratedSegment:
         seg = item.candidate
@@ -122,6 +125,8 @@ class _CandidateWorker:
             polish_enabled = polish_options is not None
             speech_enabled = speech_options is not None
             timings: dict[str, Any] = {}
+            if self.cli_progress is not None:
+                self.cli_progress.segment_step(item.index, "context")
             with self.limiters.subtitle_context:
                 retrieved_context_texts = _retrieve_context_texts_for_segment(
                     subtitle_context_index_dir=self.subtitle_context_index_dir,
@@ -137,6 +142,8 @@ class _CandidateWorker:
                 next_subtitle_text=seg.next_subtitle_text,
                 retrieved_context_texts=retrieved_context_texts,
             )
+            if self.cli_progress is not None:
+                self.cli_progress.segment_step(item.index, "narration")
             with self.limiters.narration:
                 text, _duration = self.narrator(
                     self.video_path,
@@ -163,6 +170,8 @@ class _CandidateWorker:
             if polish_enabled:
                 if self.polisher is None:
                     raise RuntimeError("Narration polisher is not available")
+                if self.cli_progress is not None:
+                    self.cli_progress.segment_step(item.index, "polish")
                 with self.limiters.polish:
                     polished = self.polisher(
                         text,
@@ -213,6 +222,8 @@ class _CandidateWorker:
                     model=polish_details.model,
                     status="ok",
                 )
+                if self.cli_progress is not None:
+                    self.cli_progress.segment_step(item.index, "study")
                 with self.limiters.study_enrichment:
                     raw_vocab, _vocab_timing_sec = generate_vocab_study_card(
                         text,
@@ -245,6 +256,14 @@ class _CandidateWorker:
                     polish_details.target_duration_sec
                     if polish_details is not None
                     else seg.duration_sec
+                )
+                if self.cli_progress is not None:
+                    self.cli_progress.tts_begin(item.index, item.total)
+                emit_event(
+                    log_events.SEGMENT_TTS_START,
+                    stage="tts",
+                    capability="tts",
+                    status="ok",
                 )
                 with self.limiters.tts:
                     spoken = self.synthesizer(
@@ -284,11 +303,13 @@ class _CandidateWorker:
                 )
                 emit_event(
                     log_events.SEGMENT_TTS_DONE,
-                    stage="narration",
+                    stage="tts",
                     capability="tts",
                     provider=speech_details.provider,
                     status="ok",
                 )
+                if self.cli_progress is not None:
+                    self.cli_progress.tts_done(item.index, item.total)
             narrated = NarratedSegment(
                 start_sec=seg.start_sec,
                 end_sec=seg.end_sec,
@@ -333,7 +354,7 @@ def _group_candidate_work(
 ) -> tuple[tuple[_CandidateWorkItem, ...], ...]:
     size = max(1, int(group_size))
     items = tuple(
-        _CandidateWorkItem(index=index, candidate=candidate)
+        _CandidateWorkItem(index=index, total=len(candidates), candidate=candidate)
         for index, candidate in enumerate(candidates, start=1)
     )
     return tuple(items[index : index + size] for index in range(0, len(items), size))
@@ -365,6 +386,7 @@ def narrate_analysis_candidates(
     polisher: Callable[..., object] | None = None,
     synthesizer: Callable[..., object] | None = None,
     job_id: str | None = None,
+    cli_progress: CliProgressReporter | None = None,
 ) -> tuple[NarratedSegment, ...]:
     """Narrate all analysis candidates using a single :class:`RunContext` (no separate settings/options)."""
     settings = ctx.settings
@@ -419,12 +441,14 @@ def narrate_analysis_candidates(
             polisher=call_polisher,
             synthesizer=call_synthesizer,
             limiters=CapabilityLimiters.from_options(settings.capability_concurrency_options()),
+            cli_progress=cli_progress,
         )
         group_results = StageExecutor().map_ordered(
             groups,
             lambda group: _run_candidate_group(group, worker=worker),
             concurrency=parallelism.segment_group_concurrency,
             stage_name="narration_group",
+            progress=group_progress_callback(cli_progress),
         )
         return tuple(segment for group in group_results for segment in group)
     finally:
@@ -457,6 +481,7 @@ def run_pipeline_ctx(
     polisher: Callable[..., object] | None = None,
     synthesizer: Callable[..., object] | None = None,
     job_id: str | None = None,
+    cli_progress: CliProgressReporter | None = None,
 ) -> dict[str, object]:
     """Run the text/speech narration pipeline using a single :class:`RunContext`."""
     pipeline_config = ctx.pipeline
@@ -511,6 +536,7 @@ def run_pipeline_ctx(
         polisher=polisher,
         synthesizer=synthesizer,
         job_id=job_id,
+        cli_progress=cli_progress,
     )
     payload = _segments_to_payload(
         analysis=analysis,

@@ -5,6 +5,15 @@ from movieteller_logging.context import (
 )
 from movieteller_logging import events
 from movieteller_logging.errors import classify_error
+from movieteller_logging.overall_progress import overall_progress
+from movieteller_logging.stage_registry import (
+    MacroStage,
+    macro_label,
+    macro_stage_ids,
+    macro_weights,
+    resolve_macro,
+    stage_label,
+)
 from movieteller_logging.progress import (
     JobProgress,
     progress_from_events,
@@ -27,7 +36,14 @@ __all__ = [
     "events",
     "EventPage",
     "JobProgress",
+    "MacroStage",
     "merge_pipeline_context",
+    "macro_label",
+    "macro_stage_ids",
+    "macro_weights",
+    "overall_progress",
+    "resolve_macro",
+    "stage_label",
     "progress_from_events",
     "progress_from_jsonl",
     "read_jsonl_events",

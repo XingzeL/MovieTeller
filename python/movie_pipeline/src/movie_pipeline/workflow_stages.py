@@ -5,7 +5,7 @@ Stages (product order; see :func:`run_full_workflow`):
 1. **subtitle_extraction** — ``{stem}.extracted.srt``
 2. **frame_pool** — ``{stem}.frame_pool/manifest.jsonl``
 3. **subtitle_context** — ``{stem}.subtitle_context`` (optional)
-4. **narration_pipeline** — analysis + narration (+ optional TTS) via :func:`run_pipeline_ctx`
+4. **narration** — analysis + narration (+ optional TTS) via :func:`run_pipeline_ctx`
 5. **video_package** — mux when ``enable_embed_video``
 
 **Resume:** each stage skips work when its primary artifact already exists and the
@@ -23,6 +23,7 @@ from typing import Any, Callable
 
 from movieteller_logging import classify_error, emit_event
 from movieteller_logging import events as log_events
+from movie_pipeline.cli_progress import CliProgressReporter
 from movie_pipeline.pipeline import run_pipeline_ctx
 from movie_pipeline.resume_policy import (
     FramePoolPolicy,
@@ -191,6 +192,7 @@ def stage_narration_pipeline(
     narrator: Callable[..., Any] | None = None,
     polisher: Callable[..., Any] | None = None,
     synthesizer: Callable[..., Any] | None = None,
+    cli_progress: CliProgressReporter | None = None,
 ) -> dict[str, Any]:
     pipeline_config = replace(
         execution.pipeline,
@@ -218,6 +220,7 @@ def stage_narration_pipeline(
         polisher=polisher,
         synthesizer=synthesizer,
         job_id=job_id,
+        cli_progress=cli_progress,
     )
 
 

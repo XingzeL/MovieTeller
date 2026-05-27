@@ -6,6 +6,7 @@ from typing import Any, Iterable, Mapping
 
 from movieteller_logging import events
 from movieteller_logging.reader import read_jsonl_events
+from movieteller_logging.stage_registry import macro_index, resolve_macro
 
 
 @dataclass(frozen=True)
@@ -54,7 +55,10 @@ def progress_from_events(raw_events: Iterable[Mapping[str, Any]]) -> JobProgress
         last_event = event
         job_id = _str_or_none(row.get("job_id")) or job_id
         stage = _str_or_none(row.get("stage"))
-        if stage:
+        if stage and (
+            event in {events.WORKFLOW_DONE, events.WORKFLOW_FAILED}
+            or _should_update_current_stage(current_stage, stage)
+        ):
             current_stage = stage
 
         level = _str_or_none(row.get("level"))
@@ -132,6 +136,14 @@ def _compact_issue(row: Mapping[str, Any]) -> dict[str, Any]:
         if value is not None:
             out[key] = value
     return out
+
+
+def _should_update_current_stage(current_stage: str | None, next_stage: str) -> bool:
+    current_macro = resolve_macro(current_stage)
+    next_macro = resolve_macro(next_stage)
+    if current_macro is None or next_macro is None:
+        return True
+    return macro_index(next_macro) >= macro_index(current_macro)
 
 
 def _collect_artifact_fields(row: Mapping[str, Any], artifacts: dict[str, Any]) -> None:

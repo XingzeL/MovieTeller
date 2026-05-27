@@ -34,8 +34,8 @@ from pathlib import Path
 
 
 VIDEO_PATH = "test_artifacts/harrypotter_smoke1.mp4"
-OUTPUT_ROOT = "test_artifacts/smoke8SyncA7"
-ENABLE_SPEECH_AND_VIDEO = False
+OUTPUT_ROOT = "test_artifacts/smoke8SyncAAudio5"
+ENABLE_SPEECH_AND_VIDEO = True
 
 
 def _repo_root() -> Path:
@@ -148,6 +148,8 @@ def _build_text_stage_context(*, video_path: Path, output_root: Path, settings):
 
 def main() -> int:
     _ensure_paths()
+    # Show stdout progress even when the IDE runner does not attach a TTY to stderr.
+    os.environ.setdefault("MOVIETELLER_FORCE_PROGRESS", "1")
 
     from movie_pipeline.full_workflow import run_full_workflow
     from movie_pipeline.payload_schema import (
@@ -160,6 +162,7 @@ def main() -> int:
         render_video_from_narration_payload,
         synthesize_speech_from_text_payload,
     )
+    from movie_pipeline.cli_progress import CliProgressReporter
     from movieteller_config import load_settings
 
     root = _repo_root()
@@ -251,12 +254,18 @@ def main() -> int:
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return 0
 
+    cli_progress = CliProgressReporter.enabled()
     try: # 另一条路线：合成音频到视频中
+        if cli_progress is not None:
+            cli_progress.workflow_begin("tts")
         speech_payload = synthesize_speech_from_text_payload( # 文生音频，指定音频输出路径
             payload=dict(text_payload),
             audio_output_dir=output_root / f"{stem}.narration_audio",
             settings=settings,
+            cli_progress=cli_progress,
         )
+        if cli_progress is not None:
+            cli_progress.workflow_step_done("tts")
         speech_json_path = output_root / f"{stem}.manual.pipeline.speech.json"
         speech_json_path.write_text(  # 将音频合成结果写入JSON文件
             serialize_pipeline_speech_payload(speech_payload),
@@ -276,6 +285,8 @@ def main() -> int:
             "insertedCueCount": subtitle_result.inserted_cue_count,
             "totalCueCount": subtitle_result.total_cue_count,
         }
+        if cli_progress is not None:
+            cli_progress.workflow_begin("video_package")
         final_payload = render_video_from_narration_payload( # 将音频文件渲染进入视频合成解说声道视频
             payload=speech_payload,
             video_path=video_path,
@@ -283,6 +294,8 @@ def main() -> int:
             subtitle_srt_path=final_srt_path,
             settings=settings,
         )
+        if cli_progress is not None:
+            cli_progress.workflow_step_done("video_package")
     except Exception as exc:
         print(
             json.dumps(
@@ -302,6 +315,9 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
+    finally:
+        if cli_progress is not None:
+            cli_progress.close()
 
     render_json_path = output_root / f"{stem}.manual.pipeline.render.json"
     render_json_path.write_text(

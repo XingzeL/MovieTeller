@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from movieteller_logging import progress_from_jsonl
+from movieteller_logging import overall_progress, progress_from_jsonl
 
 from movie_pipeline.job import JobRecord, write_job_record
 
@@ -22,7 +22,12 @@ def write_workflow_manifest(
     artifacts: dict[str, Any] | None = None,
     error: dict[str, Any] | None = None,
 ) -> None:
-    progress = progress_from_jsonl(log_path).to_dict() if log_path else {}
+    if log_path:
+        job_progress = progress_from_jsonl(log_path)
+        progress = job_progress.to_dict()
+        progress["overall"] = overall_progress(job_progress)
+    else:
+        progress = {}
     record = JobRecord(
         job_id=job_id,
         status=status,  # type: ignore[arg-type]

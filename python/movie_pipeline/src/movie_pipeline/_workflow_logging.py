@@ -22,15 +22,17 @@ def configure_workflow_log_file(
     settings: Settings,
     job_id: str,
     output_root: Path,
+    log_to_stderr: bool | None = None,
 ) -> str | None:
     """Start async JSONL logging; return log file path when enabled."""
     log_opts = settings.pipeline_logging_options()
     log_file = log_opts.file or str(output_root / "logs" / "workflow.jsonl")
+    stderr = log_opts.stderr if log_to_stderr is None else log_to_stderr
     configure_async_logging(
         enabled=log_opts.enabled,
         level=log_opts.level,
         format=log_opts.format,
-        stderr=log_opts.stderr,
+        stderr=stderr,
         file=log_file,
     )
     if log_opts.enabled:
@@ -54,11 +56,13 @@ class WorkflowLogSession:
         job_id: str,
         output_root: Path,
         video_path: str,
+        log_to_stderr: bool | None = None,
     ) -> None:
         self.settings = settings
         self.job_id = job_id
         self.output_root = output_root
         self.video_path = video_path
+        self.log_to_stderr = log_to_stderr
         self._log_file_path: str | None = None
         self._token: Any = None
 
@@ -71,6 +75,7 @@ class WorkflowLogSession:
             settings=self.settings,
             job_id=self.job_id,
             output_root=self.output_root,
+            log_to_stderr=self.log_to_stderr,
         )
         self._token = bind_pipeline_log_context(
             job_id=self.job_id,

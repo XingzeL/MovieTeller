@@ -95,6 +95,29 @@ invalid_request
 internal_error
 ```
 
+## Stage registry
+
+Macro stage IDs, JSONL ``stage`` aliases, weights, and labels live in
+`movieteller_logging.stage_registry`. CLI progress and `overall_progress` both
+read from this module; ``narration_pipeline`` is a deprecated alias for ``narration``.
+
+## Overall progress (frontend)
+
+Use `overall_progress(progress_from_jsonl(path))` for a single percent + label (no per-segment detail):
+
+```python
+from movieteller_logging import overall_progress, progress_from_jsonl
+
+summary = overall_progress(progress_from_jsonl("artifacts/job-1/logs/workflow.jsonl"))
+# {"status": "running", "percent": 42, "label": "生成旁白", "currentStage": "narration_group"}
+```
+
+CLI:
+
+```bash
+PYTHONPATH=python/movieteller_logging/src python -m movieteller_logging path/to/workflow.jsonl
+```
+
 ## Progress Aggregation
 
 Use `progress_from_jsonl(...)` to turn raw workflow events into a compact product-facing status object:

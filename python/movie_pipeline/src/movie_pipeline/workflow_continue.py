@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
+from movie_pipeline.cli_progress import CliProgressReporter
 from movie_pipeline.payload_schema import (
     pipeline_speech_payload_from_dict,
     pipeline_text_payload_from_dict,
@@ -32,6 +33,7 @@ def synthesize_speech_from_text_payload(
     payload: Mapping[str, Any],
     audio_output_dir: Path,
     settings: Any,
+    cli_progress: CliProgressReporter | None = None,
 ) -> dict[str, Any]:
     """Deep-copy payload then add ``speech`` per segment and ``speechOutputDir``."""
     out = deep_copy_payload(pipeline_text_payload_from_dict(dict(payload)))
@@ -42,6 +44,7 @@ def synthesize_speech_from_text_payload(
     speech_options = settings.narration_speech_options()
     audio_output_dir.mkdir(parents=True, exist_ok=True)
 
+    total_segments = len(narrated_segments)
     for index, seg in enumerate(narrated_segments, start=1):
         if not isinstance(seg, dict):
             raise TypeError(f"Segment #{index} is not an object")
@@ -61,6 +64,8 @@ def synthesize_speech_from_text_payload(
         if isinstance(polish_payload, dict) and polish_payload.get("targetDurationSec") is not None:
             target_duration_sec = float(polish_payload["targetDurationSec"])
 
+        if cli_progress is not None:
+            cli_progress.tts_begin(index, total_segments)
         result = synthesize_narration_text(
             speech_text,
             duration_sec,
@@ -98,6 +103,8 @@ def synthesize_speech_from_text_payload(
                 ),
             )
         )
+        if cli_progress is not None:
+            cli_progress.tts_done(index, total_segments)
 
     out["speechOutputDir"] = str(audio_output_dir)
     return out

@@ -9,6 +9,7 @@ from movieteller_config import load_settings
 from movieteller_config.loader import load_flat_dict
 from movieteller_config.schema import settings_from_dict
 
+from movie_pipeline.cli_progress import CliProgressReporter
 from movie_pipeline.pipeline import run_pipeline_ctx
 from movie_pipeline.payload_schema import (
     serialize_pipeline_render_payload,
@@ -251,22 +252,36 @@ def main() -> int:
         ),
     )
     ctx = RunContext(settings=settings, pipeline=pipeline_config)
-    payload = run_pipeline_ctx(
-        srt_path=args.srt,
-        video_path=args.video,
-        ctx=ctx,
-        subtitle_context_index_dir=args.subtitle_context_index_dir,
-        build_subtitle_context=args.build_subtitle_context,
-        speech_output_dir=speech_output_dir,
-    )
-    if args.embed_video:
-        payload = render_video_from_narration_payload(
-            payload=payload,
-            video_path=Path(args.video),
-            output_path=Path(embed_output_path),
-            subtitle_srt_path=None,
-            settings=settings,
+    cli_progress = CliProgressReporter.enabled()
+    try:
+        if cli_progress is not None:
+            cli_progress.workflow_begin("narration")
+        payload = run_pipeline_ctx(
+            srt_path=args.srt,
+            video_path=args.video,
+            ctx=ctx,
+            subtitle_context_index_dir=args.subtitle_context_index_dir,
+            build_subtitle_context=args.build_subtitle_context,
+            speech_output_dir=speech_output_dir,
+            cli_progress=cli_progress,
         )
+        if cli_progress is not None:
+            cli_progress.workflow_step_done("tts" if speech_enabled else "narration")
+        if args.embed_video:
+            if cli_progress is not None:
+                cli_progress.workflow_begin("video_package")
+            payload = render_video_from_narration_payload(
+                payload=payload,
+                video_path=Path(args.video),
+                output_path=Path(embed_output_path),
+                subtitle_srt_path=None,
+                settings=settings,
+            )
+            if cli_progress is not None:
+                cli_progress.workflow_step_done("video_package")
+    finally:
+        if cli_progress is not None:
+            cli_progress.close()
     rendered_video = payload.get("renderedVideo")
 
     if args.json:

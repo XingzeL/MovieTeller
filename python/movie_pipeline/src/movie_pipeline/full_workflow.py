@@ -15,6 +15,7 @@ from movieteller_logging import classify_error, emit_event
 from movieteller_logging import events as log_events
 
 from movie_pipeline._workflow_logging import WorkflowLogSession
+from movie_pipeline.cli_progress import CliProgressReporter
 from movie_pipeline._workflow_manifest import write_workflow_manifest
 from movie_pipeline._workflow_resolve import (
     default_policy_context_for_request,
@@ -59,11 +60,13 @@ def run_full_workflow(
     job_id = default_workflow_job_id(resolved_context, output_root)
     workflow_json_path = output_root / "workflow.json"
 
+    cli_progress = CliProgressReporter.enabled()
     with WorkflowLogSession(
         settings=resolved_settings,
         job_id=job_id,
         output_root=output_root,
         video_path=str(resolved_video_path),
+        log_to_stderr=False if cli_progress is not None else None,
     ) as log_session:
         workflow_log_path = log_session.log_file_path
         try:
@@ -75,16 +78,25 @@ def run_full_workflow(
                 enable_embed_video=resolved_execution.enable_embed_video,
             )
 
+            if cli_progress is not None:
+                cli_progress.workflow_begin("subtitle_extraction")
             stage_subtitle_extraction(
                 paths=paths,
                 execution=resolved_execution,
                 resolved_settings=resolved_settings,
             )
+            if cli_progress is not None:
+                cli_progress.workflow_step_done("subtitle_extraction")
+
+            if cli_progress is not None:
+                cli_progress.workflow_begin("frame_pool")
             stage_frame_pool(
                 paths=paths,
                 execution=resolved_execution,
                 resolved_settings=resolved_settings,
             )
+            if cli_progress is not None:
+                cli_progress.workflow_step_done("frame_pool")
 
             frame_pool_manifest = Path(paths.frame_pool_manifest)
             pipeline_settings = pipeline_settings_with_resolved_frame_pool(
@@ -92,12 +104,18 @@ def run_full_workflow(
                 frame_pool_manifest_path=paths.frame_pool_manifest,
             )
 
+            if cli_progress is not None:
+                cli_progress.workflow_begin("subtitle_context")
             subtitle_context_index_dir = stage_subtitle_context(
                 paths=paths,
                 execution=resolved_execution,
                 pipeline_settings=pipeline_settings,
             )
+            if cli_progress is not None:
+                cli_progress.workflow_step_done("subtitle_context")
 
+            if cli_progress is not None:
+                cli_progress.workflow_begin("narration")
             payload = stage_narration_pipeline(
                 paths=paths,
                 execution=resolved_execution,
@@ -107,7 +125,16 @@ def run_full_workflow(
                 narrator=narrator,
                 polisher=polisher,
                 synthesizer=synthesizer,
+                cli_progress=cli_progress,
             )
+            if cli_progress is not None:
+                if resolved_execution.enable_speech:
+                    cli_progress.workflow_step_done("tts")
+                else:
+                    cli_progress.workflow_step_done("narration")
+
+            if cli_progress is not None:
+                cli_progress.workflow_begin("video_package")
             payload = stage_video_package(
                 paths=paths,
                 execution=resolved_execution,
@@ -115,6 +142,9 @@ def run_full_workflow(
                 payload=payload,
                 video_renderer=video_renderer,
             )
+            if cli_progress is not None:
+                cli_progress.workflow_step_done("video_package")
+
             artifact_manifest_path = write_stage_artifact_manifest(paths=paths)
             payload["workflowArtifacts"] = WorkflowArtifacts(
                 video_path=paths.source_video,
@@ -126,11 +156,15 @@ def run_full_workflow(
                 output_root=str(output_root),
                 artifact_manifest_path=artifact_manifest_path,
             ).to_payload_dict()
+            if cli_progress is not None:
+                cli_progress.workflow_begin("workflow_export")
             result = export_workflow_artifacts(
                 payload=payload,
                 paths=paths,
                 output_root=output_root,
             )
+            if cli_progress is not None:
+                cli_progress.workflow_step_done("workflow_export")
             emit_event(log_events.WORKFLOW_DONE, status="ok")
             log_session.flush()
             write_workflow_manifest(
@@ -165,3 +199,6 @@ def run_full_workflow(
                 error=error_fields,
             )
             raise
+        finally:
+            if cli_progress is not None:
+                cli_progress.close()
