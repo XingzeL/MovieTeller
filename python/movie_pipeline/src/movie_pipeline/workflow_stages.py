@@ -23,6 +23,7 @@ from typing import Any, Callable
 
 from movieteller_logging import classify_error, emit_event
 from movieteller_logging import events as log_events
+from movie_pipeline.cancel_check import ensure_not_canceled_for_output_root
 from movie_pipeline.cli_progress import CliProgressReporter
 from movie_pipeline.pipeline import run_pipeline_ctx
 from movie_pipeline.resume_policy import (
@@ -62,6 +63,7 @@ def stage_subtitle_extraction(
     execution: ResolvedExecutionConfig,
     resolved_settings: Settings,
 ) -> None:
+    ensure_not_canceled_for_output_root(paths.output_root)
     start = time.perf_counter()
     emit_event(log_events.SUBTITLE_EXTRACTION_START, stage="subtitle_extraction")
     srt_path = Path(paths.srt_path)
@@ -106,6 +108,7 @@ def stage_frame_pool(
     execution: ResolvedExecutionConfig,
     resolved_settings: Settings,
 ) -> None:
+    ensure_not_canceled_for_output_root(paths.output_root)
     start = time.perf_counter()
     emit_event(log_events.FRAME_POOL_START, stage="frame_pool")
     manifest = Path(paths.frame_pool_manifest)
@@ -144,6 +147,7 @@ def stage_subtitle_context(
     execution: ResolvedExecutionConfig,
     pipeline_settings: Settings,
 ) -> str | None:
+    ensure_not_canceled_for_output_root(paths.output_root)
     start = time.perf_counter()
     emit_event(log_events.SUBTITLE_CONTEXT_START, stage="subtitle_context")
     subtitle_context_dir = Path(paths.subtitle_context_dir)
@@ -194,6 +198,7 @@ def stage_narration_pipeline(
     synthesizer: Callable[..., Any] | None = None,
     cli_progress: CliProgressReporter | None = None,
 ) -> dict[str, Any]:
+    ensure_not_canceled_for_output_root(paths.output_root)
     pipeline_config = replace(
         execution.pipeline,
         polish_options=(
@@ -232,6 +237,7 @@ def stage_video_package(
     payload: dict[str, Any],
     video_renderer: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
+    ensure_not_canceled_for_output_root(paths.output_root)
     start = time.perf_counter()
     emit_event(log_events.VIDEO_PACKAGE_START, stage="video_package")
     try:

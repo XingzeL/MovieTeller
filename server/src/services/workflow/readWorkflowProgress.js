@@ -11,22 +11,6 @@ function resolvePythonBin(repoRoot) {
 }
 
 /**
- * Resolve workflow.jsonl under outputRoot (must stay inside repo root).
- * @param {string} outputRoot
- * @returns {{ logPath: string } | { error: string }}
- */
-export function resolveWorkflowLogPath(outputRoot) {
-  const repoRoot = getRepoRoot();
-  const absRoot = path.resolve(repoRoot, outputRoot);
-  const rel = path.relative(repoRoot, absRoot);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    return { error: "outputRoot must be inside the repository" };
-  }
-  const logPath = path.join(absRoot, "logs", "workflow.jsonl");
-  return { logPath };
-}
-
-/**
  * @param {string} logPath
  * @returns {Promise<Record<string, unknown>>}
  */

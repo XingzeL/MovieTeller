@@ -55,6 +55,7 @@ class JobPaths:
     speech_video_json_path: str
     rendered_video_path: str
     study_cards_html_path: str
+    cancel_flag_path: str
 
     @staticmethod
     def resolve(*, jobs_root: str | Path, job_id: str) -> JobPaths:
@@ -93,6 +94,7 @@ class JobPaths:
             speech_video_json_path=str(speech_dir / "speech_video.json"),
             rendered_video_path=str(render_dir / "narrated.mp4"),
             study_cards_html_path=str(study_cards_dir / "study_cards.html"),
+            cancel_flag_path=str(root / "cancel.flag"),
         )
 
     def ensure_dirs(self) -> None:
@@ -164,6 +166,7 @@ class WorkflowArtifacts:
     text_json_path: str | None = None
     speech_json_path: str | None = None
     render_json_path: str | None = None
+    rendered_video_path: str | None = None
     final_srt_path: str | None = None
     study_cards_html_path: str | None = None
     study_cards_html_error: str | None = None
@@ -179,6 +182,7 @@ class WorkflowArtifacts:
             "textJsonPath": self.text_json_path,
             "speechJsonPath": self.speech_json_path,
             "renderJsonPath": self.render_json_path,
+            "renderedVideoPath": self.rendered_video_path,
             "finalSrtPath": self.final_srt_path,
             "studyCardsHtmlPath": self.study_cards_html_path,
             "studyCardsHtmlError": self.study_cards_html_error,
@@ -196,6 +200,7 @@ def workflow_artifacts_from_payload(data: dict[str, Any]) -> WorkflowArtifacts:
         text_json_path=_optional_str(data.get("textJsonPath")),
         speech_json_path=_optional_str(data.get("speechJsonPath")),
         render_json_path=_optional_str(data.get("renderJsonPath")),
+        rendered_video_path=_optional_str(data.get("renderedVideoPath")),
         final_srt_path=_optional_str(data.get("finalSrtPath")),
         study_cards_html_path=_optional_str(data.get("studyCardsHtmlPath")),
         study_cards_html_error=_optional_str(data.get("studyCardsHtmlError")),

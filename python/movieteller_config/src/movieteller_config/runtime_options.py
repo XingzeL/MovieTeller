@@ -21,6 +21,7 @@ def build_narration_options(
     *,
     prompt_style: str | None = None,
     custom_prompt: str = "",
+    output_language: str | None = None,
 ) -> NarrationOptions:
     resolved_prompt_style = (
         str(prompt_style or settings.default_prompt_style).strip() or "documentary"
@@ -28,6 +29,7 @@ def build_narration_options(
     return NarrationOptions(
         prompt_style=resolved_prompt_style,
         custom_prompt=str(custom_prompt or ""),
+        output_language=str(output_language or "en").strip() or "en",
     )
 
 
@@ -40,6 +42,7 @@ def build_narration_polish_options(
     cefr_level: str | None = None,
     strength: str | None = None,
     safety_margin_sec: float | None = None,
+    output_language: str | None = None,
 ) -> NarrationPolishOptions:
     resolved_model = str(model or settings.default_model_for_capability("polish")).strip()
     if not resolved_model:
@@ -82,6 +85,7 @@ def build_narration_polish_options(
                 else settings.narration_polish_safety_margin_sec
             ),
         ),
+        output_language=str(output_language or "en").strip() or "en",
     )
 
 

@@ -172,6 +172,7 @@ def polish_narration_text(
     resolved_strength = options.strength
     resolved_safety_margin_sec = options.safety_margin_sec
     resolved_prompt_style = options.prompt_style
+    resolved_output_language = options.output_language
     target_duration_sec = compute_target_duration_sec(
         duration_sec, resolved_safety_margin_sec
     )
@@ -189,6 +190,7 @@ def polish_narration_text(
                 cefr_level=resolved_cefr_level,
                 strength=resolved_strength,
                 style=resolved_prompt_style,
+                output_language=resolved_output_language,
             ),
         },
         {
@@ -200,6 +202,7 @@ def polish_narration_text(
                 target_wpm=resolved_target_wpm,
                 target_word_count=target_word_count,
                 strength=resolved_strength,
+                output_language=resolved_output_language,
             ),
         },
     ]

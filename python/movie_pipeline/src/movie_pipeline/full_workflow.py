@@ -24,8 +24,15 @@ from movie_pipeline._workflow_resolve import (
     resolve_workflow_config,
     resolved_run_context_from_request,
 )
-from movie_pipeline.job import WorkflowArtifacts
+from movie_pipeline.cancel_check import JobCanceledError, ensure_not_canceled_for_output_root
+from movie_pipeline.job import JobPaths, WorkflowArtifacts
+from movie_pipeline.workflow_errors import workflow_error_from_exception
 from movie_pipeline.types import ArtifactPaths, ResolvedRunContext
+from movie_pipeline.artifact_manifest import (
+    build_product_artifact_manifest,
+    workflow_artifacts_payload_from_entries,
+    write_product_artifact_manifest,
+)
 from movie_pipeline.workflow_artifacts import write_stage_artifact_manifest
 from movie_pipeline.workflow_exports import export_workflow_artifacts
 from movie_pipeline.workflow_stages import (
@@ -71,11 +78,20 @@ def run_full_workflow(
         workflow_log_path = log_session.log_file_path
         try:
             emit_event(log_events.WORKFLOW_START, status="ok")
+            ensure_not_canceled_for_output_root(output_root)
+            job_paths = None
+            workspace_id = resolved_context.request.workspace_id
+            if workspace_id:
+                job_paths = JobPaths.resolve(
+                    jobs_root=output_root.parent,
+                    job_id=str(workspace_id),
+                )
             paths = ArtifactPaths.resolve(
                 output_root=output_root,
                 source_video=resolved_video_path,
                 enable_speech=resolved_execution.enable_speech,
                 enable_embed_video=resolved_execution.enable_embed_video,
+                job_paths=job_paths,
             )
 
             if cli_progress is not None:
@@ -165,6 +181,24 @@ def run_full_workflow(
             )
             if cli_progress is not None:
                 cli_progress.workflow_step_done("workflow_export")
+
+            manifest_entries = build_product_artifact_manifest(
+                paths=paths,
+                payload=result,
+                job_paths=job_paths,
+                output_root=output_root,
+            )
+            manifest_path = write_product_artifact_manifest(
+                output_root=output_root,
+                entries=manifest_entries,
+            )
+            merged_artifacts = workflow_artifacts_payload_from_entries(
+                manifest_entries,
+                base=dict(result.get("workflowArtifacts") or {}),
+            )
+            merged_artifacts["artifactManifestPath"] = manifest_path
+            result["workflowArtifacts"] = merged_artifacts
+
             emit_event(log_events.WORKFLOW_DONE, status="ok")
             log_session.flush()
             write_workflow_manifest(
@@ -175,17 +209,40 @@ def run_full_workflow(
                 output_root=output_root,
                 user_id=resolved_context.request.user_id,
                 log_path=workflow_log_path,
-                artifacts=dict(result.get("workflowArtifacts") or {}),
+                artifacts=merged_artifacts,
             )
             return result
+        except JobCanceledError as exc:
+            error_fields = workflow_error_from_exception(
+                exc, stage="workflow", fatal=False
+            )
+            emit_event(
+                log_events.WORKFLOW_FAILED,
+                level=logging.WARNING,
+                status="canceled",
+                fatal=False,
+                **classify_error(exc),
+            )
+            log_session.flush()
+            write_workflow_manifest(
+                path=workflow_json_path,
+                status="canceled",
+                job_id=job_id,
+                input_video_path=resolved_video_path,
+                output_root=output_root,
+                user_id=resolved_context.request.user_id,
+                log_path=workflow_log_path,
+                error=error_fields,
+            )
+            raise
         except Exception as exc:
-            error_fields = classify_error(exc)
+            error_fields = workflow_error_from_exception(exc, stage="workflow", fatal=True)
             emit_event(
                 log_events.WORKFLOW_FAILED,
                 level=logging.ERROR,
                 status="error",
                 fatal=True,
-                **error_fields,
+                **classify_error(exc),
             )
             log_session.flush()
             write_workflow_manifest(

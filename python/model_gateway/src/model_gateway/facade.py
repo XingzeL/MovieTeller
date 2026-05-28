@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import replace
 from typing import Any, Callable
 
 from movieteller_logging import classify_error, emit_event
@@ -68,9 +69,17 @@ def _generate_chat(
         model=endpoint.model,
         adapter=endpoint.adapter,
     )
+    timeout_sec = request.timeout_sec
+    if timeout_sec is None and settings is not None:
+        timeout_sec = settings.capability_timeout_sec(capability)
+    if timeout_sec is not None and request.timeout_sec is None:
+        request = replace(request, timeout_sec=timeout_sec)
+    max_attempts = 2
+    if settings is not None:
+        max_attempts = settings.capability_max_attempts(capability)
     t0 = time.perf_counter()
     try:
-        result, retry_count = execute_with_retry(_run)
+        result, retry_count = execute_with_retry(_run, max_attempts=max_attempts)
     except Exception as exc:
         duration_ms = int((time.perf_counter() - t0) * 1000)
         emit_event(

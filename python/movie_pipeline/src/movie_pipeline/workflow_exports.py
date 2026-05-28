@@ -49,7 +49,9 @@ def _export_study_cards(
     paths: ArtifactPaths,
     output_root: Path,
 ) -> dict[str, str | None]:
-    study_html_path = output_root / f"{paths.stem}.study_cards.html"
+    study_html_path = Path(
+        paths.study_cards_html_path or (output_root / f"{paths.stem}.study_cards.html")
+    )
     try:
         from movie_pipeline.study_cards_export import export_study_cards_artifact
 

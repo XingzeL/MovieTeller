@@ -144,6 +144,8 @@ class ArtifactPaths:
     subtitle_context_dir: str
     speech_output_dir: str | None
     embed_output_path: str | None
+    study_cards_html_path: str | None = None
+    layout: str = "stem"
 
     @staticmethod
     def resolve(
@@ -152,7 +154,15 @@ class ArtifactPaths:
         source_video: str | Path,
         enable_speech: bool,
         enable_embed_video: bool,
+        job_paths: Any | None = None,
     ) -> ArtifactPaths:
+        if job_paths is not None:
+            return ArtifactPaths.resolve_for_job_paths(
+                job_paths=job_paths,
+                source_video=source_video,
+                enable_speech=enable_speech,
+                enable_embed_video=enable_embed_video,
+            )
         root = Path(output_root).resolve()
         vid = Path(source_video).resolve()
         stem = vid.stem
@@ -169,6 +179,35 @@ class ArtifactPaths:
             subtitle_context_dir=str(root / f"{stem}.subtitle_context"),
             speech_output_dir=speech,
             embed_output_path=embed,
+            study_cards_html_path=str(root / f"{stem}.study_cards.html"),
+            layout="stem",
+        )
+
+    @staticmethod
+    def resolve_for_job_paths(
+        *,
+        job_paths: Any,
+        source_video: str | Path,
+        enable_speech: bool,
+        enable_embed_video: bool,
+    ) -> ArtifactPaths:
+        vid = Path(source_video).resolve()
+        speech = job_paths.speech_audio_dir if enable_speech else None
+        embed = job_paths.rendered_video_path if enable_embed_video else None
+        return ArtifactPaths(
+            output_root=str(job_paths.root),
+            source_video=str(vid),
+            stem=vid.stem,
+            srt_path=str(job_paths.extracted_srt_path),
+            frame_pool_dir=str(job_paths.frame_pool_dir),
+            frame_pool_manifest=str(job_paths.frame_pool_manifest_path),
+            subtitle_context_dir=str(
+                Path(job_paths.analysis_dir) / "subtitle_context"
+            ),
+            speech_output_dir=speech,
+            embed_output_path=embed,
+            study_cards_html_path=str(job_paths.study_cards_html_path),
+            layout="job",
         )
 
 
@@ -216,6 +255,10 @@ class WorkflowRequest:
     max_cost_usd: float | None = None
     max_latency_sec: float | None = None
     tts_voice: str | None = None
+    tts_language: str | None = None
+    source_language: str | None = None
+    narration_language: str | None = None
+    subtitle_language: str | None = None
 
 
 @dataclass(frozen=True)

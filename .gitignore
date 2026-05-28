@@ -4,6 +4,12 @@ AI-auto-narrator/
 # Local planning notes (not tracked)
 docs/plans/
 
+# Local IDE files
+.idea/
+
+# Generated Job/runtime artifacts
+artifacts/
+
 node_modules/
 dist/
 .env

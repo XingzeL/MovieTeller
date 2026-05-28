@@ -1,0 +1,44 @@
+import fs from "fs";
+
+import {
+  getJobsRoot,
+  jobPathsFromRoot,
+  resolveJobRoot,
+} from "../../config/jobs.js";
+
+/**
+ * @param {string} jobId
+ */
+export function readJobRecord(jobId) {
+  const jobsRoot = getJobsRoot();
+  const jobRoot = resolveJobRoot(jobsRoot, jobId);
+  const paths = jobPathsFromRoot(jobRoot);
+  if (!fs.existsSync(paths.workflowJsonPath)) {
+    const err = new Error("job not found");
+    err.statusCode = 404;
+    throw err;
+  }
+  const raw = fs.readFileSync(paths.workflowJsonPath, "utf8");
+  const record = JSON.parse(raw);
+  return { record, paths, jobsRoot };
+}
+
+/**
+ * @param {Record<string, unknown>} record
+ */
+export function jobRecordToDto(record) {
+  return {
+    jobId: record.job_id,
+    status: record.status,
+    currentStage: record.current_stage ?? null,
+    progress: record.progress ?? {},
+    error: record.error ?? null,
+    artifacts: record.artifacts ?? {},
+    outputRoot: record.output_root,
+    inputVideoPath: record.input_video_path,
+    userId: record.user_id ?? null,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+    cancelRequestedAt: record.cancel_requested_at ?? null,
+  };
+}

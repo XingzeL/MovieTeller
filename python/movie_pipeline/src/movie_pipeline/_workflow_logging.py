@@ -26,7 +26,7 @@ def configure_workflow_log_file(
 ) -> str | None:
     """Start async JSONL logging; return log file path when enabled."""
     log_opts = settings.pipeline_logging_options()
-    log_file = log_opts.file or str(output_root / "logs" / "workflow.jsonl")
+    log_file = str(output_root / "logs" / "workflow.jsonl")
     stderr = log_opts.stderr if log_to_stderr is None else log_to_stderr
     configure_async_logging(
         enabled=log_opts.enabled,

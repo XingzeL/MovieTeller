@@ -333,9 +333,32 @@ def test_resolve_workflow_config_applies_request_and_policy_defaults():
     assert resolved.execution.output_root == "/tmp/out"
     assert resolved.execution.pipeline.speech_options is not None
     assert resolved.execution.pipeline.speech_options.voice == "Cherry"
+
+
+def test_resolve_workflow_config_applies_asr_and_tts_languages():
+    settings = make_settings(
+        videocaptioner_language="auto",
+        tts_defaults={"voice": "en-US-EmmaMultilingualNeural"},
+    )
+    request = WorkflowRequest(
+        video_path="demo.mp4",
+        source_language="ja",
+        tts_language="zh",
+        enable_polish=True,
+        enable_speech=True,
+    )
+
+    resolved = resolve_workflow_config(request=request, settings=settings)
+
+    assert resolved.execution.subtitle_extraction_options is not None
+    assert resolved.execution.subtitle_extraction_options.language == "ja"
     assert resolved.execution.pipeline.narration_options is not None
+    assert resolved.execution.pipeline.narration_options.output_language == "zh"
+    assert resolved.execution.pipeline.polish_options is not None
+    assert resolved.execution.pipeline.polish_options.output_language == "zh"
+    assert resolved.execution.pipeline.speech_options is not None
+    assert resolved.execution.pipeline.speech_options.voice == "en-US-EmmaMultilingualNeural"
     assert resolved.execution.pipeline.narration_options.prompt_style == "documentary"
-    assert resolved.execution.pipeline.polish_options is None
 
 
 def test_resolved_run_context_from_request_wraps_resolved_config():

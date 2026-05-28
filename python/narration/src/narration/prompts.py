@@ -12,9 +12,22 @@ _WORDS_PER_MIN: dict[str, float] = {
 }
 
 _DEFAULT_SYSTEM = """You are a professional film narrator. Describe what is visible in the \
-provided key frames in clear, natural English. Stay faithful to the imagery; do not invent \
+provided key frames in clear, natural language. Stay faithful to the imagery; do not invent \
 plot or characters that are not shown. Output plain narration only — no bullet lists, no \
 meta commentary, and no frame numbers."""
+
+
+def language_name(code: str | None) -> str:
+    value = (code or "").strip().lower()
+    return {
+        "en": "English",
+        "zh": "Chinese",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "fr": "French",
+        "de": "German",
+        "es": "Spanish",
+    }.get(value, value or "English")
 
 
 def _style_system_addendum(style: str) -> str:
@@ -44,8 +57,13 @@ def target_word_count(duration_sec: float, prompt_style: str) -> int:
     return max(12, min(420, int(round(raw))))
 
 
-def build_system_message(prompt_style: str, custom_prompt: str) -> str:
-    base = _DEFAULT_SYSTEM + _style_system_addendum(prompt_style)
+def build_system_message(prompt_style: str, custom_prompt: str, output_language: str = "en") -> str:
+    lang = language_name(output_language)
+    base = (
+        _DEFAULT_SYSTEM
+        + _style_system_addendum(prompt_style)
+        + f" Write the narration in {lang}."
+    )
     extra = custom_prompt.strip()
     if extra:
         return f"{base}\n\nAdditional instructions from the user:\n{extra}"
@@ -60,6 +78,7 @@ def build_user_text(
     prev_subtitle_text: str | None = None,
     next_subtitle_text: str | None = None,
     retrieved_context_texts: Sequence[str] = (),
+    output_language: str = "en",
 ) -> str:
     """User message text accompanying the image batch."""
     words = target_word_count(duration_sec, prompt_style)
@@ -68,7 +87,7 @@ def build_user_text(
         f"This segment is about {duration_sec:.2f} seconds long "
         f"(use roughly {words} words as a soft target, not a hard count), but you must generate less than {2 * words} words !!"
         f"You are given {frame_count} evenly spaced key frames from this segment. "
-        "Write continuous narration that flows across the segment."
+        f"Write continuous narration in {language_name(output_language)} that flows across the segment."
         )
     ]
     boundary_lines: list[str] = []

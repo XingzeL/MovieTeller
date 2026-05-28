@@ -23,6 +23,9 @@ from pipeline_types import NarrationCandidate, NarrationContext
 from narration.narrate import narrate_segment_with_duration
 from narration_polish import generate_vocab_study_card
 
+from movie_pipeline.cancel_check import ensure_not_canceled
+from movie_pipeline.tts_resume import tts_segment_is_reusable
+
 from movie_pipeline.payload_schema import narrated_segment_to_payload
 from movie_pipeline.runtime_context import RunContext
 from movie_pipeline.cli_progress import CliProgressReporter, group_progress_callback
@@ -116,6 +119,7 @@ class _CandidateWorker:
                 win_end=seg.end_sec,
                 duration_sec=seg.duration_sec,
             )
+            ensure_not_canceled(speech_output_dir=self.resolved_speech_output_dir)
             settings = self.ctx.settings
             pipeline_config = self.ctx.pipeline
             narration_options = pipeline_config.narration_options
@@ -224,19 +228,31 @@ class _CandidateWorker:
                 )
                 if self.cli_progress is not None:
                     self.cli_progress.segment_step(item.index, "study")
-                with self.limiters.study_enrichment:
-                    raw_vocab, _vocab_timing_sec = generate_vocab_study_card(
-                        text,
-                        cefr_level=polish_details.cefr_level,
-                        settings=settings,
+                try:
+                    with self.limiters.study_enrichment:
+                        raw_vocab, _vocab_timing_sec = generate_vocab_study_card(
+                            text,
+                            cefr_level=polish_details.cefr_level,
+                            output_language=getattr(polish_options, "output_language", "en"),
+                            settings=settings,
+                        )
+                    vocab_study_card = raw_vocab if isinstance(raw_vocab, dict) else None
+                    emit_event(
+                        log_events.SEGMENT_STUDY_DONE,
+                        stage="narration",
+                        capability="study_enrichment",
+                        status="ok",
                     )
-                vocab_study_card = raw_vocab if isinstance(raw_vocab, dict) else None
-                emit_event(
-                    log_events.SEGMENT_STUDY_DONE,
-                    stage="narration",
-                    capability="study_enrichment",
-                    status="ok",
-                )
+                except Exception as exc:
+                    emit_event(
+                        log_events.SEGMENT_STUDY_DONE,
+                        level=logging.WARNING,
+                        stage="narration",
+                        capability="study_enrichment",
+                        status="warning",
+                        fatal=False,
+                        **classify_error(exc),
+                    )
             if speech_enabled:
                 if self.synthesizer is None:
                     raise RuntimeError("Narration speech synthesizer is not available")
@@ -265,17 +281,47 @@ class _CandidateWorker:
                     capability="tts",
                     status="ok",
                 )
-                with self.limiters.tts:
-                    spoken = self.synthesizer(
-                        speech_text,
-                        seg.duration_sec,
-                        output_path=str(audio_path),
-                        metadata_path=str(metadata_path),
-                        target_duration_sec=target_duration_sec,
-                        options=speech_options,
-                        settings=settings,
+                if tts_segment_is_reusable(
+                    audio_path=audio_path,
+                    metadata_path=metadata_path,
+                ):
+                    emit_event(
+                        log_events.SEGMENT_TTS_DONE,
+                        stage="tts",
+                        capability="tts",
+                        status="skipped",
                     )
-                speech_details = NarrationSpeechDetails(
+                    spoken = None
+                else:
+                    with self.limiters.tts:
+                        spoken = self.synthesizer(
+                            speech_text,
+                            seg.duration_sec,
+                            output_path=str(audio_path),
+                            metadata_path=str(metadata_path),
+                            target_duration_sec=target_duration_sec,
+                            options=speech_options,
+                            settings=settings,
+                        )
+                if spoken is None:
+                    speech_details = NarrationSpeechDetails(
+                        text=speech_text,
+                        audio_path=str(audio_path),
+                        metadata_path=str(metadata_path),
+                        segment_duration_sec=float(seg.duration_sec),
+                        target_duration_sec=float(target_duration_sec),
+                        raw_duration_sec=float(seg.duration_sec),
+                        audio_duration_sec=float(seg.duration_sec),
+                        provider="cached",
+                        voice="",
+                        rate="",
+                        volume="",
+                        pitch="",
+                        boundary="",
+                        fit_applied=False,
+                    )
+                else:
+                    speech_details = NarrationSpeechDetails(
                     text=str(getattr(spoken, "text")),
                     audio_path=str(getattr(spoken, "audio_path")),
                     metadata_path=getattr(spoken, "metadata_path", None),
@@ -300,14 +346,15 @@ class _CandidateWorker:
                         if getattr(spoken, "timing_fit_sec", None) is not None
                         else None
                     ),
-                )
-                emit_event(
-                    log_events.SEGMENT_TTS_DONE,
-                    stage="tts",
-                    capability="tts",
-                    provider=speech_details.provider,
-                    status="ok",
-                )
+                    )
+                if spoken is not None:
+                    emit_event(
+                        log_events.SEGMENT_TTS_DONE,
+                        stage="tts",
+                        capability="tts",
+                        provider=speech_details.provider,
+                        status="ok",
+                    )
                 if self.cli_progress is not None:
                     self.cli_progress.tts_done(item.index, item.total)
             narrated = NarratedSegment(

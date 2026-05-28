@@ -132,7 +132,19 @@ def _workflow_options_from_request(
         default=policy.default_enable_embed_video,
     )
 
-    narration_options = settings.narration_options(prompt_style=request.prompt_style)
+    subtitle_extraction_options = base.subtitle_extraction_options
+    if request.source_language:
+        subtitle_extraction_options = settings.subtitle_extraction_options(
+            language=request.source_language
+        )
+
+    output_language = request.tts_language or request.narration_language or "en"
+    tts_voice = request.tts_voice
+
+    narration_options = settings.narration_options(
+        prompt_style=request.prompt_style,
+        output_language=output_language,
+    )
     pipeline = NarrationPipelineConfig(
         video_duration_sec=base.pipeline.video_duration_sec,
         min_gap_sec=(
@@ -154,12 +166,13 @@ def _workflow_options_from_request(
             settings.narration_polish_options(
                 prompt_style=narration_options.prompt_style,
                 cefr_level=request.cefr_level,
+                output_language=output_language,
             )
             if enable_polish
             else None
         ),
         speech_options=(
-            settings.narration_speech_options()
+            settings.narration_speech_options(voice=tts_voice)
             if enable_speech
             else None
         ),
@@ -181,7 +194,7 @@ def _workflow_options_from_request(
         enable_speech=enable_speech,
         enable_embed_video=enable_embed_video,
         output_root=output_root,
-        subtitle_extraction_options=base.subtitle_extraction_options,
+        subtitle_extraction_options=subtitle_extraction_options,
         frame_pool_build_options=base.frame_pool_build_options,
         subtitle_context_build_options=base.subtitle_context_build_options,
         pipeline=pipeline,

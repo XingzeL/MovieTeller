@@ -1,35 +1,11 @@
-import fs from "fs";
 import { spawn } from "child_process";
 import path from "path";
 
 import { getRepoRoot } from "../../config/index.js";
-
-function resolveProjectPython(repoRoot, explicitPython) {
-  if (explicitPython) return explicitPython;
-  if (process.env.MOVIE_TELLER_PYTHON) return process.env.MOVIE_TELLER_PYTHON;
-
-  const repoVenvPython = path.join(repoRoot, ".venv", "bin", "python3");
-  return fs.existsSync(repoVenvPython) ? repoVenvPython : "python3";
-}
-
-function buildPythonEnv(repoRoot) {
-  const repoVenvBin = path.join(repoRoot, ".venv", "bin");
-  const pythonPathEntries = [
-    path.join(repoRoot, "python/movieteller_config/src"),
-    path.join(repoRoot, "python/subtitle_extraction/src"),
-    process.env.PYTHONPATH || "",
-  ].filter(Boolean);
-
-  const env = {
-    ...process.env,
-    PYTHONPATH: pythonPathEntries.join(path.delimiter),
-  };
-
-  if (fs.existsSync(repoVenvBin)) {
-    env.PATH = [repoVenvBin, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
-  }
-  return env;
-}
+import {
+  buildPythonEnv,
+  resolveProjectPython,
+} from "../pythonRuntime.js";
 
 /**
  * Run Python ``python -m subtitle_extraction --video ... --output-srt ... --json``.

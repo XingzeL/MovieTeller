@@ -75,6 +75,21 @@ def _coerce_bool(value: Any, fallback: bool) -> bool:
     return fallback
 
 
+def _nested_number_map(data: dict[str, Any], section: str) -> dict[str, float]:
+    nested = data.get(section)
+    if not isinstance(nested, dict):
+        return {}
+    out: dict[str, float] = {}
+    for key, value in nested.items():
+        if value is None or str(value).strip() == "":
+            continue
+        try:
+            out[str(key)] = float(value)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def _nested_int(data: dict[str, Any], section: str, key: str, fallback: int) -> int:
     nested = data.get(section)
     if isinstance(nested, dict) and key in nested:
@@ -88,6 +103,7 @@ class NarrationOptions:
 
     prompt_style: str
     custom_prompt: str = ""
+    output_language: str = "en"
 
 
 @dataclass(frozen=True)
@@ -98,6 +114,7 @@ class NarrationPolishOptions:
     cefr_level: str
     strength: str
     safety_margin_sec: float
+    output_language: str = "en"
 
 
 @dataclass(frozen=True)
@@ -167,6 +184,14 @@ class CapabilityConcurrencyOptions:
 
 
 @dataclass(frozen=True)
+class CapabilityPolicyOptions:
+    """Per-capability timeout (seconds) and retry attempt counts."""
+
+    timeouts: Mapping[str, float]
+    retries: Mapping[str, int]
+
+
+@dataclass(frozen=True)
 class PipelineLoggingOptions:
     """Async JSONL logging (QueueHandler + QueueListener). YAML key: ``logging``."""
 
@@ -222,6 +247,7 @@ class Settings:
     narration_video_speech_audio_volume: float
     workflow_parallelism: WorkflowParallelismOptions
     capability_concurrency: CapabilityConcurrencyOptions
+    capability_policy: CapabilityPolicyOptions
     pipeline_logging: PipelineLoggingOptions
 
     def get_api_key(self, provider: str) -> str | None:
@@ -300,11 +326,15 @@ class Settings:
         *,
         prompt_style: str | None = None,
         custom_prompt: str = "",
+        output_language: str | None = None,
     ) -> NarrationOptions:
         from movieteller_config import runtime_options
 
         return runtime_options.build_narration_options(
-            self, prompt_style=prompt_style, custom_prompt=custom_prompt
+            self,
+            prompt_style=prompt_style,
+            custom_prompt=custom_prompt,
+            output_language=output_language,
         )
 
     def narration_polish_options(
@@ -316,6 +346,7 @@ class Settings:
         cefr_level: str | None = None,
         strength: str | None = None,
         safety_margin_sec: float | None = None,
+        output_language: str | None = None,
     ) -> NarrationPolishOptions:
         from movieteller_config import runtime_options
 
@@ -327,6 +358,7 @@ class Settings:
             cefr_level=cefr_level,
             strength=strength,
             safety_margin_sec=safety_margin_sec,
+            output_language=output_language,
         )
 
     def narration_speech_options(
@@ -436,6 +468,17 @@ class Settings:
 
     def capability_concurrency_options(self) -> CapabilityConcurrencyOptions:
         return self.capability_concurrency
+
+    def capability_timeout_sec(self, capability: str) -> float | None:
+        key = str(capability or "").strip()
+        value = self.capability_policy.timeouts.get(key)
+        return float(value) if value is not None else None
+
+    def capability_max_attempts(self, capability: str, *, default: int = 2) -> int:
+        key = str(capability or "").strip()
+        if key not in self.capability_policy.retries:
+            return default
+        return max(1, int(self.capability_policy.retries[key]))
 
     def pipeline_logging_options(self) -> PipelineLoggingOptions:
         return self.pipeline_logging
@@ -789,6 +832,13 @@ def settings_from_dict(data: dict[str, Any]) -> Settings:
                 1,
                 _nested_int(data, "capability_concurrency", "subtitle_context", 4),
             ),
+        ),
+        capability_policy=CapabilityPolicyOptions(
+            timeouts=_nested_number_map(data, "capability_timeouts"),
+            retries={
+                key: max(1, int(value))
+                for key, value in _nested_number_map(data, "capability_retries").items()
+            },
         ),
         pipeline_logging=pipe_log,
     )

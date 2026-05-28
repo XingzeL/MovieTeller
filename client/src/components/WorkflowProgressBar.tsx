@@ -9,31 +9,27 @@ export type WorkflowOverallProgress = {
 }
 
 type Props = {
-  outputRoot: string
+  jobId: string
   pollMs?: number
   active?: boolean
 }
 
-/** Polls GET /api/workflow/progress for a single overall progress bar. */
-export function WorkflowProgressBar({
-  outputRoot,
-  pollMs = 2500,
-  active = true,
-}: Props) {
+/** Polls Job workflow progress. */
+export function WorkflowProgressBar({ jobId, pollMs = 2500, active = true }: Props) {
   const [progress, setProgress] = useState<WorkflowOverallProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const trimmedJobId = jobId.trim()
+  const enabled = active && trimmedJobId.length > 0
+
   useEffect(() => {
-    if (!active || !outputRoot.trim()) {
-      return
-    }
+    if (!enabled) return
 
     let cancelled = false
 
     const fetchProgress = async () => {
       try {
-        const params = new URLSearchParams({ outputRoot: outputRoot.trim() })
-        const res = await fetch(`/api/workflow/progress?${params}`)
+        const res = await fetch(`/api/jobs/${encodeURIComponent(trimmedJobId)}/progress`)
         const data = (await res.json()) as {
           progress?: WorkflowOverallProgress
           error?: string
@@ -46,9 +42,7 @@ export function WorkflowProgressBar({
         setError(null)
         if (data.progress) setProgress(data.progress)
       } catch {
-        if (!cancelled) {
-          setError('无法读取工作流进度')
-        }
+        if (!cancelled) setError('无法读取工作流进度')
       }
     }
 
@@ -61,15 +55,16 @@ export function WorkflowProgressBar({
       cancelled = true
       window.clearInterval(id)
     }
-  }, [active, outputRoot, pollMs])
+  }, [enabled, trimmedJobId, pollMs])
 
-  if (!active || !outputRoot.trim()) {
-    return null
-  }
+  if (!enabled) return null
 
   const percent = Math.max(0, Math.min(100, progress?.percent ?? 0))
   const label = progress?.label ?? '处理中'
-  const done = progress?.status === 'succeeded' || progress?.status === 'failed'
+  const done =
+    progress?.status === 'succeeded' ||
+    progress?.status === 'failed' ||
+    progress?.status === 'canceled'
 
   return (
     <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50/80 px-4 py-3 dark:border-violet-900 dark:bg-violet-950/30">
@@ -82,9 +77,7 @@ export function WorkflowProgressBar({
         value={percent}
         max={100}
       />
-      {error && (
-        <p className="mt-2 text-xs text-red-700 dark:text-red-300">{error}</p>
-      )}
+      {error && <p className="mt-2 text-xs text-red-700 dark:text-red-300">{error}</p>}
       {!done && !error && (
         <p className="mt-2 text-xs text-violet-700/80 dark:text-violet-300/80">
           整体进度（细分步骤请在终端查看）

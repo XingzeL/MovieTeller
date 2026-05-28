@@ -19,17 +19,31 @@ def _style_hint(style: str | None) -> str:
     return ""
 
 
-def build_system_message(*, cefr_level: str, strength: str, style: str | None = None) -> str:
+def _language_name(code: str | None) -> str:
+    value = (code or "").strip().lower()
+    return {
+        "en": "English",
+        "zh": "Chinese",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "fr": "French",
+        "de": "German",
+        "es": "Spanish",
+    }.get(value, value or "English")
+
+
+def build_system_message(*, cefr_level: str, strength: str, style: str | None = None, output_language: str = "en") -> str:
     style_hint = _style_hint(style)
+    lang = _language_name(output_language)
     return (
-        "You rewrite short English video narration for text-to-speech. "
+        f"You rewrite short video narration in {lang} for text-to-speech. "
         f"Target language difficulty: CEFR {cefr_level}. "
         f"Rewrite strength: {strength}. "
         "Keep the meaning visually grounded, natural to read aloud, and concise. "
         f"{style_hint} "
         "The first line must start with TITLE: followed by a short Chinese scene label "
         "(at most 10 characters; no English on that line).\n"
-        "The second line must start with BODY: followed by the final English narration. "
+        f"The second line must start with BODY: followed by the final {lang} narration. "
         "If the narration needs more than one line, continue on extra lines without a "
         "second TITLE: prefix."
     )
@@ -43,13 +57,14 @@ def build_user_message(
     target_wpm: int,
     target_word_count: int,
     strength: str,
+    output_language: str = "en",
 ) -> str:
     return (
         "Rewrite the narration so spoken audio fits the target duration.\n"
         "Hard constraints:\n"
         f"- Keep the final narration within about {target_duration_sec:.2f} seconds.\n"
         f"- Aim for no more than {target_word_count} words at about {target_wpm} WPM.\n"
-        "- Use plain natural English for voice-over.\n"
+        f"- Use plain natural {_language_name(output_language)} for voice-over.\n"
         "- Keep only visually supported facts from the original.\n"
         "- Prefer one short sentence; use two only if needed.\n"
         "- If space is tight, summarize instead of overflowing.\n"
@@ -57,7 +72,7 @@ def build_user_message(
         f"- Original segment duration: {segment_duration_sec:.2f} seconds.\n\n"
         "Respond with exactly two lines in this shape (TITLE line then BODY line):\n"
         "TITLE:<Chinese scene label up to 10 characters>\n"
-        "BODY:<English narration>\n\n"
+        f"BODY:<{_language_name(output_language)} narration>\n\n"
         "Original narration:\n"
         f"{text}"
     )
@@ -84,9 +99,10 @@ def build_title_only_user_message(
     )
 
 
-def build_vocab_highlight_system_message() -> str:
+def build_vocab_highlight_system_message(output_language: str = "en") -> str:
+    lang = _language_name(output_language)
     return (
-        "You extract study-vocabulary highlights from a short English narration passage. "
+        f"You extract study-vocabulary highlights from a short {lang} narration passage. "
         "Pick words or short phrases that are useful for a learner at the CEFR level given "
         "in the user message (not trivial at that level; include useful collocations when apt). "
         "Your reply MUST be one JSON object only: no markdown, no code fences, no text before "
@@ -106,11 +122,11 @@ def build_vocab_highlight_system_message() -> str:
     )
 
 
-def build_vocab_highlight_user_message(*, passage: str, cefr_level: str) -> str:
+def build_vocab_highlight_user_message(*, passage: str, cefr_level: str, output_language: str = "en") -> str:
     level = (cefr_level or "").strip() or "B1"
     return (
         f"CEFR level for selection difficulty: {level}.\n\n"
-        "Passage (English):\n"
+        f"Passage ({_language_name(output_language)}):\n"
         f"{passage.rstrip()}\n\n"
         "Respond with one JSON object only, following the schema from the system message."
     )

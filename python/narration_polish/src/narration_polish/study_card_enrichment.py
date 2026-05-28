@@ -29,6 +29,7 @@ def generate_vocab_study_card(
     passage: str,
     *,
     cefr_level: str,
+    output_language: str = "en",
     settings: "Settings",
     client_factory: Callable[..., Any] | None = None,
 ) -> tuple[dict[str, Any] | None, float]:
@@ -47,13 +48,14 @@ def generate_vocab_study_card(
             messages=[
                 {
                     "role": "system",
-                    "content": build_vocab_highlight_system_message(),
+                    "content": build_vocab_highlight_system_message(output_language),
                 },
                 {
                     "role": "user",
                     "content": build_vocab_highlight_user_message(
                         passage=text,
                         cefr_level=cefr_level,
+                        output_language=output_language,
                     ),
                 },
             ],
@@ -69,7 +71,7 @@ def generate_vocab_study_card(
             passage_chars=len(text),
             duration_ms=int(elapsed * 1000),
             status="error",
-            fatal=True,
+            fatal=False,
             **classify_error(exc),
         )
         raise

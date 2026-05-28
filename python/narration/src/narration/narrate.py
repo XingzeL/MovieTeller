@@ -88,6 +88,7 @@ def narrate_from_frames(
     system_msg = build_system_message(
         options.prompt_style,
         options.custom_prompt,
+        options.output_language,
     )
     narration_ctx = _coerce_narration_context(context)
     user_txt = build_user_text(
@@ -103,6 +104,7 @@ def narrate_from_frames(
         retrieved_context_texts=(
             narration_ctx.retrieved_context_texts if narration_ctx is not None else ()
         ),
+        output_language=options.output_language,
     )
 
     t_api0 = time.perf_counter()

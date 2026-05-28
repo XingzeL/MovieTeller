@@ -1,81 +1,85 @@
 import { Component } from 'react'
-import { UploadForm } from './components/UploadForm'
-import type { InputMode } from './components/UploadForm'
-import { LevelSelector } from './components/LevelSelector'
-import { ResultDisplay } from './components/ResultDisplay'
-import { WorkflowProgressBar } from './components/WorkflowProgressBar'
-import type { GenerateResponse, NarrationLevel } from './types'
 
-function workflowOutputRootFromUrl(): string | null {
-  const raw = new URLSearchParams(window.location.search).get('outputRoot')
+import { JobPanel } from './components/JobPanel'
+import { UploadForm } from './components/UploadForm'
+import type { CreateJobResponse } from './types/job'
+
+function jobIdFromUrl(): string | null {
+  const raw = new URLSearchParams(window.location.search).get('jobId')
   return raw?.trim() ? raw.trim() : null
 }
 
-function canSubmit(
-  mode: InputMode,
-  url: string,
-  file: File | null,
-  levels: NarrationLevel[]
-) {
-  if (levels.length === 0) return false
-  if (mode === 'url') return url.trim().length > 0
-  return file !== null
-}
+const VIDEO_LANGUAGES = [
+  { value: 'auto', label: '自动检测' },
+  { value: 'en', label: '英语' },
+  { value: 'zh', label: '中文' },
+  { value: 'ja', label: '日语' },
+  { value: 'ko', label: '韩语' },
+  { value: 'fr', label: '法语' },
+  { value: 'de', label: '德语' },
+  { value: 'es', label: '西班牙语' },
+]
+
+const TTS_LANGUAGES = [
+  { value: 'en', label: '英语' },
+  { value: 'zh', label: '中文' },
+  { value: 'ja', label: '日语' },
+  { value: 'ko', label: '韩语' },
+  { value: 'fr', label: '法语' },
+  { value: 'de', label: '德语' },
+  { value: 'es', label: '西班牙语' },
+]
 
 type UploadPageState = {
-  mode: InputMode
-  url: string
   file: File | null
-  levels: NarrationLevel[]
-  results: Partial<Record<NarrationLevel, string>> | null
+  jobId: string | null
+  enablePolish: boolean
+  enableSpeech: boolean
+  enableSubtitleContext: boolean
+  cefrLevel: string
+  videoLanguage: string
+  ttsLanguage: string
   loading: boolean
   error: string | null
 }
 
-/** 上传与生成流程：URL/文件、等级选择、提交与结果展示，由类组件集中管理状态与请求。 */
+/** 上传视频并创建后台 Job；支持 URL 查询参数恢复 jobId。 */
 export default class UploadPage extends Component<object, UploadPageState> {
   state: UploadPageState = {
-    mode: 'url',
-    url: '',
     file: null,
-    levels: [],
-    results: null,
+    jobId: jobIdFromUrl(),
+    enablePolish: true,
+    enableSpeech: true,
+    enableSubtitleContext: true,
+    cefrLevel: 'B1',
+    videoLanguage: 'auto',
+    ttsLanguage: 'en',
     loading: false,
     error: null,
   }
 
   private get submitEnabled(): boolean {
-    const { mode, url, file, levels } = this.state
-    return canSubmit(mode, url, file, levels)
+    return this.state.file !== null && !this.state.loading
   }
 
-  private handleGenerate = async () => {
-    const { mode, url, file, levels, loading } = this.state
-    if (!canSubmit(mode, url, file, levels) || loading) return
-    this.setState({ error: null, loading: true, results: null })
+  private handleCreateJob = async () => {
+    const { file, loading } = this.state
+    if (!file || loading) return
+    this.setState({ error: null, loading: true })
     try {
-      let res: Response
-      if (mode === 'url') {
-        res = await fetch('/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'url',
-            levels,
-            input: url.trim(),
-          }),
-        })
-      } else {
-        const fd = new FormData()
-        fd.append('type', 'file')
-        fd.append('levels', JSON.stringify(levels))
-        if (file) fd.append('file', file)
-        res = await fetch('/api/generate', {
-          method: 'POST',
-          body: fd,
-        })
-      }
-      const data = (await res.json()) as GenerateResponse & { error?: string }
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('enablePolish', this.state.enablePolish ? 'true' : 'false')
+      fd.append('enableSpeech', this.state.enableSpeech ? 'true' : 'false')
+      fd.append('enableSubtitleContext', this.state.enableSubtitleContext ? 'true' : 'false')
+      fd.append('enableEmbedVideo', 'true')
+      fd.append('cefrLevel', this.state.cefrLevel)
+      fd.append('sourceLanguage', this.state.videoLanguage)
+      fd.append('ttsLanguage', this.state.ttsLanguage)
+      fd.append('narrationLanguage', this.state.ttsLanguage)
+      fd.append('subtitleLanguage', this.state.videoLanguage)
+      const res = await fetch('/api/jobs', { method: 'POST', body: fd })
+      const data = (await res.json()) as CreateJobResponse & { error?: string }
       if (!res.ok) {
         this.setState({
           error: data.error ?? `Request failed (${res.status})`,
@@ -83,7 +87,11 @@ export default class UploadPage extends Component<object, UploadPageState> {
         })
         return
       }
-      this.setState({ results: data.results ?? null, loading: false })
+      const nextJobId = data.jobId
+      const params = new URLSearchParams(window.location.search)
+      params.set('jobId', nextJobId)
+      window.history.replaceState({}, '', `?${params}`)
+      this.setState({ jobId: nextJobId, loading: false })
     } catch {
       this.setState({
         error: 'Network error. Is the server running on port 3001?',
@@ -93,69 +101,115 @@ export default class UploadPage extends Component<object, UploadPageState> {
   }
 
   render() {
-    const { mode, url, file, levels, loading, error, results } = this.state
+    const {
+      file,
+      jobId,
+      loading,
+      error,
+      enablePolish,
+      enableSpeech,
+      enableSubtitleContext,
+      cefrLevel,
+      videoLanguage,
+      ttsLanguage,
+    } = this.state
     const submitEnabled = this.submitEnabled
-    const workflowOutputRoot = workflowOutputRootFromUrl()
 
     return (
       <>
         <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <UploadForm
-            mode={mode}
-            onModeChange={(m) => {
-              this.setState({ mode: m, error: null })
-            }}
-            url={url}
-            onUrlChange={(v) => this.setState({ url: v })}
             file={file}
             onFileChange={(f) => this.setState({ file: f })}
-            disabled={loading}
+            disabled={loading || Boolean(jobId)}
           />
 
-          <div className="my-8 border-t border-zinc-100 dark:border-zinc-800" />
+          <div className="my-6 grid gap-3 sm:grid-cols-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={enablePolish}
+                disabled={Boolean(jobId)}
+                onChange={(e) => this.setState({ enablePolish: e.target.checked })}
+              />
+              润色
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={enableSpeech}
+                disabled={Boolean(jobId)}
+                onChange={(e) => this.setState({ enableSpeech: e.target.checked })}
+              />
+              TTS
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={enableSubtitleContext}
+                disabled={Boolean(jobId)}
+                onChange={(e) =>
+                  this.setState({ enableSubtitleContext: e.target.checked })
+                }
+              />
+              字幕上下文
+            </label>
+            <label className="text-sm">
+              CEFR
+              <select
+                className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 dark:border-zinc-600 dark:bg-zinc-800"
+                value={cefrLevel}
+                disabled={Boolean(jobId)}
+                onChange={(e) => this.setState({ cefrLevel: e.target.value })}
+              >
+                {['A1', 'A2', 'B1', 'B2', 'C1'].map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              当前视频语言（ASR）
+              <select
+                className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 dark:border-zinc-600 dark:bg-zinc-800"
+                value={videoLanguage}
+                disabled={Boolean(jobId)}
+                onChange={(e) => this.setState({ videoLanguage: e.target.value })}
+              >
+                {VIDEO_LANGUAGES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              TTS 语言
+              <select
+                className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 dark:border-zinc-600 dark:bg-zinc-800"
+                value={ttsLanguage}
+                disabled={Boolean(jobId) || !enableSpeech}
+                onChange={(e) => this.setState({ ttsLanguage: e.target.value })}
+              >
+                {TTS_LANGUAGES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
-          <LevelSelector
-            selected={levels}
-            onChange={(next) => this.setState({ levels: next })}
-          />
-
-          <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
             <button
               type="button"
-              onClick={this.handleGenerate}
-              disabled={!submitEnabled || loading}
+              onClick={this.handleCreateJob}
+              disabled={!submitEnabled || loading || Boolean(jobId)}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-400"
             >
-              {loading && (
-                <svg
-                  className="size-4 animate-spin"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  aria-hidden
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-              )}
-              {loading ? 'Generating…' : 'Generate'}
+              {loading ? '提交中…' : '创建 Job'}
             </button>
-            {!submitEnabled && !loading && (
-              <p className="text-center text-xs text-zinc-500 sm:text-left">
-                Add a URL or file and pick at least one level.
-              </p>
-            )}
           </div>
 
           {error && (
@@ -164,15 +218,26 @@ export default class UploadPage extends Component<object, UploadPageState> {
             </p>
           )}
 
-          {workflowOutputRoot && (
-            <WorkflowProgressBar
-              outputRoot={workflowOutputRoot}
-              active={loading}
+          {jobId && (
+            <JobPanel
+              jobId={jobId}
+              onClear={() => {
+                const params = new URLSearchParams(window.location.search)
+                params.delete('jobId')
+                window.history.replaceState(
+                  {},
+                  '',
+                  params.toString() ? `?${params}` : window.location.pathname
+                )
+                this.setState({
+                  jobId: null,
+                  file: null,
+                  error: null,
+                })
+              }}
             />
           )}
         </div>
-
-        <ResultDisplay results={results} orderedLevels={levels} />
       </>
     )
   }
