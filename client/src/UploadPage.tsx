@@ -4,9 +4,10 @@ import { JobPanel } from './components/JobPanel'
 import { UploadForm } from './components/UploadForm'
 import type { CreateJobResponse } from './types/job'
 
-function jobIdFromUrl(): string | null {
-  const raw = new URLSearchParams(window.location.search).get('jobId')
-  return raw?.trim() ? raw.trim() : null
+type UploadPageProps = {
+  jobId?: string | null
+  onJobIdChange?: (jobId: string) => void
+  onClearJob?: () => void
 }
 
 const VIDEO_LANGUAGES = [
@@ -15,6 +16,7 @@ const VIDEO_LANGUAGES = [
   { value: 'zh', label: '中文' },
   { value: 'ja', label: '日语' },
   { value: 'ko', label: '韩语' },
+  { value: 'vi', label: '越南语' },
   { value: 'fr', label: '法语' },
   { value: 'de', label: '德语' },
   { value: 'es', label: '西班牙语' },
@@ -25,6 +27,7 @@ const TTS_LANGUAGES = [
   { value: 'zh', label: '中文' },
   { value: 'ja', label: '日语' },
   { value: 'ko', label: '韩语' },
+  { value: 'vi', label: '越南语' },
   { value: 'fr', label: '法语' },
   { value: 'de', label: '德语' },
   { value: 'es', label: '西班牙语' },
@@ -33,9 +36,7 @@ const TTS_LANGUAGES = [
 type UploadPageState = {
   file: File | null
   jobId: string | null
-  enablePolish: boolean
   enableSpeech: boolean
-  enableSubtitleContext: boolean
   cefrLevel: string
   videoLanguage: string
   ttsLanguage: string
@@ -43,19 +44,25 @@ type UploadPageState = {
   error: string | null
 }
 
-/** 上传视频并创建后台 Job；支持 URL 查询参数恢复 jobId。 */
-export default class UploadPage extends Component<object, UploadPageState> {
+/** 上传视频并创建后台 Job；jobId 由 App 通过 URL 与列表同步。 */
+export default class UploadPage extends Component<UploadPageProps, UploadPageState> {
   state: UploadPageState = {
     file: null,
-    jobId: jobIdFromUrl(),
-    enablePolish: true,
+    jobId: this.props.jobId ?? null,
     enableSpeech: true,
-    enableSubtitleContext: true,
     cefrLevel: 'B1',
     videoLanguage: 'auto',
     ttsLanguage: 'en',
     loading: false,
     error: null,
+  }
+
+  componentDidUpdate(prevProps: UploadPageProps) {
+    const next = this.props.jobId ?? null
+    const prev = prevProps.jobId ?? null
+    if (next !== prev && next !== this.state.jobId) {
+      this.setState({ jobId: next })
+    }
   }
 
   private get submitEnabled(): boolean {
@@ -69,9 +76,9 @@ export default class UploadPage extends Component<object, UploadPageState> {
     try {
       const fd = new FormData()
       fd.append('file', file)
-      fd.append('enablePolish', this.state.enablePolish ? 'true' : 'false')
+      fd.append('enablePolish', 'true')
       fd.append('enableSpeech', this.state.enableSpeech ? 'true' : 'false')
-      fd.append('enableSubtitleContext', this.state.enableSubtitleContext ? 'true' : 'false')
+      fd.append('enableSubtitleContext', 'true')
       fd.append('enableEmbedVideo', 'true')
       fd.append('cefrLevel', this.state.cefrLevel)
       fd.append('sourceLanguage', this.state.videoLanguage)
@@ -88,9 +95,7 @@ export default class UploadPage extends Component<object, UploadPageState> {
         return
       }
       const nextJobId = data.jobId
-      const params = new URLSearchParams(window.location.search)
-      params.set('jobId', nextJobId)
-      window.history.replaceState({}, '', `?${params}`)
+      this.props.onJobIdChange?.(nextJobId)
       this.setState({ jobId: nextJobId, loading: false })
     } catch {
       this.setState({
@@ -106,9 +111,7 @@ export default class UploadPage extends Component<object, UploadPageState> {
       jobId,
       loading,
       error,
-      enablePolish,
       enableSpeech,
-      enableSubtitleContext,
       cefrLevel,
       videoLanguage,
       ttsLanguage,
@@ -125,34 +128,14 @@ export default class UploadPage extends Component<object, UploadPageState> {
           />
 
           <div className="my-6 grid gap-3 sm:grid-cols-2">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={enablePolish}
-                disabled={Boolean(jobId)}
-                onChange={(e) => this.setState({ enablePolish: e.target.checked })}
-              />
-              润色
-            </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
               <input
                 type="checkbox"
                 checked={enableSpeech}
                 disabled={Boolean(jobId)}
                 onChange={(e) => this.setState({ enableSpeech: e.target.checked })}
               />
-              TTS
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={enableSubtitleContext}
-                disabled={Boolean(jobId)}
-                onChange={(e) =>
-                  this.setState({ enableSubtitleContext: e.target.checked })
-                }
-              />
-              字幕上下文
+              TTS（旁白配音）
             </label>
             <label className="text-sm">
               CEFR
@@ -222,13 +205,7 @@ export default class UploadPage extends Component<object, UploadPageState> {
             <JobPanel
               jobId={jobId}
               onClear={() => {
-                const params = new URLSearchParams(window.location.search)
-                params.delete('jobId')
-                window.history.replaceState(
-                  {},
-                  '',
-                  params.toString() ? `?${params}` : window.location.pathname
-                )
+                this.props.onClearJob?.()
                 this.setState({
                   jobId: null,
                   file: null,

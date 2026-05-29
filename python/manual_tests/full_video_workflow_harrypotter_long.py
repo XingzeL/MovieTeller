@@ -286,7 +286,7 @@ def main() -> int:
             "totalCueCount": subtitle_result.total_cue_count,
         }
         if cli_progress is not None:
-            cli_progress.workflow_begin("video_package")
+            cli_progress.workflow_begin("render")
         final_payload = render_video_from_narration_payload( # 将音频文件渲染进入视频合成解说声道视频
             payload=speech_payload,
             video_path=video_path,
@@ -295,7 +295,7 @@ def main() -> int:
             settings=settings,
         )
         if cli_progress is not None:
-            cli_progress.workflow_step_done("video_package")
+            cli_progress.workflow_step_done("render")
     except Exception as exc:
         print(
             json.dumps(

@@ -11,21 +11,32 @@ WORKFLOW_START = "workflow.start"
 WORKFLOW_DONE = "workflow.done"
 WORKFLOW_FAILED = "workflow.failed"
 
-SUBTITLE_EXTRACTION_START = "subtitle_extraction.start"
-SUBTITLE_EXTRACTION_DONE = "subtitle_extraction.done"
-SUBTITLE_EXTRACTION_FAILED = "subtitle_extraction.failed"
-FRAME_POOL_START = "frame_pool.start"
-FRAME_POOL_DONE = "frame_pool.done"
-FRAME_POOL_FAILED = "frame_pool.failed"
-SUBTITLE_CONTEXT_START = "subtitle_context.start"
-SUBTITLE_CONTEXT_DONE = "subtitle_context.done"
-SUBTITLE_CONTEXT_FAILED = "subtitle_context.failed"
-VIDEO_PACKAGE_START = "video_package.start"
-VIDEO_PACKAGE_DONE = "video_package.done"
-VIDEO_PACKAGE_FAILED = "video_package.failed"
-WORKFLOW_EXPORT_START = "workflow_export.start"
-WORKFLOW_EXPORT_DONE = "workflow_export.done"
-WORKFLOW_EXPORT_FAILED = "workflow_export.failed"
+WORKFLOW_STAGE_START = "workflow.stage.start"
+WORKFLOW_STAGE_DONE = "workflow.stage.done"
+WORKFLOW_STAGE_FAILED = "workflow.stage.failed"
+WORKFLOW_STAGE_SKIPPED = "workflow.stage.skipped"
+
+FIXED_WORKFLOW_STAGES = (
+    "ingest",
+    "subtitle_extraction",
+    "subtitle_analysis",
+    "frame_pool",
+    "subtitle_context",
+    "narration",
+    "polish",
+    "study_enrichment",
+    "tts",
+    "subtitle_merge",
+    "render",
+    "export",
+)
+
+WORKFLOW_STAGE_EVENTS = (
+    WORKFLOW_STAGE_START,
+    WORKFLOW_STAGE_DONE,
+    WORKFLOW_STAGE_FAILED,
+    WORKFLOW_STAGE_SKIPPED,
+)
 
 STAGE_GROUP_START = "stage.group.start"
 STAGE_GROUP_DONE = "stage.group.done"
@@ -38,6 +49,7 @@ SEGMENT_POLISH_DONE = "segment.polish.done"
 SEGMENT_STUDY_DONE = "segment.study.done"
 SEGMENT_TTS_START = "segment.tts.start"
 SEGMENT_TTS_DONE = "segment.tts.done"
+SEGMENT_TTS_FAILED = "segment.tts.failed"
 SEGMENT_DONE = "segment.done"
 SEGMENT_FAILED = "segment.failed"
 

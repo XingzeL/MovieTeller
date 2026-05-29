@@ -1,0 +1,93 @@
+import fs from "node:fs";
+import path from "node:path";
+
+import { getJobsRoot, isSafeJobId, jobPathsFromRoot } from "../../config/jobs.js";
+import { readWorkflowRecord } from "./jobProcess.js";
+import { jobRecordToListItemDto } from "./readJob.js";
+
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 100;
+
+/**
+ * @param {unknown} value
+ * @param {number} fallback
+ */
+function parseNonNegativeInt(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.floor(n);
+}
+
+/**
+ * @param {unknown} value
+ * @param {number} fallback
+ * @param {number} max
+ */
+function parsePositiveInt(value, fallback, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(Math.floor(n), max);
+}
+
+/**
+ * @param {string} jobsRoot
+ * @returns {Array<{ jobId: string, record: Record<string, unknown> }>}
+ */
+function collectJobRecords(jobsRoot) {
+  if (!fs.existsSync(jobsRoot)) {
+    return [];
+  }
+
+  const entries = [];
+  for (const name of fs.readdirSync(jobsRoot)) {
+    if (!isSafeJobId(name)) continue;
+    const jobRoot = path.join(jobsRoot, name);
+    let stat;
+    try {
+      stat = fs.statSync(jobRoot);
+    } catch {
+      continue;
+    }
+    if (!stat.isDirectory()) continue;
+
+    const paths = jobPathsFromRoot(jobRoot);
+    const record = readWorkflowRecord(paths.workflowJsonPath);
+    if (!record) continue;
+    entries.push({
+      jobId: String(record.job_id || name),
+      record,
+    });
+  }
+  return entries;
+}
+
+/**
+ * @param {Record<string, unknown>} record
+ */
+function sortTimestamp(record) {
+  const raw = record.updated_at || record.created_at;
+  const ms = Date.parse(String(raw || ""));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+/**
+ * @param {{ jobsRoot?: string, limit?: number, offset?: number }} [opts]
+ */
+export function listJobs(opts = {}) {
+  const jobsRoot = opts.jobsRoot || getJobsRoot();
+  const limit = parsePositiveInt(opts.limit, DEFAULT_LIMIT, MAX_LIMIT);
+  const offset = parseNonNegativeInt(opts.offset, 0);
+
+  const sorted = collectJobRecords(jobsRoot).sort(
+    (a, b) => sortTimestamp(b.record) - sortTimestamp(a.record)
+  );
+  const total = sorted.length;
+  const page = sorted.slice(offset, offset + limit);
+
+  return {
+    jobs: page.map(({ record }) => jobRecordToListItemDto(record)),
+    total,
+    limit,
+    offset,
+  };
+}

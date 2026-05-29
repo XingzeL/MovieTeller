@@ -24,10 +24,11 @@ from narration.narrate import narrate_segment_with_duration
 from narration_polish import generate_vocab_study_card
 
 from movie_pipeline.cancel_check import ensure_not_canceled
-from movie_pipeline.tts_resume import tts_segment_is_reusable
+from movie_pipeline.tts_resume import speech_completion_summary, tts_segment_is_reusable
 
 from movie_pipeline.payload_schema import narrated_segment_to_payload
 from movie_pipeline.runtime_context import RunContext
+from movie_pipeline.stage_observability import StageLogger
 from movie_pipeline.cli_progress import CliProgressReporter, group_progress_callback
 from movie_pipeline.stage_executor import CapabilityLimiters, StageExecutor
 from movie_pipeline.types import (
@@ -281,6 +282,9 @@ class _CandidateWorker:
                     capability="tts",
                     status="ok",
                 )
+                speech_details = None
+                tts_reused = False
+                spoken: Any | None = None
                 if tts_segment_is_reusable(
                     audio_path=audio_path,
                     metadata_path=metadata_path,
@@ -291,19 +295,32 @@ class _CandidateWorker:
                         capability="tts",
                         status="skipped",
                     )
-                    spoken = None
+                    tts_reused = True
                 else:
-                    with self.limiters.tts:
-                        spoken = self.synthesizer(
-                            speech_text,
-                            seg.duration_sec,
-                            output_path=str(audio_path),
-                            metadata_path=str(metadata_path),
-                            target_duration_sec=target_duration_sec,
-                            options=speech_options,
-                            settings=settings,
+                    try:
+                        with self.limiters.tts:
+                            spoken = self.synthesizer(
+                                speech_text,
+                                seg.duration_sec,
+                                output_path=str(audio_path),
+                                metadata_path=str(metadata_path),
+                                target_duration_sec=target_duration_sec,
+                                options=speech_options,
+                                settings=settings,
+                            )
+                    except Exception as exc:
+                        emit_event(
+                            log_events.SEGMENT_TTS_FAILED,
+                            level=logging.WARNING,
+                            stage="tts",
+                            capability="tts",
+                            segment_index=item.index,
+                            status="warning",
+                            fatal=False,
+                            **classify_error(exc),
                         )
-                if spoken is None:
+                        spoken = None
+                if tts_reused:
                     speech_details = NarrationSpeechDetails(
                         text=speech_text,
                         audio_path=str(audio_path),
@@ -320,7 +337,7 @@ class _CandidateWorker:
                         boundary="",
                         fit_applied=False,
                     )
-                else:
+                elif spoken is not None:
                     speech_details = NarrationSpeechDetails(
                     text=str(getattr(spoken, "text")),
                     audio_path=str(getattr(spoken, "audio_path")),
@@ -347,7 +364,6 @@ class _CandidateWorker:
                         else None
                     ),
                     )
-                if spoken is not None:
                     emit_event(
                         log_events.SEGMENT_TTS_DONE,
                         stage="tts",
@@ -440,7 +456,8 @@ def narrate_analysis_candidates(
     log_fields: dict[str, Any] = {"stage": "narration_candidates"}
     if job_id:
         log_fields["job_id"] = job_id
-    pipeline_token = bind_pipeline_log_context(**log_fields)
+    # Preserve workflow fields (e.g. x_output_root for gateway cancel_signal checks).
+    pipeline_token = merge_pipeline_context(**log_fields)
     try:
         pipeline_config = ctx.pipeline
         polish_options = pipeline_config.polish_options
@@ -470,7 +487,16 @@ def narrate_analysis_candidates(
             speech_dir.mkdir(parents=True, exist_ok=True)
 
         candidates = analysis.narration_candidates
+        fixed_stage_logs = _start_pipeline_stage_logs(
+            segment_count=len(candidates),
+            polish_enabled=polish_enabled,
+            speech_enabled=speech_enabled,
+        )
         if not candidates:
+            fixed_stage_logs["narration"].skipped("no_segments", segment_count=0)
+            fixed_stage_logs["polish"].skipped("no_segments", segment_count=0)
+            fixed_stage_logs["study_enrichment"].skipped("no_segments", segment_count=0)
+            fixed_stage_logs["tts"].skipped("no_segments", segment_count=0)
             return ()
 
         parallelism = settings.workflow_parallelism_options()
@@ -490,16 +516,100 @@ def narrate_analysis_candidates(
             limiters=CapabilityLimiters.from_options(settings.capability_concurrency_options()),
             cli_progress=cli_progress,
         )
-        group_results = StageExecutor().map_ordered(
-            groups,
-            lambda group: _run_candidate_group(group, worker=worker),
-            concurrency=parallelism.segment_group_concurrency,
-            stage_name="narration_group",
-            progress=group_progress_callback(cli_progress),
+        try:
+            group_results = StageExecutor().map_ordered(
+                groups,
+                lambda group: _run_candidate_group(group, worker=worker),
+                concurrency=parallelism.segment_group_concurrency,
+                stage_name="narration_group",
+                progress=group_progress_callback(cli_progress),
+            )
+        except Exception as exc:
+            for stage_log in fixed_stage_logs.values():
+                stage_log.failed(exc)
+            raise
+        narrated = tuple(segment for group in group_results for segment in group)
+        _finish_pipeline_stage_logs(
+            fixed_stage_logs,
+            narrated_segments=narrated,
+            polish_enabled=polish_enabled,
+            speech_enabled=speech_enabled,
         )
-        return tuple(segment for group in group_results for segment in group)
+        return narrated
     finally:
         reset_pipeline_log_context(pipeline_token)
+
+
+def _start_pipeline_stage_logs(
+    *,
+    segment_count: int,
+    polish_enabled: bool,
+    speech_enabled: bool,
+) -> dict[str, StageLogger]:
+    logs = {
+        "narration": StageLogger(
+            "narration",
+            segment_count=segment_count,
+            enabled=True,
+        ),
+        "polish": StageLogger(
+            "polish",
+            segment_count=segment_count,
+            enabled=polish_enabled,
+        ),
+        "study_enrichment": StageLogger(
+            "study_enrichment",
+            segment_count=segment_count,
+            enabled=polish_enabled,
+        ),
+        "tts": StageLogger(
+            "tts",
+            segment_count=segment_count,
+            enabled=speech_enabled,
+        ),
+    }
+    for stage_log in logs.values():
+        stage_log.start()
+    return logs
+
+
+def _finish_pipeline_stage_logs(
+    logs: dict[str, StageLogger],
+    *,
+    narrated_segments: tuple[NarratedSegment, ...],
+    polish_enabled: bool,
+    speech_enabled: bool,
+) -> None:
+    segment_count = len(narrated_segments)
+    logs["narration"].done(segment_count=segment_count)
+    if polish_enabled:
+        polished_count = sum(1 for segment in narrated_segments if segment.polish is not None)
+        logs["polish"].done(segment_count=segment_count, output_count=polished_count)
+        study_count = sum(1 for segment in narrated_segments if segment.vocab_study_card is not None)
+        warning_count = max(0, polished_count - study_count)
+        logs["study_enrichment"].done(
+            segment_count=segment_count,
+            output_count=study_count,
+            warning_count=warning_count,
+        )
+    else:
+        logs["polish"].skipped("disabled_by_request", segment_count=segment_count)
+        logs["study_enrichment"].skipped("not_requested", segment_count=segment_count)
+    if speech_enabled:
+        speech_count = sum(1 for segment in narrated_segments if segment.speech is not None)
+        tts_failed_count = segment_count - speech_count
+        artifact_reused = any(
+            segment.speech is not None and segment.speech.provider == "cached"
+            for segment in narrated_segments
+        )
+        logs["tts"].done(
+            segment_count=segment_count,
+            output_count=speech_count,
+            warning_count=tts_failed_count,
+            artifact_reused=artifact_reused or None,
+        )
+    else:
+        logs["tts"].skipped("disabled_by_request", segment_count=segment_count)
 
 
 def _segments_to_payload(
@@ -533,13 +643,27 @@ def run_pipeline_ctx(
     """Run the text/speech narration pipeline using a single :class:`RunContext`."""
     pipeline_config = ctx.pipeline
     resolved_settings = ctx.settings
-    analysis = analyze_subtitle_file(
-        srt_path,
-        video_path=video_path,
-        video_duration_sec=pipeline_config.video_duration_sec,
-        min_gap_sec=pipeline_config.min_gap_sec,
-        subtitle_guard_sec=pipeline_config.subtitle_guard_sec,
-        ffprobe_bin=pipeline_config.ffprobe_bin,
+    analysis_stage = StageLogger(
+        "subtitle_analysis",
+        input_path=srt_path,
+        enabled=True,
+    )
+    analysis_stage.start()
+    try:
+        analysis = analyze_subtitle_file(
+            srt_path,
+            video_path=video_path,
+            video_duration_sec=pipeline_config.video_duration_sec,
+            min_gap_sec=pipeline_config.min_gap_sec,
+            subtitle_guard_sec=pipeline_config.subtitle_guard_sec,
+            ffprobe_bin=pipeline_config.ffprobe_bin,
+        )
+    except Exception as exc:
+        analysis_stage.failed(exc)
+        raise
+    analysis_stage.done(
+        segment_count=len(analysis.narration_candidates),
+        input_count=len(analysis.subtitle_spans),
     )
     resolved_subtitle_context_index_dir = _resolve_subtitle_context_index_dir(
         srt_path,
@@ -591,4 +715,8 @@ def run_pipeline_ctx(
         speech_output_dir=resolved_speech_output_dir,
         subtitle_context_index_dir=resolved_subtitle_context_index_dir,
     )
+    if speech_requested:
+        tts_summary = speech_completion_summary(payload)
+        if int(tts_summary["failed"]) > 0:
+            payload["workflowTts"] = tts_summary
     return payload

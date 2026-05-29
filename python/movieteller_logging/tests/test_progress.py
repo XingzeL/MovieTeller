@@ -12,10 +12,16 @@ def test_progress_from_events_summarizes_successful_workflow() -> None:
         [
             {"event": events.WORKFLOW_START, "job_id": "job-1", "stage": "workflow"},
             {
-                "event": events.SUBTITLE_EXTRACTION_DONE,
+                "event": events.WORKFLOW_STAGE_START,
+                "job_id": "job-1",
+                "stage": "subtitle_extraction",
+            },
+            {
+                "event": events.WORKFLOW_STAGE_SKIPPED,
                 "job_id": "job-1",
                 "stage": "subtitle_extraction",
                 "status": "skipped",
+                "skip_reason": "artifact_reused",
                 "x_srt_path": "/tmp/demo.srt",
             },
             {
@@ -32,9 +38,9 @@ def test_progress_from_events_summarizes_successful_workflow() -> None:
                 "segment_index": 7,
             },
             {
-                "event": events.WORKFLOW_EXPORT_DONE,
+                "event": events.WORKFLOW_STAGE_DONE,
                 "job_id": "job-1",
-                "stage": "workflow_export",
+                "stage": "export",
                 "x_output_root": "/tmp/out",
             },
             {"event": events.WORKFLOW_DONE, "job_id": "job-1", "stage": "workflow"},
@@ -53,6 +59,29 @@ def test_progress_from_events_summarizes_successful_workflow() -> None:
     assert progress.artifacts["output_root"] == "/tmp/out"
 
 
+def test_progress_ignores_removed_legacy_macro_events() -> None:
+    progress = progress_from_events(
+        [
+            {"event": events.WORKFLOW_START, "job_id": "job-legacy", "stage": "workflow"},
+            {
+                "event": "subtitle_extraction.done",
+                "job_id": "job-legacy",
+                "stage": "subtitle_extraction",
+                "x_srt_path": "/tmp/legacy.srt",
+            },
+            {
+                "event": events.WORKFLOW_STAGE_START,
+                "job_id": "job-legacy",
+                "stage": "frame_pool",
+            },
+            {"event": events.WORKFLOW_DONE, "job_id": "job-legacy", "stage": "workflow"},
+        ]
+    )
+
+    assert progress.current_stage == "workflow"
+    assert "srt_path" not in progress.artifacts
+
+
 def test_progress_from_events_tracks_failure_and_warning() -> None:
     progress = progress_from_events(
         [
@@ -61,7 +90,7 @@ def test_progress_from_events_tracks_failure_and_warning() -> None:
                 "event": events.STUDY_CARD_EXPORT_FAILED,
                 "level": "WARNING",
                 "status": "warning",
-                "stage": "workflow_export",
+                "stage": "export",
                 "error_type": "ValueError",
                 "error_message": "bad card",
                 "error_code": "study_card_export_failed",

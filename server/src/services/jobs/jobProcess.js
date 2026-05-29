@@ -66,6 +66,7 @@ export function markJobCanceledByNode(jobRoot) {
   const next = {
     ...(record || {}),
     status: "canceled",
+    error: null,
     updated_at: now,
     created_at: record?.created_at || now,
   };

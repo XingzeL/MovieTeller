@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import type { JobArtifactItem, JobDto } from '../types/job'
+import { JobLogViewer } from './JobLogViewer'
 import { WorkflowProgressBar } from './WorkflowProgressBar'
 
 type Props = {
@@ -70,6 +71,22 @@ export function JobPanel({ jobId, onClear }: Props) {
     setJob(nextJob)
   }
 
+  const handleRetry = async () => {
+    const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/retry`, {
+      method: 'POST',
+    })
+    const data = (await res.json()) as { error?: string }
+    if (!res.ok) {
+      setError(data.error ?? `重试失败 (${res.status})`)
+      return
+    }
+    setError(null)
+    const nextJob = await fetchJob()
+    setJob(nextJob)
+  }
+
+  const canRetry = job?.status === 'failed' || job?.status === 'canceled'
+
   return (
     <div className="mt-6 space-y-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-900/60">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -85,6 +102,15 @@ export function JobPanel({ jobId, onClear }: Props) {
               className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-white dark:border-zinc-600 dark:text-zinc-200"
             >
               取消
+            </button>
+          )}
+          {canRetry && (
+            <button
+              type="button"
+              onClick={() => void handleRetry()}
+              className="rounded-lg border border-violet-300 px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-50 dark:border-violet-600 dark:text-violet-200"
+            >
+              重试
             </button>
           )}
           {onClear && (
@@ -110,6 +136,8 @@ export function JobPanel({ jobId, onClear }: Props) {
       )}
 
       <WorkflowProgressBar jobId={jobId} active={!terminal} />
+
+      <JobLogViewer jobId={jobId} active={!terminal} />
 
       {error && (
         <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
@@ -141,14 +169,6 @@ export function JobPanel({ jobId, onClear }: Props) {
         </div>
       )}
 
-      <a
-        href={`/api/jobs/${encodeURIComponent(jobId)}/logs?limit=200`}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-block text-xs text-violet-700 underline dark:text-violet-300"
-      >
-        查看 JSONL 日志
-      </a>
     </div>
   )
 }

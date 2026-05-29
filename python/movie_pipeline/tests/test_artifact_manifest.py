@@ -42,6 +42,9 @@ def test_build_manifest_uses_rendered_video_mp4(tmp_path: Path) -> None:
         output_root=output_root,
     )
     kinds = {entry["kind"] for entry in entries}
+    assert kinds <= {"renderedVideo", "studyCardsHtml"}
+    assert "sourceVideo" not in kinds
+    assert "extractedSrt" not in kinds
     assert "renderedVideo" in kinds
     rendered_entry = next(e for e in entries if e["kind"] == "renderedVideo")
     assert rendered_entry["path"].endswith("narrated.mp4")

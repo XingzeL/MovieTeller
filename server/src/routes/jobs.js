@@ -5,8 +5,14 @@ import path from "node:path";
 
 import { listJobArtifacts, resolveArtifactDownload } from "../services/jobs/artifactManifest.js";
 import { enqueueJobUpload, cancelJob } from "../services/jobs/jobQueue.js";
+import { retryJob } from "../services/jobs/retryJob.js";
+import { listJobs } from "../services/jobs/listJobs.js";
 import { readJobLogs } from "../services/jobs/readJobLogs.js";
 import { jobRecordToDto, readJobRecord } from "../services/jobs/readJob.js";
+import {
+  removeUploadedTempFile,
+  validateJobUploadFile,
+} from "../services/jobs/uploadValidation.js";
 import {
   readWorkflowProgressFromLog,
 } from "../services/workflow/readWorkflowProgress.js";
@@ -25,9 +31,37 @@ const upload = multer({
 
 const router = express.Router();
 
+router.get("/jobs", (req, res) => {
+  try {
+    const limitRaw = req.query.limit;
+    const offsetRaw = req.query.offset;
+    const limit =
+      limitRaw !== undefined && String(limitRaw).trim() !== ""
+        ? Number(limitRaw)
+        : undefined;
+    const offset =
+      offsetRaw !== undefined && String(offsetRaw).trim() !== ""
+        ? Number(offsetRaw)
+        : undefined;
+    const payload = listJobs({
+      limit: Number.isNaN(limit) ? undefined : limit,
+      offset: Number.isNaN(offset) ? undefined : offset,
+    });
+    return res.json(payload);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 router.post("/jobs", upload.single("file"), (req, res) => {
   if (!req.file?.path) {
     return res.status(400).json({ error: 'multipart field "file" is required' });
+  }
+  const validation = validateJobUploadFile(req.file);
+  if (!validation.ok) {
+    removeUploadedTempFile(req.file.path);
+    return res.status(400).json({ error: validation.message });
   }
   try {
     const created = enqueueJobUpload({
@@ -118,6 +152,18 @@ router.post("/jobs/:jobId/cancel", (req, res) => {
     return res.json(payload);
   } catch (err) {
     return res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+router.post("/jobs/:jobId/retry", (req, res) => {
+  try {
+    const payload = retryJob(req.params.jobId);
+    return res.json(payload);
+  } catch (err) {
+    const status = err.statusCode === 404 || err.statusCode === 409 || err.statusCode === 400
+      ? err.statusCode
+      : 500;
+    return res.status(status).json({ error: String(err?.message || err) });
   }
 });
 

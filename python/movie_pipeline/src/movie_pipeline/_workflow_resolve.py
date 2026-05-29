@@ -229,7 +229,11 @@ def default_policy_context_for_request(
             default_enable_speech=False,
             default_enable_embed_video=False,
         )
-    return PolicyContext(resolved_level=level)
+    return PolicyContext(
+        resolved_level=level,
+        default_enable_subtitle_context=True,
+        default_enable_polish=True,
+    )
 
 
 def _policy_adjusted_settings(

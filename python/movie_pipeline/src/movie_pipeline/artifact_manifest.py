@@ -37,75 +37,17 @@ def build_product_artifact_manifest(
     job_paths: JobPaths | None,
     output_root: Path,
 ) -> list[dict[str, Any]]:
-    """Collect downloadable artifacts for ``artifacts/manifest.json``."""
+    """Collect user-facing downloadable artifacts for ``artifacts/manifest.json``.
+
+    Product surface is limited to narrated video and study cards; intermediate
+    files (SRT, JSON manifests, etc.) stay on disk but are not listed.
+    """
     entries: list[dict[str, Any]] = []
     workflow_artifacts = dict(payload.get("workflowArtifacts") or {})
 
     def add(entry: dict[str, Any] | None) -> None:
         if entry is not None:
             entries.append(entry)
-
-    add(
-        _file_entry(
-            kind="sourceVideo",
-            label="Source video",
-            path=paths.source_video,
-            media_type="video/mp4",
-        )
-    )
-    add(
-        _file_entry(
-            kind="extractedSrt",
-            label="Extracted subtitles",
-            path=paths.srt_path,
-            media_type="application/x-subrip",
-        )
-    )
-
-    final_srt = workflow_artifacts.get("finalSrtPath")
-    if job_paths is not None and not final_srt:
-        final_srt = job_paths.final_subtitled_srt_path
-    add(
-        _file_entry(
-            kind="finalSrt",
-            label="Final subtitles",
-            path=final_srt,
-            media_type="application/x-subrip",
-        )
-    )
-
-    narration_json = None
-    if job_paths is not None:
-        narration_json = job_paths.narration_json_path
-    stem = paths.stem
-    if narration_json is None:
-        candidate = output_root / f"{stem}.narration.json"
-        if candidate.is_file():
-            narration_json = str(candidate)
-    add(
-        _file_entry(
-            kind="narrationJson",
-            label="Narration JSON",
-            path=narration_json,
-            media_type="application/json",
-        )
-    )
-
-    speech_json = workflow_artifacts.get("speechJsonPath")
-    if job_paths is not None and not speech_json:
-        speech_json = job_paths.speech_video_json_path
-    if speech_json is None:
-        candidate = output_root / f"{stem}.speech.json"
-        if candidate.is_file():
-            speech_json = str(candidate)
-    add(
-        _file_entry(
-            kind="speechJson",
-            label="Speech manifest",
-            path=speech_json,
-            media_type="application/json",
-        )
-    )
 
     rendered_video = None
     rendered_payload = payload.get("renderedVideo")
@@ -121,7 +63,7 @@ def build_product_artifact_manifest(
     add(
         _file_entry(
             kind="renderedVideo",
-            label="Rendered video",
+            label="旁白成片",
             path=rendered_video,
             media_type="video/mp4",
         )
@@ -131,19 +73,9 @@ def build_product_artifact_manifest(
     add(
         _file_entry(
             kind="studyCardsHtml",
-            label="Study cards",
+            label="学习卡片",
             path=study_html,
             media_type="text/html",
-        )
-    )
-
-    frame_pool = workflow_artifacts.get("framePoolManifest") or paths.frame_pool_manifest
-    add(
-        _file_entry(
-            kind="framePoolManifest",
-            label="Frame pool manifest",
-            path=frame_pool,
-            media_type="application/jsonl",
         )
     )
 

@@ -108,8 +108,11 @@ def embed_texts(
 ) -> EmbeddingResult:
     factory = client_factory or openai_sdk_client_factory
     client = factory(str(endpoint.api_key or ""), endpoint.base_url)
+    kwargs: dict[str, Any] = {"model": endpoint.model, "input": list(request.texts)}
+    if request.timeout_sec is not None:
+        kwargs["timeout"] = request.timeout_sec
     try:
-        resp = client.embeddings.create(model=endpoint.model, input=list(request.texts))
+        resp = client.embeddings.create(**kwargs)
     except Exception as exc:  # pragma: no cover - SDK-specific failures
         raise GatewayProviderError(str(exc)) from exc
     data = getattr(resp, "data", None) or ()

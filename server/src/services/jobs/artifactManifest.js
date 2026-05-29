@@ -4,22 +4,16 @@ import path from "node:path";
 import { jobPathsFromRoot } from "../../config/jobs.js";
 import { readJobRecord } from "./readJob.js";
 
+/** User-facing artifact kinds exposed in API / frontend downloads. */
+const PRODUCT_ARTIFACT_KINDS = new Set(["renderedVideo", "studyCardsHtml"]);
+
 /** @deprecated fallback only — prefer artifacts/manifest.json from Python */
 const LEGACY_ARTIFACT_KINDS = {
-  sourceVideo: { label: "Source video", pathKeys: ["videoPath"] },
-  extractedSrt: { label: "Extracted subtitles", pathKeys: ["srtPath"] },
-  finalSrt: { label: "Final subtitles", pathKeys: ["finalSrtPath"] },
-  narrationJson: { label: "Narration JSON", pathKeys: ["textJsonPath"] },
-  speechJson: { label: "Speech manifest", pathKeys: ["speechJsonPath"] },
   renderedVideo: {
-    label: "Rendered video",
+    label: "旁白成片",
     pathKeys: ["renderedVideoPath", "renderJsonPath"],
   },
-  studyCardsHtml: { label: "Study cards", pathKeys: ["studyCardsHtmlPath"] },
-  framePoolManifest: {
-    label: "Frame pool manifest",
-    pathKeys: ["framePoolManifest"],
-  },
+  studyCardsHtml: { label: "学习卡片", pathKeys: ["studyCardsHtmlPath"] },
 };
 
 /**
@@ -49,6 +43,7 @@ function listFromLegacyArtifacts(jobId, outputRoot, artifacts) {
   const items = [];
   const jobRootResolved = path.resolve(outputRoot);
   for (const [kind, meta] of Object.entries(LEGACY_ARTIFACT_KINDS)) {
+    if (!PRODUCT_ARTIFACT_KINDS.has(kind)) continue;
     let filePath = null;
     for (const key of meta.pathKeys) {
       const candidate = artifacts[key];
@@ -84,7 +79,11 @@ export function listJobArtifacts(jobId) {
   const manifestEntries = readManifestFile(paths.root);
   if (manifestEntries && manifestEntries.length > 0) {
     return manifestEntries
-      .filter((entry) => fs.existsSync(entry.path))
+      .filter(
+        (entry) =>
+          PRODUCT_ARTIFACT_KINDS.has(String(entry.kind || "")) &&
+          fs.existsSync(entry.path)
+      )
       .map((entry) => ({
         kind: entry.kind,
         label: entry.label || entry.kind,
@@ -107,6 +106,11 @@ export function resolveArtifactDownload(jobId, kind) {
   const { record, paths } = readJobRecord(jobId);
   const manifestEntries = readManifestFile(paths.root);
   if (manifestEntries) {
+    if (!PRODUCT_ARTIFACT_KINDS.has(kind)) {
+      const err = new Error("unknown artifact kind");
+      err.statusCode = 404;
+      throw err;
+    }
     const entry = manifestEntries.find((item) => item.kind === kind);
     if (!entry?.path) {
       const err = new Error("artifact not available");

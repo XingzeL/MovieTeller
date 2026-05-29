@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
 from typing import Any
 
@@ -16,31 +15,10 @@ def export_workflow_artifacts(
     paths: ArtifactPaths,
     output_root: Path,
 ) -> dict[str, Any]:
-    start = time.perf_counter()
-    emit_event(log_events.WORKFLOW_EXPORT_START, stage="workflow_export")
-    try:
-        workflow_artifacts = dict(payload.get("workflowArtifacts") or {})
-        workflow_artifacts.update(_export_study_cards(payload, paths=paths, output_root=output_root))
-        payload["workflowArtifacts"] = workflow_artifacts
-        emit_event(
-            log_events.WORKFLOW_EXPORT_DONE,
-            stage="workflow_export",
-            duration_ms=int((time.perf_counter() - start) * 1000),
-            status="ok",
-            x_output_root=str(output_root),
-        )
-        return payload
-    except Exception as exc:
-        emit_event(
-            log_events.WORKFLOW_EXPORT_FAILED,
-            level=logging.ERROR,
-            stage="workflow_export",
-            duration_ms=int((time.perf_counter() - start) * 1000),
-            status="error",
-            fatal=True,
-            **classify_error(exc),
-        )
-        raise
+    workflow_artifacts = dict(payload.get("workflowArtifacts") or {})
+    workflow_artifacts.update(_export_study_cards(payload, paths=paths, output_root=output_root))
+    payload["workflowArtifacts"] = workflow_artifacts
+    return payload
 
 
 def _export_study_cards(
@@ -70,7 +48,7 @@ def _export_study_cards(
         emit_event(
             log_events.STUDY_CARD_EXPORT_FAILED,
             level=logging.WARNING,
-            stage="workflow_export",
+            stage="export",
             status="warning",
             fatal=False,
             **classify_error(exc, default_code="study_card_export_failed"),

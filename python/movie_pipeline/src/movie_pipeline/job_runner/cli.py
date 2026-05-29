@@ -7,9 +7,11 @@ from pathlib import Path
 from movieteller_config import load_settings
 from movieteller_logging import classify_error
 
+from movie_pipeline.cancel_check import JobCanceledError
 from movie_pipeline.job import JobRecord, JobStore, utc_now_iso
 from movie_pipeline.job_runner.core import run_workflow_job
 from movie_pipeline.job_runner.request_io import load_workflow_request_json
+from movieteller_logging.cancel_signal import WorkflowCanceledError
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -57,6 +59,9 @@ def main(argv: list[str] | None = None) -> int:
             request=request,
             user_id=args.user_id,
         )
+    except (JobCanceledError, WorkflowCanceledError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     except Exception as exc:
         _write_failed(store, video_path=video_path, user_id=args.user_id, exc=exc)
         print(str(exc), file=sys.stderr)
@@ -76,6 +81,8 @@ def _write_failed(
     now = utc_now_iso()
     try:
         existing = store.read()
+        if existing.status in ("canceled", "succeeded"):
+            return
         record = JobRecord(
             job_id=existing.job_id,
             status="failed",

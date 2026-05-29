@@ -12,6 +12,15 @@ BOOTSTRAP_STAGE_ALIASES: dict[str, str] = {
     "workflow": "subtitle_extraction",
 }
 
+# Fixed workflow.stage ids that roll up into a product macro for percent/labels.
+FIXED_STAGE_TO_MACRO: dict[str, str] = {
+    "ingest": "subtitle_extraction",
+    "subtitle_analysis": "narration",
+    "polish": "narration",
+    "study_enrichment": "narration",
+    "subtitle_merge": "render",
+}
+
 
 @dataclass(frozen=True)
 class MacroStage:
@@ -53,7 +62,6 @@ MACRO_STAGES: tuple[MacroStage, ...] = (
                 "narration",
                 "narration_candidates",
                 "narration_group",
-                "narration_pipeline",  # deprecated CLI / legacy
             }
         ),
         progress_mode="groups",
@@ -65,16 +73,16 @@ MACRO_STAGES: tuple[MacroStage, ...] = (
         log_aliases=frozenset({"tts"}),
     ),
     MacroStage(
-        id="video_package",
+        id="render",
         label="封装视频",
         weight=0.04,
-        log_aliases=frozenset({"video_package"}),
+        log_aliases=frozenset({"render"}),
     ),
     MacroStage(
-        id="workflow_export",
+        id="export",
         label="导出产物",
         weight=0.03,
-        log_aliases=frozenset({"workflow_export"}),
+        log_aliases=frozenset({"export"}),
     ),
 )
 
@@ -98,6 +106,8 @@ for _stage in MACRO_STAGES:
     _LOG_ALIAS_TO_MACRO[_stage.id] = _stage.id
 for _bootstrap, _macro in BOOTSTRAP_STAGE_ALIASES.items():
     _LOG_ALIAS_TO_MACRO[_bootstrap] = _macro
+for _fixed_stage, _macro in FIXED_STAGE_TO_MACRO.items():
+    _LOG_ALIAS_TO_MACRO[_fixed_stage] = _macro
 
 
 def macro_stage_ids() -> tuple[str, ...]:

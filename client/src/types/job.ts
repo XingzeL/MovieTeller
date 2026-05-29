@@ -29,3 +29,29 @@ export type CreateJobResponse = {
   status: JobStatus
   createdAt: string
 }
+
+export type JobListItem = {
+  jobId: string
+  status: JobStatus
+  currentStage?: string | null
+  createdAt?: string
+  updatedAt?: string
+  cancelRequestedAt?: string | null
+  inputFileName?: string | null
+}
+
+export type JobListResponse = {
+  jobs: JobListItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export type JobLogLine = Record<string, unknown> & { raw?: string }
+
+export type JobLogsResponse = {
+  lines: JobLogLine[]
+  truncated: boolean
+  nextOffset: number
+  bytesRead?: number
+}

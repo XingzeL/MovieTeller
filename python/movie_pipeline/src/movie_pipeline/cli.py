@@ -269,7 +269,7 @@ def main() -> int:
             cli_progress.workflow_step_done("tts" if speech_enabled else "narration")
         if args.embed_video:
             if cli_progress is not None:
-                cli_progress.workflow_begin("video_package")
+                cli_progress.workflow_begin("render")
             payload = render_video_from_narration_payload(
                 payload=payload,
                 video_path=Path(args.video),
@@ -278,7 +278,7 @@ def main() -> int:
                 settings=settings,
             )
             if cli_progress is not None:
-                cli_progress.workflow_step_done("video_package")
+                cli_progress.workflow_step_done("render")
     finally:
         if cli_progress is not None:
             cli_progress.close()

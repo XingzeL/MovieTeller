@@ -139,6 +139,7 @@ class WorkflowArtifactsPayload(TypedDict, total=False):
     textJsonPath: str | None
     speechJsonPath: str | None
     renderJsonPath: str | None
+    renderedVideoPath: str | None
     finalSrtPath: str | None
     studyCardsHtmlPath: str | None
     studyCardsHtmlError: str | None

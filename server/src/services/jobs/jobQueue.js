@@ -5,6 +5,7 @@ import { createJobFromUpload, spawnPreparedJob } from "./createJob.js";
 import {
   markCancelRequested,
   markJobCanceledByNode,
+  readWorkflowRecord,
 } from "./jobProcess.js";
 
 const DEFAULT_MAX_RUNNING = 1;
@@ -95,6 +96,81 @@ export function enqueueJobUpload(input) {
     createdAt: prepared.createdAt,
     outputRoot: prepared.outputRoot,
   };
+}
+
+const RETRYABLE_STATUSES = new Set(["failed", "canceled"]);
+
+/**
+ * Re-queue an existing job directory (failed/canceled) without re-uploading.
+ * @param {string} jobId
+ */
+export function requeueExistingJob(jobId) {
+  const jobsRoot = getJobsRoot();
+  const jobRoot = resolveJobRoot(jobsRoot, jobId);
+  const paths = jobPathsFromRoot(jobRoot);
+  const record = readWorkflowRecord(paths.workflowJsonPath);
+  if (!record) {
+    const err = new Error("job not found");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const status = String(record.status || "");
+  if (!RETRYABLE_STATUSES.has(status)) {
+    const err = new Error(`cannot retry job in status "${status}"`);
+    err.statusCode = 409;
+    throw err;
+  }
+
+  const videoPath = String(record.input_video_path || "");
+  if (!videoPath || !fs.existsSync(videoPath)) {
+    const err = new Error("input video missing; cannot retry");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (isJobMarkedRunning(jobId) || isJobWaitingInQueue(jobId)) {
+    const err = new Error("job is already queued or running");
+    err.statusCode = 409;
+    throw err;
+  }
+
+  if (fs.existsSync(paths.cancelFlagPath)) {
+    fs.unlinkSync(paths.cancelFlagPath);
+  }
+
+  const now = new Date().toISOString();
+  const next = {
+    ...record,
+    status: "queued",
+    error: null,
+    current_stage: null,
+    updated_at: now,
+  };
+  delete next.cancel_requested_at;
+  fs.writeFileSync(
+    paths.workflowJsonPath,
+    `${JSON.stringify(next, null, 2)}\n`,
+    "utf8"
+  );
+
+  const prepared = {
+    jobId,
+    jobRoot,
+    jobsRoot,
+    videoPath,
+    userId: record.user_id ?? null,
+  };
+
+  if (running.size < maxRunningJobs()) {
+    running.add(jobId);
+    spawnPreparedJob(prepared);
+    watchJobCompletion(jobId);
+  } else {
+    waiting.push(prepared);
+  }
+
+  return { jobId, status: "queued", retriedAt: now };
 }
 
 /**

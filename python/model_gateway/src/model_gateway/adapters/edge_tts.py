@@ -46,13 +46,19 @@ def synthesize_speech(
     )
     if not request.output_path:
         raise GatewayProviderError("speech output_path is required")
-    try:
-        asyncio.run(
-            communicate.save(
-                str(request.output_path),
-                str(request.metadata_path) if request.metadata_path else None,
-            )
+    async def _save() -> None:
+        await communicate.save(
+            str(request.output_path),
+            str(request.metadata_path) if request.metadata_path else None,
         )
+
+    try:
+        if request.timeout_sec is not None:
+            asyncio.run(asyncio.wait_for(_save(), timeout=float(request.timeout_sec)))
+        else:
+            asyncio.run(_save())
+    except TimeoutError as exc:
+        raise GatewayProviderError(f"TTS timed out after {request.timeout_sec}s") from exc
     except Exception as exc:  # pragma: no cover - provider/runtime-specific failures
         raise GatewayProviderError(str(exc)) from exc
     return SpeechResult(

@@ -26,6 +26,7 @@ def _language_name(code: str | None) -> str:
         "zh": "Chinese",
         "ja": "Japanese",
         "ko": "Korean",
+        "vi": "Vietnamese",
         "fr": "French",
         "de": "German",
         "es": "Spanish",

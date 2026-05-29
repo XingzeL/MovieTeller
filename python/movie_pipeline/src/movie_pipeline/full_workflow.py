@@ -25,7 +25,9 @@ from movie_pipeline._workflow_resolve import (
     resolved_run_context_from_request,
 )
 from movie_pipeline.cancel_check import JobCanceledError, ensure_not_canceled_for_output_root
+from movieteller_logging.cancel_signal import WorkflowCanceledError
 from movie_pipeline.job import JobPaths, WorkflowArtifacts
+from movie_pipeline.stage_observability import StageLogger
 from movie_pipeline.workflow_errors import workflow_error_from_exception
 from movie_pipeline.types import ArtifactPaths, ResolvedRunContext
 from movie_pipeline.artifact_manifest import (
@@ -34,6 +36,7 @@ from movie_pipeline.artifact_manifest import (
     write_product_artifact_manifest,
 )
 from movie_pipeline.workflow_artifacts import write_stage_artifact_manifest
+from movie_pipeline.tts_resume import speech_completion_summary
 from movie_pipeline.workflow_exports import export_workflow_artifacts
 from movie_pipeline.workflow_stages import (
     stage_frame_pool,
@@ -86,6 +89,12 @@ def run_full_workflow(
                     jobs_root=output_root.parent,
                     job_id=str(workspace_id),
                 )
+            ingest_stage = StageLogger(
+                "ingest",
+                input_path=str(resolved_video_path),
+                output_path=str(output_root),
+            )
+            ingest_stage.start()
             paths = ArtifactPaths.resolve(
                 output_root=output_root,
                 source_video=resolved_video_path,
@@ -93,6 +102,7 @@ def run_full_workflow(
                 enable_embed_video=resolved_execution.enable_embed_video,
                 job_paths=job_paths,
             )
+            ingest_stage.done(output_path=str(output_root))
 
             if cli_progress is not None:
                 cli_progress.workflow_begin("subtitle_extraction")
@@ -150,7 +160,7 @@ def run_full_workflow(
                     cli_progress.workflow_step_done("narration")
 
             if cli_progress is not None:
-                cli_progress.workflow_begin("video_package")
+                cli_progress.workflow_begin("render")
             payload = stage_video_package(
                 paths=paths,
                 execution=resolved_execution,
@@ -159,7 +169,11 @@ def run_full_workflow(
                 video_renderer=video_renderer,
             )
             if cli_progress is not None:
-                cli_progress.workflow_step_done("video_package")
+                cli_progress.workflow_step_done("render")
+
+            subtitle_merge_stage = StageLogger("subtitle_merge", enabled=False)
+            subtitle_merge_stage.start()
+            subtitle_merge_stage.skipped("not_implemented_as_separate_stage")
 
             artifact_manifest_path = write_stage_artifact_manifest(paths=paths)
             payload["workflowArtifacts"] = WorkflowArtifacts(
@@ -172,15 +186,21 @@ def run_full_workflow(
                 output_root=str(output_root),
                 artifact_manifest_path=artifact_manifest_path,
             ).to_payload_dict()
+            export_stage = StageLogger("export", output_path=str(output_root))
+            export_stage.start()
             if cli_progress is not None:
-                cli_progress.workflow_begin("workflow_export")
-            result = export_workflow_artifacts(
-                payload=payload,
-                paths=paths,
-                output_root=output_root,
-            )
+                cli_progress.workflow_begin("export")
+            try:
+                result = export_workflow_artifacts(
+                    payload=payload,
+                    paths=paths,
+                    output_root=output_root,
+                )
+            except Exception as exc:
+                export_stage.failed(exc)
+                raise
             if cli_progress is not None:
-                cli_progress.workflow_step_done("workflow_export")
+                cli_progress.workflow_step_done("export")
 
             manifest_entries = build_product_artifact_manifest(
                 paths=paths,
@@ -198,6 +218,73 @@ def run_full_workflow(
             )
             merged_artifacts["artifactManifestPath"] = manifest_path
             result["workflowArtifacts"] = merged_artifacts
+            export_stage.done(
+                output_path=manifest_path,
+                output_count=len(manifest_entries),
+                x_output_root=str(output_root),
+            )
+
+            tts_summary = (
+                speech_completion_summary(result)
+                if resolved_execution.enable_speech
+                else None
+            )
+            tts_incomplete = (
+                tts_summary is not None
+                and int(tts_summary.get("failed", 0)) > 0
+            )
+            study_cards_path = merged_artifacts.get("studyCardsHtmlPath")
+            study_cards_ready = bool(
+                study_cards_path and Path(str(study_cards_path)).is_file()
+            )
+
+            if tts_incomplete:
+                merged_artifacts["ttsPartialFailure"] = dict(tts_summary)
+                emit_event(
+                    log_events.WORKFLOW_FAILED,
+                    level=logging.WARNING,
+                    status="error",
+                    stage="tts",
+                    fatal=True,
+                    error_code="tts_partial_failure",
+                    error_message=(
+                        f"TTS incomplete: {tts_summary['succeeded']}/{tts_summary['total']} "
+                        "segments succeeded; study cards exported when available."
+                    ),
+                    retryable=True,
+                )
+                log_session.flush()
+                write_workflow_manifest(
+                    path=workflow_json_path,
+                    status="failed",
+                    job_id=job_id,
+                    input_video_path=resolved_video_path,
+                    output_root=output_root,
+                    user_id=resolved_context.request.user_id,
+                    log_path=workflow_log_path,
+                    artifacts=merged_artifacts,
+                    error={
+                        "error_code": "tts_partial_failure",
+                        "error_message": (
+                            f"TTS incomplete ({tts_summary['succeeded']}/"
+                            f"{tts_summary['total']} segments). "
+                            + (
+                                "Study cards are available for download."
+                                if study_cards_ready
+                                else "Study card export did not produce HTML."
+                            )
+                        ),
+                        "retryable": True,
+                        "fatal": True,
+                        "stage": "tts",
+                    },
+                )
+                if study_cards_ready:
+                    return result
+                raise RuntimeError(
+                    f"TTS incomplete ({tts_summary['failed']}/{tts_summary['total']} segments) "
+                    "and study cards were not exported"
+                )
 
             emit_event(log_events.WORKFLOW_DONE, status="ok")
             log_session.flush()
@@ -212,7 +299,7 @@ def run_full_workflow(
                 artifacts=merged_artifacts,
             )
             return result
-        except JobCanceledError as exc:
+        except (JobCanceledError, WorkflowCanceledError) as exc:
             error_fields = workflow_error_from_exception(
                 exc, stage="workflow", fatal=False
             )

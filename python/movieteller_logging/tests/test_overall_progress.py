@@ -23,9 +23,22 @@ def test_overall_progress_narration_groups_increase_percent() -> None:
     job = progress_from_events(
         [
             {"event": events.WORKFLOW_START, "stage": "workflow"},
-            {"event": events.SUBTITLE_EXTRACTION_DONE, "stage": "subtitle_extraction"},
-            {"event": events.FRAME_POOL_DONE, "stage": "frame_pool"},
-            {"event": events.SUBTITLE_CONTEXT_DONE, "stage": "subtitle_context"},
+            {
+                "event": events.WORKFLOW_STAGE_DONE,
+                "stage": "subtitle_extraction",
+            },
+            {
+                "event": events.WORKFLOW_STAGE_DONE,
+                "stage": "frame_pool",
+            },
+            {
+                "event": events.WORKFLOW_STAGE_DONE,
+                "stage": "subtitle_context",
+            },
+            {
+                "event": events.WORKFLOW_STAGE_START,
+                "stage": "narration",
+            },
             {
                 "event": events.STAGE_GROUP_PROGRESS,
                 "stage": "narration_group",
@@ -40,12 +53,18 @@ def test_overall_progress_narration_groups_increase_percent() -> None:
     assert out["label"] == "生成旁白"
 
 
-def test_overall_progress_maps_deprecated_narration_pipeline_alias() -> None:
+def test_overall_progress_uses_workflow_stage_for_macro_position() -> None:
     job = progress_from_events(
         [
             {"event": events.WORKFLOW_START, "stage": "workflow"},
-            {"event": events.FRAME_POOL_DONE, "stage": "frame_pool"},
-            {"event": events.STAGE_GROUP_PROGRESS, "stage": "narration_pipeline", "completed": 1, "total": 2},
+            {"event": events.WORKFLOW_STAGE_DONE, "stage": "frame_pool"},
+            {"event": events.WORKFLOW_STAGE_START, "stage": "narration"},
+            {
+                "event": events.STAGE_GROUP_PROGRESS,
+                "stage": "narration_group",
+                "completed": 1,
+                "total": 2,
+            },
         ]
     )
     out = overall_progress(job)
@@ -58,6 +77,7 @@ def test_overall_progress_shows_tts_macro_stage_label() -> None:
         [
             {"event": events.WORKFLOW_START, "stage": "workflow"},
             {"event": events.STAGE_GROUP_PROGRESS, "stage": "narration_group", "completed": 1, "total": 3},
+            {"event": events.WORKFLOW_STAGE_START, "stage": "tts"},
             {"event": events.SEGMENT_TTS_START, "stage": "tts", "capability": "tts"},
         ]
     )
@@ -70,6 +90,7 @@ def test_overall_progress_does_not_regress_from_tts_to_narration_group() -> None
     job = progress_from_events(
         [
             {"event": events.WORKFLOW_START, "stage": "workflow"},
+            {"event": events.WORKFLOW_STAGE_START, "stage": "tts"},
             {"event": events.SEGMENT_TTS_START, "stage": "tts", "capability": "tts"},
             {"event": events.STAGE_GROUP_PROGRESS, "stage": "narration_group", "completed": 2, "total": 3},
         ]

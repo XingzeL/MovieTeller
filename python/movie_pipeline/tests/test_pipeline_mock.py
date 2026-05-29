@@ -393,7 +393,7 @@ def test_run_full_workflow_accepts_resolved_context(tmp_path):
     np.save(ctx_dir / "embeddings.npy", np.zeros((0, 0), dtype=np.float32))
 
     settings = make_settings()
-    request = WorkflowRequest(video_path=str(video), output_root=str(tmp_path))
+    request = WorkflowRequest(video_path=str(video), output_root=str(tmp_path), enable_polish=False, enable_speech=False, enable_embed_video=False)
     resolved_context = resolved_run_context_from_request(
         request=request,
         settings=settings,
@@ -448,10 +448,10 @@ def test_run_full_workflow_accepts_resolved_context(tmp_path):
     assert captured["frame_pool_manifest"] == str(pool_dir / "manifest.jsonl")
     artifacts = payload["workflowArtifacts"]
     assert artifacts.get("artifactManifestPath")
-    artifact_manifest = json.loads(Path(artifacts["artifactManifestPath"]).read_text(encoding="utf-8"))
-    assert artifact_manifest["stages"]["subtitle_extraction"]["outputs"]["srt"]["reusable"] is True
-    assert artifact_manifest["stages"]["frame_pool"]["outputs"]["manifest"]["reusable"] is True
-    assert artifact_manifest["stages"]["subtitle_context"]["outputs"]["index"]["reusable"] is True
+    stage_artifact_manifest = json.loads((tmp_path / "demo.artifact_manifest.json").read_text(encoding="utf-8"))
+    assert stage_artifact_manifest["stages"]["subtitle_extraction"]["outputs"]["srt"]["reusable"] is True
+    assert stage_artifact_manifest["stages"]["frame_pool"]["outputs"]["manifest"]["reusable"] is True
+    assert stage_artifact_manifest["stages"]["subtitle_context"]["outputs"]["index"]["reusable"] is True
     assert artifacts.get("studyCardsHtmlPath")
     assert Path(artifacts["studyCardsHtmlPath"]).name == "demo.study_cards.html"
     assert artifacts.get("studyCardsHtmlError") is None
@@ -492,6 +492,9 @@ def test_run_full_workflow_owns_logging_lifecycle(tmp_path):
         video_path=str(video),
         output_root=str(tmp_path),
         user_id="user-1",
+        enable_polish=False,
+        enable_speech=False,
+        enable_embed_video=False,
     )
     resolved_context = resolved_run_context_from_request(
         request=request,
@@ -515,15 +518,25 @@ def test_run_full_workflow_owns_logging_lifecycle(tmp_path):
 
     run_full_workflow(resolved_context=resolved_context, narrator=fake_narrator)
 
-    rows = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    rows = [json.loads(line) for line in (tmp_path / "logs" / "workflow.jsonl").read_text(encoding="utf-8").splitlines()]
     events = [row["event"] for row in rows]
     assert events.count("workflow.start") == 1
     assert events.count("workflow.done") == 1
-    assert "subtitle_extraction.done" in events
-    assert "frame_pool.done" in events
-    assert "subtitle_context.done" in events
-    assert "video_package.done" in events
-    assert "workflow_export.done" in events
+    assert "workflow.stage.start" in events
+    assert "workflow.stage.done" in events
+    legacy_macro_events = {
+        "subtitle_extraction.start",
+        "subtitle_extraction.done",
+        "frame_pool.start",
+        "frame_pool.done",
+        "subtitle_context.start",
+        "subtitle_context.done",
+        "video_package.start",
+        "video_package.done",
+        "workflow_export.start",
+        "workflow_export.done",
+    }
+    assert legacy_macro_events.isdisjoint(events)
     assert any(row.get("event") == "segment.start" and row.get("job_id") == "user-1" for row in rows)
     job = read_job_record(tmp_path / "workflow.json")
     assert job.job_id == "user-1"
@@ -583,7 +596,7 @@ def test_run_full_workflow_defaults_log_to_output_root_logs(tmp_path):
             "stderr": False,
         }
     )
-    request = WorkflowRequest(video_path=str(video), output_root=str(tmp_path), user_id="user-log")
+    request = WorkflowRequest(video_path=str(video), output_root=str(tmp_path), user_id="user-log", enable_polish=False, enable_speech=False, enable_embed_video=False)
     resolved_context = resolved_run_context_from_request(request=request, settings=settings)
     resolved_context = type(resolved_context)(
         config=replace(
@@ -1020,7 +1033,7 @@ def test_run_full_workflow_reuses_existing_artifacts_and_runs_pipeline(tmp_path)
         ),
     )
     resolved_context = resolved_run_context_from_request(
-        request=WorkflowRequest(video_path=str(video), output_root=str(tmp_path)),
+        request=WorkflowRequest(video_path=str(video), output_root=str(tmp_path), enable_polish=False, enable_speech=False, enable_embed_video=False),
         settings=settings,
     )
     resolved_context = type(resolved_context)(

@@ -1,72 +1,73 @@
 # MovieTeller
-基于大模型的自动生成AI电影旁白和剧本的工具；The LLM base Movie/video Script, narration generator
 
-## MVP：本地运行（AI English Scene Narrator · mock）
+基于大模型的长视频旁白、TTS 与成片生成工具（LLM-based movie / video narration pipeline）。
 
-前置条件：**Node.js 18+**（建议使用当前 LTS）和 **Python 3.12**。
+当前仓库处于 **本地单机可用的产品化 Alpha**：Web 上传 → **Job API** → Python 全链路处理 → 进度/日志/产物下载。  
+**主链路不是**早期的 Mock `POST /api/generate`。
 
-本仓库为前后端分离的两套工程，开发时需要**同时**启动后端与前端。
+## 快速开始
 
-### 0. Python 虚拟环境
-
-建议所有 Python 相关能力都放在仓库根目录的 **`.venv`** 中运行：
+前置：**Node.js 18+**、**Python 3.12**、**ffmpeg**、已配置的模型 API（见 `.env` / `config/local.yaml`）。
 
 ```bash
-cd /path/to/MovieTeller
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ./python/movieteller_config -e ./python/narration -e ./python/subtitle_extraction
-python -m pip install -e ./python/narration_polish -e ./python/narration_speech -e ./python/narration_video -e ./python/subtitle_analysis
-python -m pip install videocaptioner pytest
+# 1) Python（仓库根，详见 docs/local-development.md）
+python3.12 -m venv .venv && source .venv/bin/activate
+# … pip install 各 python/* 包与 videocaptioner
+
+# 2) 后端
+cd server && npm install && npm run dev    # http://localhost:3001
+
+# 3) 前端（新终端）
+cd client && npm install && npm run dev    # http://localhost:5173
 ```
 
-后端的字幕提取链路现在会**优先使用仓库根目录 `.venv/bin/python3`**；手动 smoke 也应先激活 `.venv`，再运行 `python` / `python3`。若未 `source` 激活，请显式使用 **`.venv/bin/python`** 或 **`.venv/bin/pytest`**，避免误用系统自带的 `python3`。
+浏览器打开前端 → 上传 MP4 → 创建 Job → 在任务列表与详情中查看进度，成功后下载 **旁白成片** 与 **学习卡片**。
 
-### 1. 后端（Express）
+## 文档索引
+
+| 文档 | 内容 |
+|------|------|
+| **[docs/local-development.md](docs/local-development.md)** | **本地运行主文档**：架构、环境、前后端、Job 目录、排障 |
+| [docs/jobs-api.md](docs/jobs-api.md) | Job HTTP API、状态机、产物 manifest、smoke |
+| [docs/productization-roadmap.md](docs/productization-roadmap.md) | 产品化阶段路线图 |
+| [python/movieteller_config/README.md](python/movieteller_config/README.md) | 配置与 provider |
+
+## 主链路（摘要）
+
+```text
+UploadPage → POST /api/jobs → server jobQueue → python -m movie_pipeline.job_runner
+→ artifacts/jobs/{jobId}/workflow.json + logs/workflow.jsonl + artifacts/manifest.json
+→ 前端轮询 GET /jobs/:id、/progress、/logs；GET /artifacts 下载
+```
+
+- Job 数据目录：默认 `artifacts/jobs/`（`JOBS_ROOT`）
+- 任务列表：`GET /api/jobs`
+- 深度健康检查：`GET /api/healthz/deep`
+- 快速自检：`cd server && npm run smoke`
+
+## 配置
+
+- **优先级**：环境变量 > `config/local.yaml` > 默认
+- 模板：[.env.example](.env.example)、[config/local.yaml.example](config/local.yaml.example)
+- Node 与 Python 共用同一套配置约定（`movieteller_config` / `server/src/config`）
+
+## 遗留 / 非主链路
+
+| 入口 | 说明 |
+|------|------|
+| `POST /api/generate` | **Mock demo**（假旁白），已脱离主产品流程 |
+| `POST /api/extract/subtitles` | 独立字幕提取 |
+| `python -m movie_pipeline …` | 开发者 CLI（SRT + 视频），不经过 Job 布局 |
+
+## 模块说明（Python）
+
+编排入口：[python/movie_pipeline](python/movie_pipeline)（含 `job_runner`）。  
+领域包：`narration`、`narration_polish`、`narration_speech`、`narration_video`、`subtitle_extraction` 等，见各目录 `README.md`。
+
+## 生产构建（可选）
 
 ```bash
-cd server
-npm install
-npm run dev
+cd client && npm run build   # 输出 client/dist
 ```
 
-默认监听 **http://localhost:3001**。健康检查：`GET http://localhost:3001/health`。
-
-Mock 生成接口：`POST http://localhost:3001/api/generate`（JSON 传 URL；`multipart/form-data` 传本地 MP4）。
-
-字幕提取（建议安装到项目 `.venv`：`python -m pip install videocaptioner`）：`POST http://localhost:3001/api/extract/subtitles`，`multipart/form-data` 字段 **`file`**。 Python 包见 [python/subtitle_extraction/README.md](python/subtitle_extraction/README.md)。
-
-### 2. 前端（Vite + React）
-
-新建终端：
-
-```bash
-cd client
-npm install
-npm run dev
-```
-
-浏览器打开终端里提示的地址（一般为 **http://localhost:5173**）。前端通过 Vite 代理把 `/api` 转发到 `localhost:3001`，请勿单独改端口除非同时改 [client/vite.config.ts](client/vite.config.ts) 与后端 `PORT`。
-
-### 3. 生产构建（可选）
-
-```bash
-cd client && npm run build   # 静态文件在 client/dist
-```
-
-当前 MVP 不提供 Express 托管静态资源；若需一体化部署，可将 `client/dist` 交给任意静态服务器或由 Express `express.static` 提供。
-
-## 配置模块（Configuration）
-
-MovieTeller 使用统一的配置加载规则（Python **`movieteller_config`**、Node **`server/src/config`**）：
-
-- **优先级**：环境变量 > 仓库根目录 `config/local.yaml`（gitignore）> `MOVIE_TELLER_CONFIG` 指向的 YAML > 默认值。
-- **换供应商**：一般只需改 YAML / `API_KEYS_JSON` / `PREFIX_API_KEY` 与 `NARRATION_IMAGE_MODEL`，无需改 `movieteller_config` 或 `server/src/config` 代码（约定：`FOO_API_KEY`→`foo`，`API_KEYS_JSON` 覆盖单项 env）。
-- **模板**：复制根目录 [.env.example](.env.example) 为 `.env`（`.env` 勿提交）。
-- **详情**：见 [python/movieteller_config/README.md](python/movieteller_config/README.md) 与根目录 [.env.example](.env.example)。
-- **Python 旁白生成（ffmpeg 区间抽帧 + OpenAI 兼容 API，slug 由 ``NARRATION_PROVIDER`` 指定）**：见 [python/narration/README.md](python/narration/README.md)。
-- **Python 旁白润色（按 duration / 语速 / CEFR 级别改写，供后续 TTS 使用）**：见 [python/narration_polish/README.md](python/narration_polish/README.md)。
-- **Python 旁白语音生成（edge-tts）**：见 [python/narration_speech/README.md](python/narration_speech/README.md)。
-- **Python 旁白嵌回视频（ffmpeg 混流）**：见 [python/narration_video/README.md](python/narration_video/README.md)。
-
-后端启动时会加载 `.env` 并缓存配置（见 `server/src/index.js` 中对 `loadConfig()` 的调用）。
+当前未内置 Express 托管静态资源；部署时需自行反向代理或 `express.static`。

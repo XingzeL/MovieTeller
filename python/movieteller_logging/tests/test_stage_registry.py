@@ -4,6 +4,7 @@ import pytest
 
 from movieteller_logging.stage_registry import (
     BOOTSTRAP_STAGE_ALIASES,
+    FIXED_STAGE_TO_MACRO,
     MACRO_STAGES,
     all_registered_log_stages,
     macro_stage_ids,
@@ -15,17 +16,21 @@ from movieteller_logging.stage_registry import (
 # Stages observed in emit_event(..., stage=...) across the repo (production).
 _KNOWN_EMIT_LOG_STAGES = frozenset(
     {
+        "ingest",
         "subtitle_extraction",
+        "subtitle_analysis",
         "frame_pool",
         "subtitle_context",
         "narration",
         "narration_candidates",
         "narration_group",
+        "polish",
+        "study_enrichment",
         "tts",
-        "video_package",
-        "workflow_export",
+        "subtitle_merge",
+        "render",
+        "export",
         "workflow",
-        "narration_pipeline",
     }
 )
 
@@ -47,10 +52,14 @@ def test_macro_stage_ids_match_registry_order() -> None:
         ("narration", "narration"),
         ("narration_candidates", "narration"),
         ("narration_group", "narration"),
-        ("narration_pipeline", "narration"),
         ("tts", "tts"),
-        ("video_package", "video_package"),
-        ("workflow_export", "workflow_export"),
+        ("render", "render"),
+        ("export", "export"),
+        ("ingest", "subtitle_extraction"),
+        ("subtitle_analysis", "narration"),
+        ("polish", "narration"),
+        ("study_enrichment", "narration"),
+        ("subtitle_merge", "render"),
         ("workflow", "subtitle_extraction"),
     ],
 )
@@ -72,6 +81,11 @@ def test_registered_log_stages_cover_known_emit() -> None:
 
 def test_bootstrap_aliases_point_at_valid_macro() -> None:
     for macro in BOOTSTRAP_STAGE_ALIASES.values():
+        assert macro in macro_stage_ids()
+
+
+def test_fixed_stage_aliases_point_at_valid_macro() -> None:
+    for macro in FIXED_STAGE_TO_MACRO.values():
         assert macro in macro_stage_ids()
 
 

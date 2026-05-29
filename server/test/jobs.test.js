@@ -11,13 +11,25 @@ import {
   getJobQueueSnapshot,
   markJobRunningForTests,
   markJobWaitingForTests,
+  requeueExistingJob,
 } from "../src/services/jobs/jobQueue.js";
+import {
+  markJobCanceledByNode,
+  markJobFailed,
+  shouldMarkFailedOnRunnerExit,
+} from "../src/services/jobs/jobProcess.js";
+import { applyRunnerExit, applyRunnerSpawnError } from "../src/services/jobs/runnerExit.js";
 import { recoverJobsOnStartup } from "../src/services/jobs/jobRecovery.js";
 import { readJobLogs } from "../src/services/jobs/readJobLogs.js";
 import {
   listJobArtifacts,
   resolveArtifactDownload,
 } from "../src/services/jobs/artifactManifest.js";
+import { listJobs } from "../src/services/jobs/listJobs.js";
+import {
+  removeUploadedTempFile,
+  validateJobUploadFile,
+} from "../src/services/jobs/uploadValidation.js";
 
 const repoRoot = path.resolve(process.cwd(), "..");
 
@@ -137,6 +149,159 @@ test("readJobLogs supports limit, malformed lines, and cursor metadata", () => {
   assert.equal(nextCursor.nextOffset, Buffer.byteLength(first + second + third));
 });
 
+test("listJobs sorts by updated_at desc and paginates", () => {
+  const root = tempJobsRoot();
+  writeJob(root, "older-job", {
+    updated_at: "2026-01-01T00:00:00Z",
+    created_at: "2026-01-01T00:00:00Z",
+  });
+  writeJob(root, "newer-job", {
+    updated_at: "2026-01-02T00:00:00Z",
+    created_at: "2026-01-02T00:00:00Z",
+    status: "running",
+    current_stage: "narration",
+  });
+  fs.mkdirSync(path.join(root, "not-a-job"), { recursive: true });
+  fs.writeFileSync(path.join(root, "not-a-job", "readme.txt"), "skip");
+
+  const page = listJobs({ jobsRoot: root, limit: 1, offset: 0 });
+  assert.equal(page.total, 2);
+  assert.equal(page.limit, 1);
+  assert.equal(page.offset, 0);
+  assert.equal(page.jobs.length, 1);
+  assert.equal(page.jobs[0].jobId, "newer-job");
+  assert.equal(page.jobs[0].status, "running");
+  assert.equal(page.jobs[0].currentStage, "narration");
+  assert.equal(page.jobs[0].inputFileName, "source.mp4");
+
+  const second = listJobs({ jobsRoot: root, limit: 10, offset: 1 });
+  assert.equal(second.jobs[0].jobId, "older-job");
+});
+
+test("validateJobUploadFile rejects unsupported formats", () => {
+  const root = tempJobsRoot();
+  const badPath = path.join(root, "bad.txt");
+  fs.writeFileSync(badPath, "x");
+  const bad = validateJobUploadFile({
+    path: badPath,
+    originalname: "clip.txt",
+    mimetype: "text/plain",
+    size: 1,
+  });
+  assert.equal(bad.ok, false);
+  removeUploadedTempFile(badPath);
+  assert.equal(fs.existsSync(badPath), false);
+
+  const goodPath = path.join(root, "good.mp4");
+  fs.writeFileSync(goodPath, "x");
+  const good = validateJobUploadFile({
+    path: goodPath,
+    originalname: "clip.MP4",
+    mimetype: "video/mp4",
+    size: 1,
+  });
+  assert.equal(good.ok, true);
+});
+
+test("requeueExistingJob resets failed job to queued and clears cancel flag", () => {
+  const root = tempJobsRoot();
+  const { jobRoot, paths } = writeJob(root, "retry-job", {
+    status: "failed",
+    error: { error_code: "provider_timeout", message: "timed out" },
+  });
+  fs.writeFileSync(paths.cancelFlagPath, "2026-01-01T00:00:00Z\n");
+  const videoPath = path.join(jobRoot, "input", "source.mp4");
+  fs.mkdirSync(path.dirname(videoPath), { recursive: true });
+  fs.writeFileSync(videoPath, "vid");
+
+  const result = requeueExistingJob("retry-job");
+
+  assert.equal(result.status, "queued");
+  assert.equal(fs.existsSync(paths.cancelFlagPath), false);
+  const record = JSON.parse(fs.readFileSync(paths.workflowJsonPath, "utf8"));
+  assert.equal(record.status, "queued");
+  assert.equal(record.error, null);
+  assert.equal(record.cancel_requested_at, undefined);
+});
+
+test("runner exit with cancel flag should mark canceled not failed", () => {
+  const root = tempJobsRoot();
+  const { jobRoot, paths } = writeJob(root, "cancel-exit-job", { status: "running" });
+  fs.writeFileSync(paths.cancelFlagPath, "2026-01-01T00:00:00Z\n");
+  assert.equal(shouldMarkFailedOnRunnerExit(jobRoot), true);
+  assert.equal(markJobCanceledByNode(jobRoot), true);
+  const record = JSON.parse(fs.readFileSync(paths.workflowJsonPath, "utf8"));
+  assert.equal(record.status, "canceled");
+  assert.equal(record.error, null);
+  assert.equal(markJobFailed(jobRoot, { error_code: "runner_exited", message: "x" }), false);
+});
+
+test("applyRunnerExit marks canceled when cancel.flag present", () => {
+  const root = tempJobsRoot();
+  const { jobRoot, paths } = writeJob(root, "exit-cancel-flag", { status: "running" });
+  fs.writeFileSync(paths.cancelFlagPath, "2026-01-01T00:00:00Z\n");
+  const result = applyRunnerExit(jobRoot, { code: 1, signal: null });
+  assert.deepEqual(result, { action: "mark_canceled", reason: "cancel_flag_present", applied: true });
+  const record = JSON.parse(fs.readFileSync(paths.workflowJsonPath, "utf8"));
+  assert.equal(record.status, "canceled");
+  assert.equal(record.error, null);
+});
+
+test("applyRunnerExit marks failed on nonzero exit without cancel.flag", () => {
+  const root = tempJobsRoot();
+  const { jobRoot, paths } = writeJob(root, "exit-failed", { status: "running" });
+  const result = applyRunnerExit(jobRoot, { code: 1, signal: null });
+  assert.deepEqual(result, { action: "mark_failed", reason: "nonzero_exit", applied: true });
+  const record = JSON.parse(fs.readFileSync(paths.workflowJsonPath, "utf8"));
+  assert.equal(record.status, "failed");
+  assert.equal(record.error?.error_code, "runner_exited");
+});
+
+test("applyRunnerExit treats SIGTERM as failed without cancel.flag", () => {
+  const root = tempJobsRoot();
+  const { jobRoot } = writeJob(root, "exit-sigterm", { status: "running" });
+  const result = applyRunnerExit(jobRoot, { code: null, signal: "SIGTERM" });
+  assert.equal(result.action, "mark_failed");
+  assert.equal(result.applied, true);
+});
+
+test("applyRunnerExit no-op on exit 0", () => {
+  const root = tempJobsRoot();
+  const { jobRoot } = writeJob(root, "exit-zero", { status: "running" });
+  const result = applyRunnerExit(jobRoot, { code: 0, signal: null });
+  assert.deepEqual(result, { action: "none", reason: "exit_code_0", applied: false });
+  const record = JSON.parse(fs.readFileSync(jobPathsFromRoot(jobRoot).workflowJsonPath, "utf8"));
+  assert.equal(record.status, "running");
+});
+
+test("applyRunnerExit no-op when workflow already terminal", () => {
+  const root = tempJobsRoot();
+  const { jobRoot, paths } = writeJob(root, "exit-terminal-canceled", {
+    status: "canceled",
+    error: { error_code: "user_canceled", message: "x" },
+  });
+  fs.writeFileSync(paths.cancelFlagPath, "2026-01-01T00:00:00Z\n");
+  const result = applyRunnerExit(jobRoot, { code: 1, signal: null });
+  assert.equal(result.action, "none");
+  assert.equal(result.applied, false);
+});
+
+test("applyRunnerSpawnError honors cancel.flag", () => {
+  const root = tempJobsRoot();
+  const { jobRoot, paths } = writeJob(root, "spawn-cancel", { status: "running" });
+  fs.writeFileSync(paths.cancelFlagPath, "2026-01-01T00:00:00Z\n");
+  const result = applyRunnerSpawnError(jobRoot, { message: "ENOENT python" });
+  assert.deepEqual(result, { action: "mark_canceled", reason: "cancel_flag_present", applied: true });
+  const record = JSON.parse(fs.readFileSync(paths.workflowJsonPath, "utf8"));
+  assert.equal(record.status, "canceled");
+});
+
+test("requeueExistingJob rejects non-terminal status", () => {
+  const root = tempJobsRoot();
+  writeJob(root, "running-job", { status: "running" });
+  assert.throws(() => requeueExistingJob("running-job"), /cannot retry/);
+});
+
 test("artifact manifest wins over legacy artifacts and rejects traversal", () => {
   const root = tempJobsRoot();
   const { jobRoot, paths } = writeJob(root, "artifact-job", {
@@ -161,8 +326,20 @@ test("artifact manifest wins over legacy artifacts and rejects traversal", () =>
   assert.equal(artifacts[0].kind, "renderedVideo");
   assert.equal(resolveArtifactDownload("artifact-job", "renderedVideo").filePath, artifactPath);
 
+  assert.throws(
+    () => resolveArtifactDownload("artifact-job", "sourceVideo"),
+    /unknown artifact kind/
+  );
+
   fs.writeFileSync(paths.artifactManifestPath, JSON.stringify([
-    { kind: "bad", label: "Bad", path: path.join(os.tmpdir(), "outside.mp4") },
+    {
+      kind: "renderedVideo",
+      label: "Bad",
+      path: path.join(os.tmpdir(), "outside.mp4"),
+    },
   ]));
-  assert.throws(() => resolveArtifactDownload("artifact-job", "bad"), /artifact path not allowed/);
+  assert.throws(
+    () => resolveArtifactDownload("artifact-job", "renderedVideo"),
+    /artifact path not allowed/
+  );
 });

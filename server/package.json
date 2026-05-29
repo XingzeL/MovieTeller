@@ -6,7 +6,12 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "smoke": "node ../scripts/jobs-api-smoke.mjs --mode=api",
+    "smoke:create": "node ../scripts/jobs-api-smoke.mjs --mode=create",
+    "smoke:cancel": "node ../scripts/jobs-api-smoke.mjs --mode=cancel --timeout-sec=180",
+    "smoke:workflow": "node ../scripts/jobs-api-smoke.mjs --mode=workflow",
+    "smoke:unit": "node --test ../scripts/jobs-api-smoke.unit.test.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",

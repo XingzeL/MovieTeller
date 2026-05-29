@@ -8,6 +8,14 @@ from movieteller_logging import events
 from movieteller_logging.reader import read_jsonl_events
 from movieteller_logging.stage_registry import macro_index, resolve_macro
 
+_WORKFLOW_STAGE_TERMINAL = frozenset(
+    {
+        events.WORKFLOW_STAGE_DONE,
+        events.WORKFLOW_STAGE_SKIPPED,
+        events.WORKFLOW_STAGE_FAILED,
+    }
+)
+
 
 @dataclass(frozen=True)
 class JobProgress:
@@ -55,11 +63,7 @@ def progress_from_events(raw_events: Iterable[Mapping[str, Any]]) -> JobProgress
         last_event = event
         job_id = _str_or_none(row.get("job_id")) or job_id
         stage = _str_or_none(row.get("stage"))
-        if stage and (
-            event in {events.WORKFLOW_DONE, events.WORKFLOW_FAILED}
-            or _should_update_current_stage(current_stage, stage)
-        ):
-            current_stage = stage
+        current_stage = _update_current_stage(current_stage, event=event, stage=stage)
 
         level = _str_or_none(row.get("level"))
         row_status = _str_or_none(row.get("status"))
@@ -95,7 +99,8 @@ def progress_from_events(raw_events: Iterable[Mapping[str, Any]]) -> JobProgress
         elif event == events.SEGMENT_FAILED and segment_index is not None:
             failed_segments.add(segment_index)
 
-        _collect_artifact_fields(row, artifacts)
+        if event.startswith("workflow.stage."):
+            _collect_artifact_fields(row, artifacts)
 
     if status == "unknown" and last_event is not None:
         status = "running"
@@ -117,6 +122,23 @@ def progress_from_events(raw_events: Iterable[Mapping[str, Any]]) -> JobProgress
         retryable_error_count=retryable_error_count,
         artifacts=artifacts,
     )
+
+
+def _update_current_stage(
+    current_stage: str | None,
+    *,
+    event: str,
+    stage: str | None,
+) -> str | None:
+    if not stage:
+        return current_stage
+    if event == events.WORKFLOW_STAGE_START or event in _WORKFLOW_STAGE_TERMINAL:
+        if _should_update_current_stage(current_stage, stage):
+            return stage
+        return current_stage
+    if event in {events.WORKFLOW_DONE, events.WORKFLOW_FAILED}:
+        return stage
+    return current_stage
 
 
 def _compact_issue(row: Mapping[str, Any]) -> dict[str, Any]:

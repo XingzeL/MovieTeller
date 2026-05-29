@@ -1,8 +1,11 @@
 from types import SimpleNamespace
 
+import pytest
 from movieteller_config.schema import settings_from_dict
+from movieteller_logging.cancel_signal import WorkflowCanceledError
+from movieteller_logging.context import bind_pipeline_log_context, reset_pipeline_log_context
 
-from model_gateway.errors import GatewayConfigError
+from model_gateway.errors import GatewayConfigError, GatewayProviderError
 from model_gateway.facade import (
     _embed_texts,
     _generate_chat,
@@ -13,6 +16,203 @@ from model_gateway.facade import (
     synthesize_speech_for_capability,
 )
 from model_gateway.types import ChatRequest, EmbeddingRequest, SpeechRequest
+
+
+def test_facade_generate_chat_raises_when_cancel_flag_in_log_context(tmp_path):
+    calls = {"n": 0}
+
+    class FakeChatApi:
+        def create(self, **kwargs):
+            calls["n"] += 1
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="stop",
+                        message=SimpleNamespace(content="should-not-run"),
+                    )
+                ]
+            )
+
+    class FakeClient:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=FakeChatApi())
+
+    job_root = tmp_path / "job-cancel"
+    job_root.mkdir()
+    (job_root / "cancel.flag").write_text("2026-01-01T00:00:00Z\n", encoding="utf-8")
+    token = bind_pipeline_log_context(x_output_root=str(job_root))
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "openai"},
+            "api_keys": {"openai": "sk-test"},
+            "api_providers": {"openai": "https://api.openai.com/v1"},
+        }
+    )
+    try:
+        with pytest.raises(WorkflowCanceledError):
+            _generate_chat(
+                ChatRequest(provider="openai", model="gpt-4o-mini", messages=[]),
+                settings=settings,
+                client_factory=lambda _k, _b: FakeClient(),
+                capability="chat",
+            )
+    finally:
+        reset_pipeline_log_context(token)
+    assert calls["n"] == 0
+
+
+def test_facade_generate_chat_aborts_retry_when_cancel_flag_appears(tmp_path):
+    calls = {"n": 0}
+
+    class FakeChatApi:
+        def create(self, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                (tmp_path / "job-retry-cancel" / "cancel.flag").write_text("x\n", encoding="utf-8")
+                raise GatewayProviderError("Error code: 500 internal_server_error")
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="stop",
+                        message=SimpleNamespace(content="ok"),
+                    )
+                ]
+            )
+
+    class FakeClient:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=FakeChatApi())
+
+    job_root = tmp_path / "job-retry-cancel"
+    job_root.mkdir()
+    token = bind_pipeline_log_context(x_output_root=str(job_root))
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "openai"},
+            "api_keys": {"openai": "sk-test"},
+            "api_providers": {"openai": "https://api.openai.com/v1"},
+            "capability_retries": {"chat": 3},
+        }
+    )
+    try:
+        with pytest.raises(WorkflowCanceledError):
+            _generate_chat(
+                ChatRequest(provider="openai", model="gpt-4o-mini", messages=[]),
+                settings=settings,
+                client_factory=lambda _k, _b: FakeClient(),
+                capability="chat",
+            )
+    finally:
+        reset_pipeline_log_context(token)
+    assert calls["n"] == 1
+
+
+def test_facade_embed_texts_raises_when_cancel_flag_in_log_context(tmp_path):
+    calls = {"n": 0}
+
+    class FakeEmbeddingsApi:
+        def create(self, *, model, input):
+            calls["n"] += 1
+            return SimpleNamespace(data=[SimpleNamespace(embedding=[1.0])])
+
+    class FakeClient:
+        def __init__(self):
+            self.embeddings = FakeEmbeddingsApi()
+
+    job_root = tmp_path / "job-embed-cancel"
+    job_root.mkdir()
+    (job_root / "cancel.flag").write_text("x\n", encoding="utf-8")
+    token = bind_pipeline_log_context(x_output_root=str(job_root))
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "openai"},
+            "api_keys": {"openai": "sk-test"},
+            "api_providers": {"openai": "https://api.openai.com/v1"},
+        }
+    )
+    try:
+        with pytest.raises(WorkflowCanceledError):
+            _embed_texts(
+                EmbeddingRequest(
+                    provider="openai", model="text-embedding-3-small", texts=["a"]
+                ),
+                settings=settings,
+                client_factory=lambda _k, _b: FakeClient(),
+                capability="embedding",
+            )
+    finally:
+        reset_pipeline_log_context(token)
+    assert calls["n"] == 0
+
+
+def test_facade_generate_chat_retries_retryable_provider_error():
+    calls = {"n": 0}
+
+    class FakeChatApi:
+        def create(self, **kwargs):
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise GatewayProviderError("Error code: 500 internal_server_error")
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="stop",
+                        message=SimpleNamespace(content="ok-after-retry"),
+                    )
+                ]
+            )
+
+    class FakeClient:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=FakeChatApi())
+
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "openai"},
+            "api_keys": {"openai": "sk-test"},
+            "api_providers": {"openai": "https://api.openai.com/v1"},
+            "capability_retries": {"chat": 3},
+        }
+    )
+    result = _generate_chat(
+        ChatRequest(provider="openai", model="gpt-4o-mini", messages=[]),
+        settings=settings,
+        client_factory=lambda _k, _b: FakeClient(),
+        capability="chat",
+    )
+    assert calls["n"] == 2
+    assert result.text == "ok-after-retry"
+    assert result.meta.retry_count == 1
+
+
+def test_facade_generate_chat_does_not_retry_auth_provider_error():
+    calls = {"n": 0}
+
+    class FakeChatApi:
+        def create(self, **kwargs):
+            calls["n"] += 1
+            raise GatewayProviderError("401 invalid token")
+
+    class FakeClient:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=FakeChatApi())
+
+    settings = settings_from_dict(
+        {
+            "gateway": {"default_provider": "openai"},
+            "api_keys": {"openai": "sk-test"},
+            "api_providers": {"openai": "https://api.openai.com/v1"},
+            "capability_retries": {"chat": 3},
+        }
+    )
+    with pytest.raises(GatewayProviderError):
+        _generate_chat(
+            ChatRequest(provider="openai", model="gpt-4o-mini", messages=[]),
+            settings=settings,
+            client_factory=lambda _k, _b: FakeClient(),
+            capability="chat",
+        )
+    assert calls["n"] == 1
 
 
 def test_facade_generate_chat_routes_through_openai_compatible_adapter():
@@ -63,6 +263,89 @@ def test_facade_embed_texts_routes_through_openai_compatible_adapter():
         client_factory=lambda _k, _b: FakeClient(),
     )
     assert result.vectors == ((1.0,),)
+
+
+def test_facade_synthesize_speech_retries_retryable_provider_error(tmp_path):
+    calls = {"n": 0}
+
+    class FakeSpeechApi:
+        def create(self, **kwargs):
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise GatewayProviderError("Error code: 500 internal_server_error")
+
+            class R:
+                def write_to_file(self, p):
+                    from pathlib import Path
+
+                    Path(p).write_bytes(b"mp3-after-retry")
+
+            return R()
+
+    class FakeClient:
+        def __init__(self):
+            self.audio = SimpleNamespace(speech=FakeSpeechApi())
+
+    settings = settings_from_dict(
+        {
+            "api_keys": {"volcengine": "sk-volc"},
+            "api_providers": {"volcengine": "https://ark.cn-beijing.volces.com/api/v3"},
+            "capability_retries": {"tts": 3},
+        }
+    )
+    result = _synthesize_speech(
+        SpeechRequest(
+            provider="volcengine",
+            voice="zh_female_shuangkuaisisi_moon_bigtts",
+            text="hello",
+            model="volcengine-tts-standard",
+            output_path=str(tmp_path / "out.mp3"),
+            metadata_path=str(tmp_path / "meta.json"),
+        ),
+        settings=settings,
+        communicator_factory=lambda _k, _b: FakeClient(),
+        capability="tts",
+    )
+    assert calls["n"] == 2
+    assert result.audio_path.endswith(".mp3")
+    assert result.meta is not None
+    assert result.meta.retry_count == 1
+
+
+def test_facade_synthesize_speech_does_not_retry_auth_provider_error(tmp_path):
+    calls = {"n": 0}
+
+    class FakeSpeechApi:
+        def create(self, **kwargs):
+            calls["n"] += 1
+            raise GatewayProviderError("401 invalid token")
+
+    class FakeClient:
+        def __init__(self):
+            self.audio = SimpleNamespace(speech=FakeSpeechApi())
+
+    settings = settings_from_dict(
+        {
+            "api_keys": {"volcengine": "sk-volc"},
+            "api_providers": {"volcengine": "https://ark.cn-beijing.volces.com/api/v3"},
+            "capability_retries": {"tts": 3},
+        }
+    )
+    with pytest.raises(GatewayProviderError):
+        _synthesize_speech(
+            SpeechRequest(
+                provider="volcengine",
+                voice="zh_female_shuangkuaisisi_moon_bigtts",
+                text="hello",
+                model="volcengine-tts-standard",
+                output_path=str(tmp_path / "out.mp3"),
+                metadata_path=str(tmp_path / "meta.json"),
+            ),
+            settings=settings,
+            communicator_factory=lambda _k, _b: FakeClient(),
+            capability="tts",
+        )
+    assert calls["n"] == 1
 
 
 def test_facade_synthesize_speech_routes_through_edge_tts_adapter(tmp_path):

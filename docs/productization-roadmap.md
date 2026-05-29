@@ -2,6 +2,8 @@
 
 本文档描述 MovieTeller 从当前手动脚本/本地管线，演进到可由前端调用、可观测、可恢复、可运营的产品化视频处理系统的阶段计划。
 
+**当前已可用的本地主链路**（上传 → Job API → Python runner）见 [local-development.md](./local-development.md) 与 [jobs-api.md](./jobs-api.md)。**Smoke 分层、`--strict` 与 CI 常态化**见下文 [质量门禁、Smoke 测试与 CI](#质量门禁smoke-测试与-ci)。
+
 核心原则：
 
 - 做减法：先固定边界和主链路，不同时引入过多兼容分支。
@@ -57,6 +59,23 @@ WorkflowRequest
 - 任意长视频任务可以通过 JSONL 日志看出当前阶段、当前 segment、当前模型调用。
 - NewAPI / TTS 卡住或返回 500 时，可以定位到 capability、provider、model、segment。
 - 并行执行时日志不交错、不丢失上下文。
+
+### 可观测性 95% 收口（已落地）
+
+实现说明见 [observability-95-landing.md](./observability-95-landing.md)、[observability.md](./observability.md)。
+
+| 能力 | 说明 |
+|------|------|
+| 宏阶段事件 | 仅 `workflow.stage.start/done/skipped/failed`，覆盖 `FIXED_WORKFLOW_STAGES` |
+| 进度聚合 | `progress_from_jsonl` / `overall_progress` 宏阶段与 `x_*` artifact 只读 `workflow.stage.*` |
+| 注册表 | `stage_registry` 宏 ID：`render`、`export`；固定 stage 别名映射至宏权重 |
+| 回归 | `./scripts/run-observability-tests.sh`；CI：`.github/workflows/python-observability.yml` |
+
+本地门禁：
+
+```bash
+./scripts/run-observability-tests.sh
+```
 
 ## 阶段二：Job 模型与产物目录标准化
 
@@ -176,48 +195,40 @@ WorkflowRequest
 - 功能模块不读取用户等级、不判断模型、不选择 key。
 - `run_full_workflow(ctx)` 成为主执行入口。
 
-## 阶段四：阶段边界与 Checkpoint/Resume
+## 阶段四：TTS-centric Resume（收窄版）
 
-目标：长视频失败后可以从已完成阶段继续。
+目标：**TTS 按 segment 断点续跑**；TTS 失败时**先交付学习卡**，再允许用户重试补语音。
 
-固定阶段：
+详细说明见 [tts-centric-resume.md](./tts-centric-resume.md)。
 
-```text
-ingest
-subtitle_extraction
-subtitle_analysis
-frame_pool
-narration
-polish
-study_enrichment
-tts
-subtitle_merge
-render
-export
-```
+### 产品范围（做）
 
-Resume 规则：
+- 同一 Job 目录重跑时，已有 `{segment}.mp3` + 合法 `.mp3.jsonl` 的 segment **跳过 TTS**（`movie_pipeline.tts_resume`）。
+- `POST /api/jobs/:id/retry` 在同一 artifact 目录上重入 workflow。
+- **TTS 段级失败为 non-fatal**：保留旁白/词卡 payload，继续 **export 学习卡**；**不 render**（`incomplete_tts`）。
+- Job 在 TTS 不完整但学习卡已写出时：`status=failed`，`error_code=tts_partial_failure`，`retryable=true`，`artifacts.studyCardsHtmlPath` 可用。
 
-- 如果 `extracted.srt` 存在且校验通过，跳过字幕提取。
-- 如果 `frame_pool/manifest.jsonl` 存在且匹配视频，跳过 frame pool 构建。
-- 如果 `narration.json` 存在且 segment 完整，跳过视觉理解。
-- 如果 segment mp3 已存在且 metadata 完整，跳过对应 TTS。
-- 如果 `final.subtitled.srt` 存在，跳过字幕合并。
-- 如果 `narrated.mp4` 存在且校验通过，跳过 render。
+### 非目标（不做）
 
-任务清单：
+- 每 macro stage 的 `POST /resume?from=…`。
+- `narration.json` 整阶段跳过视觉理解（重试仍会重跑 narration API，除非日后单独立项）。
+- render 成片文件级 resume。
 
-- 为每个 stage 定义输入、输出、校验函数。已开始落地为 `movie_pipeline.workflow_artifacts`，集中校验字幕、frame pool manifest、subtitle context index 是否可复用。
-- 建立 stage artifact manifest。已落地第一版 `{stem}.artifact_manifest.json`，记录 subtitle/frame_pool/subtitle_context 的输入输出校验结果，并通过 `workflowArtifacts.artifactManifestPath` 暴露。
-- 实现 `resume_policy`，默认优先复用已存在且校验通过的 artifact。
-- 对 segment 级产物实现局部恢复，尤其是 TTS 和 study enrichment。
-- 将 payload schema 和 artifact schema 分开，避免一个大 dict 贯穿所有阶段。
+### 已实现 / 待加强
 
-验收标准：
+| 项 | 状态 |
+|----|------|
+| `tts_segment_is_reusable` + pipeline 段级 skip | 已落地 |
+| TTS 失败 → 仍 export 学习卡 + `failed` + retry | 已落地 |
+| `resume_policy` 外层字幕/帧池复用（重试加速） | 已落地 |
+| `test_tts_resume` / `test_tts_partial_study_cards` | 已落地 |
+| narration 级 checkpoint | **非目标** |
 
-- 长视频中途失败后，再跑同一个 Job 不会重复视觉理解。
-- TTS 只补缺失的 segment 音频。
-- 日志能标记 stage 是 `run` 还是 `skipped`。
+### 验收标准
+
+- TTS 中途失败后重试：只补缺失 segment 的 mp3，日志有 `segment.tts` skipped/done。
+- TTS 失败时用户仍能在 `artifacts/manifest.json` 下载 **学习卡**；成片不出现。
+- `workflow.stage.*` 可区分 `tts` 的 `warning_count` / `render` 的 `incomplete_tts` skip。
 
 ## 阶段五：超时、重试与失败降级
 
@@ -466,6 +477,92 @@ GET /jobs/{job_id}
 GET /jobs/{job_id}/logs
   -> 返回 JSONL 日志
 ```
+
+## 质量门禁、Smoke 测试与 CI
+
+产品化不仅要「能跑通一次」，还要能**反复证明**主链路仍可用。仓库内用 HTTP 冒烟脚本 `scripts/jobs-api-smoke.mjs`（逻辑在 `scripts/jobs-api-smoke-lib.mjs`）分层验证；详见 [jobs-api.md](./jobs-api.md) 与 [jobs-api-smoke.md](./jobs-api-smoke.md)。
+
+### 当前已具备的 Smoke 分层
+
+在 `server/` 目录、**需先** `npm run dev`：
+
+| npm 脚本 | 模式 | 验证范围 | 是否依赖 Python/API |
+|----------|------|----------|---------------------|
+| `npm run smoke` | `api` | 健康检查、Job 列表、404、上传校验 | 仅 deep health 要求 runner 可 import |
+| `npm run smoke:create` | `create` | 创建 Job + 列表/详情/logs 游标 | 创建后不跑完 workflow |
+| `npm run smoke:cancel` | `cancel` | 创建 → `POST cancel` → 终态 `canceled` | 需 runner 能启动 |
+| `npm run smoke:workflow` | `workflow` | 创建 → 轮询终态 → 成功时查 artifacts | 全栈 + 模型 API |
+| `npm run smoke:unit` | — | 脚本参数/终态逻辑单测 | 否 |
+
+环境变量：`MOVIE_TELLER_BASE_URL`、`MOVIE_TELLER_SMOKE_MODE`、`MOVIE_TELLER_SMOKE_VIDEO`、`MOVIE_TELLER_SMOKE_TIMEOUT_SEC`、`MOVIE_TELLER_SMOKE_STRICT=1`。
+
+### `--strict` 是什么
+
+`--mode=workflow` 时：
+
+- **默认（非 strict）**：Job 终态为 `failed` 时脚本仍 **exit 0**，并提示检查 API Key / Python 环境——适合本机尚未配齐密钥、不想误报红。
+- **`--strict`**（或 `MOVIE_TELLER_SMOKE_STRICT=1`）：终态必须为 **`succeeded`**，否则脚本 **非 0 退出**，适合当作**合并门禁**。
+
+示例（使用本机已跑通样例的源片，路径见 [jobs-api-smoke.md §4.1](./jobs-api-smoke.md#41-本地已验证的端到端样例2026-05-28)）：
+
+```bash
+node scripts/jobs-api-smoke.mjs --mode=workflow --strict \
+  --video=artifacts/jobs/<job-id>/input/source.mp4 \
+  --timeout-sec=600
+```
+
+与稳定性专题文档的对应关系：
+
+| 能力 | 专题文档 |
+|------|----------|
+| Runner 退出 + `cancel.flag` → `canceled` | [runner-exit-cancel-fix.md](./runner-exit-cancel-fix.md) |
+| Gateway retryable 重试 | [gateway-retryable-retry.md](./gateway-retryable-retry.md) |
+| `cancel_signal` + Gateway 入口检查 | [cancel-signal-gateway-check.md](./cancel-signal-gateway-check.md) |
+| TTS/embedding `capability_timeouts` / `capability_retries` | [capability-timeout-retries.md](./capability-timeout-retries.md) |
+
+### 「CI / smoke --strict 常态化」指什么
+
+**常态化** = 不依赖开发者本机手动跑，而在 **持续集成**（如 GitHub Actions）里按固定节奏自动执行，失败则阻断合并。
+
+典型流水线步骤：
+
+1. 安装 Node 依赖、配置仓库根 `.venv` 并按 [local-development.md §1](./local-development.md#1-python-环境仓库根-venv) editable 安装各 Python 包。
+2. 从 CI Secrets 注入 API Key（勿写入仓库）；准备 `config/local.yaml` 或环境变量。
+3. 后台启动 `server`（或指向固定测试环境）。
+4. 由轻到重：`npm run smoke:unit` → `npm run smoke` →（可选）`npm run smoke:cancel`。
+5. **门禁级**：`node ../scripts/jobs-api-smoke.mjs --mode=workflow --strict --video=...`（固定短视频或受控 fixture）。
+6. 任一步失败 → PR 检查失败。
+
+这与「本机曾 succeeded 一次」的区别：
+
+| 状态 | 含义 | 端到端置信度（主观） |
+|------|------|----------------------|
+| 本机单次 succeeded Job | 证明环境+密钥+代码路径可成片 | 约 **74**（参见 `artifacts/jobs/` 下样例记录） |
+| 每次 PR 自动 `smoke --strict` 通过 | 回归防护，防静默退化 | 目标 **85+** |
+| 仅 `smoke` / `smoke:create` 在 CI | 只锁 HTTP 契约，不锁成片 | API 层约 **88**，成片仍低 |
+
+`artifacts/` 已在 `.gitignore`：样例 Job 目录作**本机对照**，不进 git；CI 需自备短视频（或后续允许的 fixture 路径）与 Secrets。
+
+### 产品化阶段的 Smoke 目标（建议）
+
+| 阶段 | Smoke 目标 |
+|------|------------|
+| **当前（MVP 已通）** | 文档化 + `smoke` / `create` / `cancel` / `unit`；本机 workflow 可 succeeded |
+| **下一档** | 团队约定：发版前本地跑 `smoke:workflow --strict`；修齐 `.venv` 使 `healthz/deep` 稳定为 ok |
+| **CI 常态化** | Actions（等）中 `smoke:unit` + `smoke` 每 PR；`workflow --strict` 每日或 main 分支（控成本与密钥） |
+| **成熟** | 固定 30～60s 测试片 + 密钥轮换；失败自动附 `job.error` / `workflow.jsonl` 片段 |
+
+实现 CI 时可选新增 `.github/workflows/smoke.yml`（尚未纳入仓库时，以本节为规格说明）。
+
+可观测性合同测已纳入 [`.github/workflows/python-observability.yml`](../.github/workflows/python-observability.yml)（与 smoke 独立，不消耗 API Key）。
+
+### 阶段七 / 八 与 Smoke 的验收补充
+
+在 [阶段七](#阶段七api-服务化) 验收基础上，建议增加：
+
+- `npm run smoke` 在配置齐全环境下通过（含 `GET /api/healthz/deep`）。
+- 至少一次 `smoke:workflow` 对本机真实短视频 `succeeded`（或 CI strict 通过）。
+- `POST /jobs/:id/retry`、取消与终态语义与 [runner-exit-cancel-fix.md](./runner-exit-cancel-fix.md) 一致。
 
 ## 非目标
 

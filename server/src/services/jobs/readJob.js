@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 
 import {
   getJobsRoot,
@@ -40,5 +41,21 @@ export function jobRecordToDto(record) {
     createdAt: record.created_at,
     updatedAt: record.updated_at,
     cancelRequestedAt: record.cancel_requested_at ?? null,
+  };
+}
+
+/**
+ * @param {Record<string, unknown>} record
+ */
+export function jobRecordToListItemDto(record) {
+  const inputPath = String(record.input_video_path || "");
+  return {
+    jobId: record.job_id,
+    status: record.status,
+    currentStage: record.current_stage ?? null,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+    cancelRequestedAt: record.cancel_requested_at ?? null,
+    inputFileName: inputPath ? path.basename(inputPath) : null,
   };
 }

@@ -1,0 +1,43 @@
+name: Python observability
+
+on:
+  push:
+    paths:
+      - "python/movieteller_logging/**"
+      - "python/movie_pipeline/**"
+      - ".github/workflows/python-observability.yml"
+  pull_request:
+    paths:
+      - "python/movieteller_logging/**"
+      - "python/movie_pipeline/**"
+      - ".github/workflows/python-observability.yml"
+
+jobs:
+  observability-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest numpy
+
+      - name: Run observability tests
+        env:
+          PYTHONPATH: >-
+            python/movieteller_config/src:python/movieteller_logging/src:python/pipeline_types/src:python/media_utils/src:python/model_gateway/src:python/subtitle_extraction/src:python/subtitle_analysis/src:python/frame_source/src:python/narration/src:python/narration_polish/src:python/narration_speech/src:python/narration_video/src:python/pipeline_transcript/src:python/rerank/src:python/subtitle_context/src:python/video_frame_pool/src:python/movie_pipeline/src
+        run: |
+          python -m pytest \
+            python/movieteller_logging/tests/test_progress.py \
+            python/movieteller_logging/tests/test_stage_registry.py \
+            python/movieteller_logging/tests/test_overall_progress.py \
+            python/movie_pipeline/tests/test_stage_observability.py \
+            python/movie_pipeline/tests/test_workflow_stage_observability_contract.py \
+            python/movie_pipeline/tests/test_tts_resume.py \
+            python/movie_pipeline/tests/test_tts_partial_study_cards.py \
+            -q

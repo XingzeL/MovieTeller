@@ -60,3 +60,17 @@ capability_concurrency:
   study_enrichment: 8
   tts: 8
   subtitle_context: 8
+
+# Per-capability HTTP timeouts (seconds) and retry attempt counts (gateway).
+capability_timeouts:
+  narration: 120
+  polish: 120
+  tts: 180
+  embedding: 60
+  chat: 120
+capability_retries:
+  narration: 2
+  polish: 2
+  tts: 2
+  embedding: 2
+  chat: 2

@@ -23,11 +23,10 @@ Examples:
 workflow.start
 workflow.done
 workflow.failed
-subtitle_extraction.done
-frame_pool.done
-subtitle_context.done
-video_package.done
-workflow_export.done
+workflow.stage.start
+workflow.stage.done
+workflow.stage.skipped
+workflow.stage.failed
 stage.group.start
 segment.narration.done
 gateway.chat.failed
@@ -99,7 +98,7 @@ internal_error
 
 Macro stage IDs, JSONL ``stage`` aliases, weights, and labels live in
 `movieteller_logging.stage_registry`. CLI progress and `overall_progress` both
-read from this module; ``narration_pipeline`` is a deprecated alias for ``narration``.
+read from this module. JSONL ``stage`` ids follow ``movieteller_logging.events.FIXED_WORKFLOW_STAGES``.
 
 ## Overall progress (frontend)
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from movie_pipeline.cli_progress import CliProgressReporter
+from movie_pipeline.tts_resume import tts_segment_is_reusable
 from movie_pipeline.payload_schema import (
     pipeline_speech_payload_from_dict,
     pipeline_text_payload_from_dict,
@@ -66,43 +67,63 @@ def synthesize_speech_from_text_payload(
 
         if cli_progress is not None:
             cli_progress.tts_begin(index, total_segments)
-        result = synthesize_narration_text(
-            speech_text,
-            duration_sec,
-            output_path=str(audio_path),
-            metadata_path=str(metadata_path),
-            target_duration_sec=target_duration_sec,
-            options=speech_options,
-            settings=settings,
-        )
-        seg["speech"] = speech_details_to_payload(
-            NarrationSpeechDetails(
-                text=str(result.text),
-                audio_path=str(result.audio_path),
-                metadata_path=result.metadata_path,
-                segment_duration_sec=float(result.segment_duration_sec),
-                target_duration_sec=float(result.target_duration_sec),
-                raw_duration_sec=float(result.raw_duration_sec),
-                audio_duration_sec=float(result.audio_duration_sec),
-                provider=str(result.provider),
-                voice=str(result.voice),
-                rate=str(result.rate),
-                volume=str(result.volume),
-                pitch=str(result.pitch),
-                boundary=str(result.boundary),
-                fit_applied=bool(result.fit_applied),
-                timing_tts_sec=(
-                    float(result.timing_tts_sec)
-                    if result.timing_tts_sec is not None
-                    else None
-                ),
-                timing_fit_sec=(
-                    float(result.timing_fit_sec)
-                    if result.timing_fit_sec is not None
-                    else None
-                ),
+        if tts_segment_is_reusable(audio_path=audio_path, metadata_path=metadata_path):
+            seg["speech"] = speech_details_to_payload(
+                NarrationSpeechDetails(
+                    text=speech_text,
+                    audio_path=str(audio_path),
+                    metadata_path=str(metadata_path),
+                    segment_duration_sec=duration_sec,
+                    target_duration_sec=target_duration_sec,
+                    raw_duration_sec=duration_sec,
+                    audio_duration_sec=duration_sec,
+                    provider="cached",
+                    voice="",
+                    rate="",
+                    volume="",
+                    pitch="",
+                    boundary="",
+                    fit_applied=False,
+                )
             )
-        )
+        else:
+            result = synthesize_narration_text(
+                speech_text,
+                duration_sec,
+                output_path=str(audio_path),
+                metadata_path=str(metadata_path),
+                target_duration_sec=target_duration_sec,
+                options=speech_options,
+                settings=settings,
+            )
+            seg["speech"] = speech_details_to_payload(
+                NarrationSpeechDetails(
+                    text=str(result.text),
+                    audio_path=str(result.audio_path),
+                    metadata_path=result.metadata_path,
+                    segment_duration_sec=float(result.segment_duration_sec),
+                    target_duration_sec=float(result.target_duration_sec),
+                    raw_duration_sec=float(result.raw_duration_sec),
+                    audio_duration_sec=float(result.audio_duration_sec),
+                    provider=str(result.provider),
+                    voice=str(result.voice),
+                    rate=str(result.rate),
+                    volume=str(result.volume),
+                    pitch=str(result.pitch),
+                    boundary=str(result.boundary),
+                    fit_applied=bool(result.fit_applied),
+                    timing_tts_sec=(
+                        float(result.timing_tts_sec)
+                        if result.timing_tts_sec is not None
+                        else None
+                    ),
+                    timing_fit_sec=(
+                        float(result.timing_fit_sec)
+                        if result.timing_fit_sec is not None
+                        else None
+                    ),
+                )
+            )
         if cli_progress is not None:
             cli_progress.tts_done(index, total_segments)
 

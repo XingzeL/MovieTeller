@@ -4,10 +4,7 @@ import { spawn } from "node:child_process";
 import { jobPathsFromRoot } from "../../config/jobs.js";
 import { getRepoRoot } from "../../config/index.js";
 import { buildPythonEnv, resolveProjectPython } from "../pythonRuntime.js";
-import {
-  markJobFailed,
-  shouldMarkFailedOnRunnerExit,
-} from "./jobProcess.js";
+import { applyRunnerExit, applyRunnerSpawnError } from "./runnerExit.js";
 
 /** @type {Map<string, { pid: number, spawnedAt: string }>} */
 export const spawnedJobs = new Map();
@@ -50,12 +47,7 @@ export function spawnWorkflowJob(opts) {
   });
 
   child.on("error", (err) => {
-    if (shouldMarkFailedOnRunnerExit(jobRoot)) {
-      markJobFailed(jobRoot, {
-        error_code: "spawn_failed",
-        message: String(err?.message || err),
-      });
-    }
+    applyRunnerSpawnError(jobRoot, err);
   });
 
   child.on("exit", (code, signal) => {
@@ -69,13 +61,8 @@ export function spawnWorkflowJob(opts) {
     } catch {
       /* ignore */
     }
-    if (code === 0) return;
-    if (!shouldMarkFailedOnRunnerExit(jobRoot)) return;
-    markJobFailed(jobRoot, {
-      error_code: "runner_exited",
-      message: `workflow runner exited with code ${code}${signal ? ` signal ${signal}` : ""}`,
-      exitCode: code,
-    });
+    spawnedJobs.delete(jobId);
+    applyRunnerExit(jobRoot, { code, signal });
   });
 
   child.unref();

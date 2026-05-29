@@ -6,7 +6,7 @@ Stages (product order; see :func:`run_full_workflow`):
 2. **frame_pool** — ``{stem}.frame_pool/manifest.jsonl``
 3. **subtitle_context** — ``{stem}.subtitle_context`` (optional)
 4. **narration** — analysis + narration (+ optional TTS) via :func:`run_pipeline_ctx`
-5. **video_package** — mux when ``enable_embed_video``
+5. **render** — mux when ``enable_embed_video``
 
 **Resume:** each stage skips work when its primary artifact already exists and the
 matching execution-config flag is true; disabling a stage still requires
@@ -15,14 +15,10 @@ prerequisite files to exist (same errors as before).
 
 from __future__ import annotations
 
-import logging
-import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
-from movieteller_logging import classify_error, emit_event
-from movieteller_logging import events as log_events
 from movie_pipeline.cancel_check import ensure_not_canceled_for_output_root
 from movie_pipeline.cli_progress import CliProgressReporter
 from movie_pipeline.pipeline import run_pipeline_ctx
@@ -33,28 +29,19 @@ from movie_pipeline.resume_policy import (
     VideoPackagePolicy,
 )
 from movie_pipeline.runtime_context import RunContext
+from movie_pipeline.stage_observability import StageLogger, skip_reason_from_status
 from movie_pipeline.types import ArtifactPaths, ResolvedExecutionConfig
 from movie_pipeline.workflow_artifacts import (
     check_frame_pool_manifest,
     check_subtitle_context_index,
     check_subtitle_srt,
 )
+from movie_pipeline.tts_resume import payload_speech_complete
 from movie_pipeline.workflow_continue import render_video_from_narration_payload
 from movieteller_config.schema import Settings
 from subtitle_context import build_subtitle_context_index
 from subtitle_extraction import extract_subtitles
 from video_frame_pool import build_frame_pool
-
-
-def _emit_stage_failed(event: str, *, start: float, exc: Exception) -> None:
-    emit_event(
-        event,
-        level=logging.ERROR,
-        duration_ms=int((time.perf_counter() - start) * 1000),
-        status="error",
-        fatal=True,
-        **classify_error(exc),
-    )
 
 
 def stage_subtitle_extraction(
@@ -64,8 +51,14 @@ def stage_subtitle_extraction(
     resolved_settings: Settings,
 ) -> None:
     ensure_not_canceled_for_output_root(paths.output_root)
-    start = time.perf_counter()
-    emit_event(log_events.SUBTITLE_EXTRACTION_START, stage="subtitle_extraction")
+    stage_log = StageLogger(
+        "subtitle_extraction",
+        input_path=paths.source_video,
+        output_path=paths.srt_path,
+        enabled=execution.extract_subtitles,
+        force_rebuild=execution.force_rebuild_subtitles,
+    )
+    stage_log.start()
     srt_path = Path(paths.srt_path)
     source_video = Path(paths.source_video)
     try:
@@ -90,15 +83,17 @@ def stage_subtitle_extraction(
             raise FileNotFoundError(
                 f"Reusable subtitle file not found and extraction disabled: {srt_path}"
             )
-        emit_event(
-            log_events.SUBTITLE_EXTRACTION_DONE,
-            stage="subtitle_extraction",
-            duration_ms=int((time.perf_counter() - start) * 1000),
-            status=status,
-            x_srt_path=str(srt_path),
-        )
+        if status == "skipped":
+            stage_log.skipped(
+                skip_reason_from_status(status, disabled=not execution.extract_subtitles),
+                output_path=str(srt_path),
+                artifact_reused=subtitle_check.reusable,
+                x_srt_path=str(srt_path),
+            )
+        else:
+            stage_log.done(output_path=str(srt_path), x_srt_path=str(srt_path))
     except Exception as exc:
-        _emit_stage_failed(log_events.SUBTITLE_EXTRACTION_FAILED, start=start, exc=exc)
+        stage_log.failed(exc)
         raise
 
 
@@ -109,8 +104,14 @@ def stage_frame_pool(
     resolved_settings: Settings,
 ) -> None:
     ensure_not_canceled_for_output_root(paths.output_root)
-    start = time.perf_counter()
-    emit_event(log_events.FRAME_POOL_START, stage="frame_pool")
+    stage_log = StageLogger(
+        "frame_pool",
+        input_path=paths.srt_path,
+        output_path=paths.frame_pool_manifest,
+        enabled=execution.build_frame_pool,
+        force_rebuild=execution.force_rebuild_frame_pool,
+    )
+    stage_log.start()
     manifest = Path(paths.frame_pool_manifest)
     try:
         manifest_check = check_frame_pool_manifest(manifest)
@@ -129,15 +130,17 @@ def stage_frame_pool(
                 options=fo,
                 settings=resolved_settings,
             )
-        emit_event(
-            log_events.FRAME_POOL_DONE,
-            stage="frame_pool",
-            duration_ms=int((time.perf_counter() - start) * 1000),
-            status=status,
-            x_manifest_path=str(manifest),
-        )
+        if status == "skipped":
+            stage_log.skipped(
+                skip_reason_from_status(status, disabled=not execution.build_frame_pool),
+                output_path=str(manifest),
+                artifact_reused=manifest_check.reusable,
+                x_manifest_path=str(manifest),
+            )
+        else:
+            stage_log.done(output_path=str(manifest), x_manifest_path=str(manifest))
     except Exception as exc:
-        _emit_stage_failed(log_events.FRAME_POOL_FAILED, start=start, exc=exc)
+        stage_log.failed(exc)
         raise
 
 
@@ -148,17 +151,18 @@ def stage_subtitle_context(
     pipeline_settings: Settings,
 ) -> str | None:
     ensure_not_canceled_for_output_root(paths.output_root)
-    start = time.perf_counter()
-    emit_event(log_events.SUBTITLE_CONTEXT_START, stage="subtitle_context")
+    stage_log = StageLogger(
+        "subtitle_context",
+        input_path=paths.srt_path,
+        output_path=paths.subtitle_context_dir,
+        enabled=execution.build_subtitle_context,
+        force_rebuild=execution.force_rebuild_subtitle_context,
+    )
+    stage_log.start()
     subtitle_context_dir = Path(paths.subtitle_context_dir)
     try:
         if not execution.build_subtitle_context:
-            emit_event(
-                log_events.SUBTITLE_CONTEXT_DONE,
-                stage="subtitle_context",
-                duration_ms=int((time.perf_counter() - start) * 1000),
-                status="skipped",
-            )
+            stage_log.skipped("disabled_by_request")
             return None
         context_check = check_subtitle_context_index(subtitle_context_dir)
         ctx_policy = SubtitleContextPolicy.resolve(
@@ -173,16 +177,21 @@ def stage_subtitle_context(
                 options=execution.subtitle_context_build_options,
                 settings=pipeline_settings,
             )
-        emit_event(
-            log_events.SUBTITLE_CONTEXT_DONE,
-            stage="subtitle_context",
-            duration_ms=int((time.perf_counter() - start) * 1000),
-            status=status,
-            x_index_dir=str(subtitle_context_dir),
-        )
+        if status == "skipped":
+            stage_log.skipped(
+                "artifact_reused",
+                output_path=str(subtitle_context_dir),
+                artifact_reused=context_check.reusable,
+                x_index_dir=str(subtitle_context_dir),
+            )
+        else:
+            stage_log.done(
+                output_path=str(subtitle_context_dir),
+                x_index_dir=str(subtitle_context_dir),
+            )
         return str(subtitle_context_dir)
     except Exception as exc:
-        _emit_stage_failed(log_events.SUBTITLE_CONTEXT_FAILED, start=start, exc=exc)
+        stage_log.failed(exc)
         raise
 
 
@@ -238,19 +247,22 @@ def stage_video_package(
     video_renderer: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     ensure_not_canceled_for_output_root(paths.output_root)
-    start = time.perf_counter()
-    emit_event(log_events.VIDEO_PACKAGE_START, stage="video_package")
+    stage_log = StageLogger(
+        "render",
+        input_path=paths.source_video,
+        output_path=paths.embed_output_path,
+        enabled=execution.enable_embed_video,
+    )
+    stage_log.start()
     try:
         video_policy = VideoPackagePolicy.resolve(
             enable_embed_video=execution.enable_embed_video,
         )
+        if execution.enable_embed_video and not payload_speech_complete(payload):
+            stage_log.skipped("incomplete_tts")
+            return payload
         if not video_policy.run_render:
-            emit_event(
-                log_events.VIDEO_PACKAGE_DONE,
-                stage="video_package",
-                duration_ms=int((time.perf_counter() - start) * 1000),
-                status=video_policy.log_status,
-            )
+            stage_log.skipped("disabled_by_request")
             return payload
         output_path = (paths.embed_output_path or "").strip()
         if not output_path:
@@ -263,14 +275,8 @@ def stage_video_package(
             settings=pipeline_settings,
             video_renderer=video_renderer,
         )
-        emit_event(
-            log_events.VIDEO_PACKAGE_DONE,
-            stage="video_package",
-            duration_ms=int((time.perf_counter() - start) * 1000),
-            status=video_policy.log_status,
-            x_video_output_path=output_path,
-        )
+        stage_log.done(output_path=output_path, x_video_output_path=output_path)
         return out
     except Exception as exc:
-        _emit_stage_failed(log_events.VIDEO_PACKAGE_FAILED, start=start, exc=exc)
+        stage_log.failed(exc)
         raise
