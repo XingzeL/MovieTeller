@@ -37,7 +37,7 @@ def _export_study_cards(
             payload=payload,
             pool_root=Path(paths.frame_pool_dir),
             output_html=study_html_path,
-            page_title=f"{paths.stem} · 图文学习卡",
+            page_title="NarraLingo · Scene Study Cards",
             embed_images=True,
         )
         return {

@@ -167,11 +167,9 @@ def _render_frame_carousel(
         '  <div class="frame-slides">\n',
     ]
     for i, (ent, href) in enumerate(pairs):
-        base_name = Path(ent.image_ref).name
-        tip_plain = f"帧: {base_name} (t={ent.t_sec:.3f}s, shot={ent.shot_id})"
-        tip_attr = html.escape(tip_plain, quote=True)
+        # 彻底移除帧相关信息（文件名、时间、shot），不再写入任何 data 属性
         active = " is-active" if i == 0 else ""
-        parts.append(f'    <div class="frame-slide{active}" data-tip="{tip_attr}">\n')
+        parts.append(f'    <div class="frame-slide{active}">\n')
         if href:
             parts.append(
                 "      "
@@ -193,7 +191,6 @@ def _render_frame_carousel(
         'aria-label="上一张">&#8249;</button>\n'
         '  <button type="button" class="frame-nav frame-nav-next" '
         'aria-label="下一张">&#8250;</button>\n'
-        '  <div class="frame-caption"></div>\n'
         '  <div class="frame-counter"><span class="cur">1</span> / <span class="total">'
         f"{len(pairs)}</span></div>\n"
         "</div>\n"
@@ -329,9 +326,14 @@ def export_study_cards_html(
             )
         )
 
-    instruction = build_instruction_html(
-        embed_images=embed_images,
-        embedded_frame_count=embedded_count,
+    instruction_block = (
+        build_instruction_html(
+            embed_images=embed_images,
+            embedded_frame_count=embedded_count,
+        )
+        + "\n"
+        if not embed_images
+        else ""
     )
     esc_title = html.escape(document.title, quote=False)
     cards_html = "".join(cards_parts)
@@ -352,7 +354,7 @@ def export_study_cards_html(
         "<header>\n"
         f"  <h1>{esc_title}</h1>\n"
         "</header>\n"
-        f"{instruction}\n"
+        f"{instruction_block}"
         '<div class="toolbar">\n'
         '  <button class="btn" type="button" onclick="toggleReference()">'
         "切换台词参考显示/隐藏</button>\n"
@@ -503,7 +505,7 @@ def build_export_study_html_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--page-title",
-        default="影视英语·图文学习卡",
+        default="NarraLingo · Scene Study Cards",
         help="HTML <title> and header text",
     )
     return p

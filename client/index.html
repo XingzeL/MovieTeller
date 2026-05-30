@@ -1,13 +1,121 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI English Scene Narrator</title>
+    <title>影语通Pro | NarraLingo</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&family=Quicksand:wght@500;700&family=Noto+Sans+SC:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+      /* 全局绿色系配置（匹配影语通Pro / NarraLingo 主题） */
+      :root {
+        --bg-macaron: #f0fdf4; /* 浅薄荷绿背景 */
+        --green-light: #86efac; /* 清新绿 */
+        --green-main: #4ade80;  /* 鲜嫩绿 */
+        --green-soft: #bbf7d0;  /* 更浅的绿 */
+        --text-dark: #4a5568;
+
+        /* 绿色渐变 */
+        --gradient-primary: linear-gradient(135deg, #86efac 0%, #4ade80 100%);
+      }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background-color: var(--bg-macaron);
+        /* 背景加入柔和的浅色渐变，让层次更丰富 */
+        background-image: radial-gradient(at 0% 0%, rgba(134, 239, 172, 0.25) 0px, transparent 50%),
+                          radial-gradient(at 100% 100%, rgba(74, 222, 128, 0.2) 0px, transparent 50%);
+        font-family: 'Quicksand', 'Noto Sans SC', sans-serif;
+        color: var(--text-dark);
+        overflow-x: hidden;
+      }
+
+      /* React 挂载前首屏绿色加载容器 */
+      #app-preloader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: var(--bg-macaron);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        transition: opacity 0.5s ease;
+      }
+
+      /* 圆润、轻甜的标题字体，带有一层淡淡的奶油质感阴影 */
+      .loader-logo {
+        font-family: 'Fredoka', 'Noto Sans SC', sans-serif;
+        font-size: 2.4rem;
+        font-weight: 600;
+        letter-spacing: 1px;
+        background: linear-gradient(45deg, #86efac, #4ade80);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 25px;
+        filter: drop-shadow(0 4px 6px rgba(0,0,0,0.05));
+      }
+
+      /* 绿色流光加载圈 */
+      .loader-spinner {
+        width: 60px;
+        height: 60px;
+        border: 5px solid #ffffff; /* 奶油白底圈 */
+        border-radius: 50%;
+        border-top-color: var(--green-main);
+        border-right-color: var(--green-light);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.04);
+        animation: spin 1.2s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
+      }
+
+      .loader-text {
+        margin-top: 20px;
+        font-size: 1rem;
+        color: #718096;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        background-color: rgba(240, 253, 244, 0.85); /* 浅绿色 */
+        padding: 6px 16px;
+        border-radius: 20px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.02);
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body>
+    <div id="app-preloader">
+      <div class="loader-logo">NarraLingo</div>
+      <div class="loader-spinner"></div>
+      <div class="loader-text">🌱 正在准备您的 NarraLingo 空间...</div>
+    </div>
+
     <div id="root"></div>
+
     <script type="module" src="/src/main.tsx"></script>
+
+    <script>
+      window.addEventListener('DOMContentLoaded', () => {
+        const preloader = document.getElementById('app-preloader');
+        if (preloader) {
+          setTimeout(() => {
+            preloader.style.opacity = '0';
+            setTimeout(() => preloader.remove(), 500);
+          }, 300);
+        }
+      });
+    </script>
   </body>
 </html>

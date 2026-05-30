@@ -240,7 +240,7 @@ def test_export_study_cards_html_vocab_modal_and_translation(tmp_path: Path) -> 
     }
     out_html = tmp_path / "out2" / "study.html"
     document = StudyCardsDocument(
-        title="影视英语·图文学习卡",
+        title="NarraLingo · Scene Study Cards",
         segments=(
             StudyCardSegment(
                 start_sec=0.0,

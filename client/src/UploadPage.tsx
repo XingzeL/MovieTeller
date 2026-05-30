@@ -120,7 +120,7 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
 
     return (
       <>
-        <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="rounded-2xl border border-white/80 bg-white/90 p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] backdrop-blur-sm">
           <UploadForm
             file={file}
             onFileChange={(f) => this.setState({ file: f })}
@@ -135,7 +135,7 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
                 disabled={Boolean(jobId)}
                 onChange={(e) => this.setState({ enableSpeech: e.target.checked })}
               />
-              TTS（旁白配音）
+              生成解说声道（旁白配音）
             </label>
             <label className="text-sm">
               CEFR
@@ -168,7 +168,7 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
               </select>
             </label>
             <label className="text-sm">
-              TTS 语言
+              解说声道语言
               <select
                 className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 dark:border-zinc-600 dark:bg-zinc-800"
                 value={ttsLanguage}
@@ -189,7 +189,7 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
               type="button"
               onClick={this.handleCreateJob}
               disabled={!submitEnabled || loading || Boolean(jobId)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-400"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#86efac] to-[#4ade80] px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {loading ? '提交中…' : '创建 Job'}
             </button>

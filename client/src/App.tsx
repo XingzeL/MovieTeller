@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import UploadPage from './UploadPage'
-import { JobList } from './components/JobList'
+import { StartPage } from './components/StartPage'
 
 function jobIdFromUrl(): string | null {
   const raw = new URLSearchParams(window.location.search).get('jobId')
@@ -20,6 +20,7 @@ function setJobIdInUrl(jobId: string | null) {
 }
 
 export default function App() {
+  const [showFunctionalApp, setShowFunctionalApp] = useState(false)
   const [jobId, setJobId] = useState<string | null>(() => jobIdFromUrl())
 
   useEffect(() => {
@@ -31,6 +32,7 @@ export default function App() {
   const selectJob = useCallback((nextId: string) => {
     setJobIdInUrl(nextId)
     setJobId(nextId)
+    setShowFunctionalApp(true) // 进入功能页
   }, [])
 
   const clearJob = useCallback(() => {
@@ -38,19 +40,35 @@ export default function App() {
     setJobId(null)
   }, [])
 
+  // 如果还没进入功能页，显示 Start Page
+  if (!showFunctionalApp) {
+    return <StartPage onEnter={() => setShowFunctionalApp(true)} />
+  }
+
+  // 进入功能页（原有的上传 + Job 面板）
   return (
-    <div className="min-h-dvh bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <div className="min-h-dvh text-[var(--text-dark)] bg-[#f0fdf4]">
       <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
         <header className="mb-10 text-center">
-          <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-white sm:text-4xl">
-            MovieTeller
-          </h1>
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            上传视频，后台 Job 管线生成旁白、TTS 与成片；可在下方查看任务进度与产物。
+          <div className="flex items-center justify-center gap-3">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-[#86efac] to-[#4ade80]">
+              NarraLingo
+            </h1>
+            <button 
+              onClick={() => {
+                setShowFunctionalApp(false)
+                clearJob()
+              }}
+              className="text-xs px-3 py-1 rounded-full bg-[#d1fae5] hover:bg-[#bbf7d0] border border-[#86efac] text-[#166534] font-medium transition-colors"
+            >
+              Back to Home
+            </button>
+          </div>
+          <p className="mt-2 text-sm font-medium text-[#4a5568]">
+            Upload videos to generate narrated tracks + language learning materials
           </p>
         </header>
 
-        <JobList selectedJobId={jobId} onSelectJob={selectJob} />
         <UploadPage jobId={jobId} onJobIdChange={selectJob} onClearJob={clearJob} />
       </div>
     </div>

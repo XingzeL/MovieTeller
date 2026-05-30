@@ -10,6 +10,9 @@ docs/plans/
 # Generated Job/runtime artifacts
 artifacts/
 
+# Demo assets for Start Page (generated large binaries + HTML study cards, not part of source)
+client/public/demo/
+
 node_modules/
 dist/
 .env

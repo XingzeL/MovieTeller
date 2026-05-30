@@ -1,13 +1,15 @@
 :root {
-    --bg-color: #0b0d10;
-    --card-bg: #141822;
-    --border-color: #232a38;
-    --text-main: #f1f5f9;
-    --text-muted: #94a3b8;
-    --gold-primary: #d4af37;
-    --gold-hover: #f3e5ab;
-    --gold-dim: #aa8c2c;
-    --accent-blue: #38bdf8;
+    /* 与 NarraLingo / 影语通Pro 主页一致的清新绿色系 */
+    --bg-color: #f0fdf4;           /* 浅薄荷绿背景 */
+    --card-bg: #ffffff;            /* 白色卡片 */
+    --border-color: #d1fae5;       /* 浅绿边框 */
+    --text-main: #1f2937;          /* 深灰文字（可读性好） */
+    --text-muted: #4b5563;         /* 中灰次要文字 */
+    --accent-green: #4ade80;       /* 主绿 */
+    --accent-green-light: #86efac; /* 浅绿 */
+    --accent-green-dim: #22c55e;   /* 稍深绿 */
+    --highlight-bg: #dcfce7;       /* 很浅的绿高亮背景 */
+    --accent-blue: #3b82f6;        /* 保留少量蓝色作为辅助（可后续去掉） */
 }
 
 body {
@@ -27,28 +29,27 @@ body {
 header {
     text-align: center;
     margin-bottom: 30px;
-    border-bottom: 2px solid var(--gold-dim);
+    border-bottom: 2px solid var(--accent-green-dim);
     padding-bottom: 20px;
 }
 
 header h1 {
-    color: var(--gold-primary);
+    color: var(--accent-green);
     font-size: 2.2rem;
     margin-bottom: 10px;
     letter-spacing: 2px;
-    text-shadow: 0 2px 10px rgba(212, 175, 55, 0.2);
 }
 
 .instruction-box {
-    background: rgba(214, 175, 55, 0.05);
-    border: 1px dashed var(--gold-dim);
+    background: #f0fdf4;
+    border: 1px dashed var(--accent-green-dim);
     padding: 15px;
     border-radius: 8px;
     margin-bottom: 30px;
     font-size: 0.9rem;
     color: var(--text-muted);
 }
-.instruction-box strong { color: var(--gold-primary); }
+.instruction-box strong { color: var(--accent-green); }
 
 .toolbar {
     display: flex;
@@ -57,9 +58,9 @@ header h1 {
 }
 
 .btn {
-    background-color: var(--card-bg);
-    color: var(--gold-primary);
-    border: 1px solid var(--gold-dim);
+    background-color: #ffffff;
+    color: var(--accent-green);
+    border: 1px solid var(--accent-green-dim);
     padding: 8px 16px;
     border-radius: 6px;
     cursor: pointer;
@@ -67,8 +68,8 @@ header h1 {
     transition: all 0.2s;
 }
 .btn:hover {
-    background-color: var(--gold-primary);
-    color: var(--bg-color);
+    background-color: var(--accent-green);
+    color: white;
 }
 
 .segment-card {
@@ -77,11 +78,11 @@ header h1 {
     border-radius: 12px;
     margin-bottom: 40px;
     overflow: visible;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
 }
 
 .card-header {
-    background: linear-gradient(90deg, #1c2331, #141822);
+    background: linear-gradient(90deg, #f0fdf4, #dcfce7);
     padding: 15px 20px;
     border-bottom: 1px solid var(--border-color);
     display: flex;
@@ -90,19 +91,19 @@ header h1 {
 }
 
 .segment-title {
-    color: var(--gold-primary);
+    color: var(--accent-green);
     font-weight: bold;
     font-size: 1.15rem;
 }
 
 .time-badge {
-    background-color: rgba(212, 175, 55, 0.12);
-    color: var(--gold-primary);
+    background-color: #dcfce7;
+    color: var(--accent-green-dim);
     padding: 4px 12px;
     border-radius: 20px;
     font-family: monospace;
     font-size: 0.95rem;
-    border: 1px solid rgba(212, 175, 55, 0.25);
+    border: 1px solid var(--accent-green-light);
 }
 
 .card-body {
@@ -110,8 +111,8 @@ header h1 {
 }
 
 .reference-box {
-    background-color: rgba(15, 23, 42, 0.6);
-    border-left: 4px solid var(--accent-blue);
+    background-color: #f0fdf4;
+    border-left: 4px solid var(--accent-green);
     padding: 12px 16px;
     border-radius: 0 8px 8px 0;
     margin-bottom: 24px;
@@ -120,7 +121,7 @@ header h1 {
 }
 
 .reference-title {
-    color: var(--accent-blue);
+    color: var(--accent-green);
     font-weight: bold;
     margin-bottom: 6px;
     font-size: 0.85rem;
@@ -146,11 +147,11 @@ header h1 {
 /* 单框多帧：左右点击切换 */
 .frame-carousel {
     position: relative;
-    background-color: #000;
+    background-color: #f8fafc;
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--border-color);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
 .frame-carousel-empty .frame-slides {
@@ -201,8 +202,8 @@ header h1 {
     bottom: 0;
     width: min(22%, 80px);
     border: none;
-    background: rgba(0, 0, 0, 0.22);
-    color: var(--gold-primary);
+    background: rgba(0, 0, 0, 0.35);
+    color: white;
     font-size: 2rem;
     line-height: 1;
     cursor: pointer;
@@ -212,7 +213,7 @@ header h1 {
 }
 
 .frame-nav:hover:not(:disabled) {
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.6);
 }
 
 .frame-nav:disabled {
@@ -230,7 +231,7 @@ header h1 {
 
 .frame-caption {
     background: rgba(0, 0, 0, 0.75);
-    color: #ffb703;
+    color: #f1f5f9;
     font-size: 0.75rem;
     text-align: center;
     padding: 6px 12px;
@@ -246,7 +247,7 @@ header h1 {
     font-size: 0.72rem;
     color: var(--text-muted);
     padding: 4px 0 8px;
-    background: rgba(0, 0, 0, 0.35);
+    background: transparent;   /* 改成透明 */
 }
 
 .frame-counter .cur {
@@ -267,8 +268,8 @@ header h1 {
 }
 
 .text-column {
-    background-color: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    background-color: #f8fafc;
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     padding: 20px;
     height: 100%;
@@ -284,7 +285,7 @@ header h1 {
     margin-bottom: 12px;
     padding-bottom: 8px;
     border-bottom: 1px dashed var(--border-color);
-    color: var(--gold-primary);
+    color: var(--accent-green);
 }
 
 .content-text {
@@ -299,16 +300,16 @@ header h1 {
     position: relative;
     cursor: pointer;
     text-decoration: underline;
-    text-decoration-color: var(--gold-dim);
+    text-decoration-color: var(--accent-green-dim);
     text-underline-offset: 3px;
-    background: rgba(212, 175, 55, 0.12);
+    background: var(--highlight-bg);
     border-radius: 3px;
     padding: 0 2px;
 }
 
 .vocab-hl:hover,
 .vocab-hl:focus-visible {
-    background: rgba(212, 175, 55, 0.22);
+    background: #bbf7d0;
     outline: none;
 }
 
@@ -326,10 +327,10 @@ header h1 {
     max-width: min(24rem, 90vw);
     padding: 10px 12px;
     box-sizing: border-box;
-    background: var(--card-bg);
-    border: 1px solid var(--gold-dim);
+    background: #ffffff;
+    border: 1px solid var(--accent-green-dim);
     border-radius: 8px;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
     font-size: 0.88rem;
     line-height: 1.45;
     color: var(--text-main);
@@ -350,7 +351,7 @@ header h1 {
 }
 
 .vocab-hl .vocab-tooltip strong {
-    color: var(--gold-primary);
+    color: var(--accent-green);
     font-size: 0.95rem;
     display: block;
     margin-bottom: 2px;
