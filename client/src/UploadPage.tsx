@@ -191,7 +191,7 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
               disabled={!submitEnabled || loading || Boolean(jobId)}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#86efac] to-[#4ade80] px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {loading ? '提交中…' : '创建 Job'}
+              {loading ? '提交中…' : '生成我的素材'}
             </button>
           </div>
 

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import type { JobArtifactItem, JobDto } from '../types/job'
-import { JobLogViewer } from './JobLogViewer'
 import { WorkflowProgressBar } from './WorkflowProgressBar'
 
 type Props = {
@@ -38,10 +37,11 @@ export function JobPanel({ jobId, onClear }: Props) {
         if (cancelled) return
         setJob(nextJob)
         setError(null)
-        if (nextJob?.status === 'succeeded') {
-          const items = await fetchArtifacts()
-          if (!cancelled) setArtifacts(items)
-        }
+
+        // Always fetch artifacts so we can show study cards / video as soon as they are ready
+        // (study cards can appear before the full render succeeds)
+        const items = await fetchArtifacts()
+        if (!cancelled) setArtifacts(items)
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : '无法读取任务状态')
@@ -137,7 +137,80 @@ export function JobPanel({ jobId, onClear }: Props) {
 
       <WorkflowProgressBar jobId={jobId} active={!terminal} />
 
-      <JobLogViewer jobId={jobId} active={!terminal} />
+      {/* Progressive beautiful previews — study cards appear first, then video */}
+      {(() => {
+        const study = artifacts.find((a) => a.kind === 'studyCardsHtml')
+        const video = artifacts.find((a) => a.kind === 'renderedVideo')
+
+        if (!study && !video) return null
+
+        return (
+          <div className="space-y-6 pt-2">
+            {/* Study Cards Preview (first ~10% / top of the beautiful template) */}
+            {study && (
+              <div className="overflow-hidden rounded-2xl border border-[#d1fae5] bg-white shadow-sm">
+                <div className="flex items-center justify-between border-b border-[#d1fae5] bg-[#f0fdf4] px-5 py-3">
+                  <div>
+                    <div className="text-sm font-semibold text-[#166534]">学习卡已就绪</div>
+                    <div className="text-xs text-[#4b5563]">预览 · 开头精彩部分（完整版可下载）</div>
+                  </div>
+                  <a
+                    href={study.downloadUrl}
+                    download
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#166534] px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-[#14532d]"
+                  >
+                    下载完整学习卡
+                  </a>
+                </div>
+                <div className="p-3">
+                  <iframe
+                    src={`${study.downloadUrl}?inline=true`}
+                    className="w-full rounded-xl border border-[#d1fae5] bg-white"
+                    style={{ height: '420px' }}
+                    title="学习卡预览"
+                    sandbox="allow-scripts allow-same-origin"
+                  />
+                </div>
+                <div className="border-t border-[#d1fae5] bg-[#f8fafc] px-5 py-2.5 text-center text-xs text-[#64748b]">
+                  以上为学习卡开头内容 · 点击上方按钮下载完整 HTML（单文件，可离线打开）
+                </div>
+              </div>
+            )}
+
+            {/* Video Preview (first 10 seconds feel) */}
+            {video && (
+              <div className="overflow-hidden rounded-2xl border border-[#d1fae5] bg-white shadow-sm">
+                <div className="flex items-center justify-between border-b border-[#d1fae5] bg-[#f0fdf4] px-5 py-3">
+                  <div>
+                    <div className="text-sm font-semibold text-[#166534]">解说视频已生成</div>
+                    <div className="text-xs text-[#4b5563]">预览 · 前 10 秒（完整视频可下载）</div>
+                  </div>
+                  <a
+                    href={video.downloadUrl}
+                    download
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#166534] px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-[#14532d]"
+                  >
+                    下载完整视频
+                  </a>
+                </div>
+                <div className="p-4">
+                  <video
+                    controls
+                    className="mx-auto w-full max-w-[720px] rounded-xl border border-[#d1fae5] bg-black"
+                    style={{ maxHeight: '320px' }}
+                    src={`${video.downloadUrl}?inline=true`}
+                  >
+                    您的浏览器不支持 video 标签。
+                  </video>
+                  <p className="mt-2 text-center text-xs text-[#64748b]">
+                    视频从开头播放 · 拖动进度条可查看更多内容
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {error && (
         <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
@@ -151,23 +224,7 @@ export function JobPanel({ jobId, onClear }: Props) {
         </p>
       )}
 
-      {artifacts.length > 0 && (
-        <div>
-          <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-200">产物下载</p>
-          <ul className="space-y-2">
-            {artifacts.map((item) => (
-              <li key={item.kind}>
-                <a
-                  href={item.downloadUrl}
-                  className="text-sm font-medium text-violet-700 underline hover:text-violet-600 dark:text-violet-300"
-                >
-                  {item.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* 旧的通用产物列表已由上方的精美预览区块替代（更突出「下载完整学习卡 / 完整视频」） */}
 
     </div>
   )

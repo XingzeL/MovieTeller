@@ -1,4 +1,5 @@
 import express from "express";
+import fs from "node:fs";
 import multer from "multer";
 import os from "node:os";
 import path from "node:path";
@@ -9,6 +10,8 @@ import { retryJob } from "../services/jobs/retryJob.js";
 import { listJobs } from "../services/jobs/listJobs.js";
 import { readJobLogs } from "../services/jobs/readJobLogs.js";
 import { jobRecordToDto, readJobRecord } from "../services/jobs/readJob.js";
+import { purgeVideoForJob } from "../services/jobs/purgeVideo.js";
+import { resolveJobThumbnail } from "../services/jobs/thumbnail.js";
 import {
   removeUploadedTempFile,
   validateJobUploadFile,
@@ -129,15 +132,82 @@ router.get("/jobs/:jobId/artifacts", (req, res) => {
   }
 });
 
+router.get("/jobs/:jobId/thumbnail", (req, res) => {
+  try {
+    const { filePath } = resolveJobThumbnail(req.params.jobId);
+    res.type(path.extname(filePath).toLowerCase() === ".jpg" ? "image/jpeg" : "image/png");
+    res.setHeader("Cache-Control", "private, max-age=300");
+    return res.sendFile(filePath, (err) => {
+      if (err) {
+        console.error("thumbnail send failed", req.params.jobId, err);
+      }
+    });
+  } catch (err) {
+    const status = err.statusCode === 403 || err.statusCode === 404 ? err.statusCode : 500;
+    return res.status(status).json({ error: String(err?.message || err) });
+  }
+});
+
 router.get("/jobs/:jobId/artifacts/:kind", (req, res) => {
   try {
     const { filePath, label } = resolveArtifactDownload(
       req.params.jobId,
       req.params.kind
     );
+
+    const wantsInline = req.query.inline === '1' || req.query.inline === 'true';
+
+    if (wantsInline) {
+      // For preview in <iframe> or <video> — serve content inline without forcing download
+      const mime = label && label.toLowerCase().endsWith('.html') ? 'text/html' : undefined;
+      if (mime) res.type(mime);
+      res.setHeader('Content-Disposition', 'inline');
+      return res.sendFile(filePath, (err) => {
+        if (err) {
+          console.error("artifact inline send failed", label, err);
+        }
+      });
+    }
+
+    // Default behavior: force download (used by the "下载完整..." buttons)
+    const isVideoDownload = req.params.kind === "renderedVideo";
+
     return res.download(filePath, path.basename(filePath), (err) => {
       if (err) {
         console.error("artifact download failed", label, err);
+        return;
+      }
+
+      // === 加强版存储策略：视频下载后打标 + 异步清理 ===
+      if (isVideoDownload) {
+        try {
+          const { record, paths } = readJobRecord(req.params.jobId);
+
+          // 简单乐观并发保护：只有在还没被标记时才写入
+          if (!record.video_downloaded_at) {
+            const previousVersion = record.video_state_version || 0;
+
+            record.video_downloaded_at = new Date().toISOString();
+            record.video_state_version = previousVersion + 1;
+
+            fs.writeFileSync(paths.workflowJsonPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+
+            console.log(`[Storage] video_downloaded_at marked for job ${req.params.jobId} (version ${record.video_state_version})`);
+
+            // 异步触发清理（不阻塞下载响应）
+            setImmediate(() => {
+              try {
+                purgeVideoForJob(req.params.jobId);
+              } catch (purgeErr) {
+                console.error(`[Storage] purgeVideoForJob failed for ${req.params.jobId}`, purgeErr);
+              }
+            });
+          } else {
+            console.log(`[Storage] Video download requested again for job ${req.params.jobId} (already marked at ${record.video_downloaded_at})`);
+          }
+        } catch (e) {
+          console.error("Failed to mark video_downloaded_at", e);
+        }
       }
     });
   } catch (err) {

@@ -15,6 +15,53 @@ function utcNowIso() {
 }
 
 /**
+ * 从请求中构建 original_source 信息（更通用的设计）
+ * 支持本地上传 + 任意远程链接（YouTube、Bilibili、直接视频 URL 等）
+ * @param {any} req
+ * @param {string} destVideoPath
+ */
+function buildOriginalSourceFromRequest(req, destVideoPath) {
+  const now = utcNowIso();
+
+  // 远程来源（YouTube、Bilibili、直接视频链接等）
+  // 优先尝试常见的远程来源字段名
+  const remoteUrl =
+    (req.body?.sourceUrl && String(req.body.sourceUrl).trim()) ||
+    (req.body?.youtubeUrl && String(req.body.youtubeUrl).trim()) ||
+    (req.body?.videoUrl && String(req.body.videoUrl).trim()) ||
+    (req.body?.remoteUrl && String(req.body.remoteUrl).trim());
+
+  if (remoteUrl) {
+    return {
+      type: "remote_url",
+      source_url: remoteUrl,
+      original_filename: null,
+      uploaded_at: now,
+    };
+  }
+
+  // 本地文件上传
+  if (req.file) {
+    return {
+      type: "local_upload",
+      source_url: null,
+      original_filename: req.file.originalname || path.basename(destVideoPath),
+      uploaded_at: now,
+      file_size: req.file.size || null,
+      mime_type: req.file.mimetype || null,
+    };
+  }
+
+  // 兜底
+  return {
+    type: "unknown",
+    source_url: null,
+    original_filename: path.basename(destVideoPath),
+    uploaded_at: now,
+  };
+}
+
+/**
  * @param {{ file: { path: string, originalname?: string }, body: Record<string, unknown>, spawn?: boolean }} input
  */
 export function createJobFromUpload(input) {
@@ -59,6 +106,8 @@ export function createJobFromUpload(input) {
   const shouldSpawn = input.spawn !== false;
   const status = shouldSpawn ? "queued" : "queued";
 
+  const originalSource = buildOriginalSourceFromRequest(input, destVideo);
+
   const queuedRecord = {
     job_id: jobId,
     status,
@@ -71,6 +120,12 @@ export function createJobFromUpload(input) {
     artifacts: {},
     created_at: now,
     updated_at: now,
+
+    // 新增：原始来源 + 视频存储策略相关字段
+    original_source: originalSource,
+    video_downloaded_at: null,
+    video_purged_at: null,
+    video_state_version: 0,   // 用于简单乐观并发控制
   };
   fs.writeFileSync(
     paths.workflowJsonPath,

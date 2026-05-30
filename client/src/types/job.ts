@@ -15,6 +15,16 @@ export type JobDto = {
   createdAt?: string
   updatedAt?: string
   cancelRequestedAt?: string | null
+  originalSource?: JobOriginalSource | null
+  videoDownloadedAt?: string | null
+  videoPurgedAt?: string | null
+  videoStateVersion?: number
+}
+
+export type JobOriginalSource = {
+  type: 'local_upload' | 'remote_url' | 'unknown'
+  source_url?: string | null
+  original_filename?: string | null
 }
 
 export type JobArtifactItem = {
@@ -38,6 +48,10 @@ export type JobListItem = {
   updatedAt?: string
   cancelRequestedAt?: string | null
   inputFileName?: string | null
+  originalSource?: JobOriginalSource | null
+  videoDownloadedAt?: string | null
+  videoPurgedAt?: string | null
+  videoStateVersion?: number
 }
 
 export type JobListResponse = {

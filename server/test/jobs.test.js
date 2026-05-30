@@ -26,6 +26,7 @@ import {
   resolveArtifactDownload,
 } from "../src/services/jobs/artifactManifest.js";
 import { listJobs } from "../src/services/jobs/listJobs.js";
+import { resolveJobThumbnail } from "../src/services/jobs/thumbnail.js";
 import {
   removeUploadedTempFile,
   validateJobUploadFile,
@@ -342,4 +343,38 @@ test("artifact manifest wins over legacy artifacts and rejects traversal", () =>
     () => resolveArtifactDownload("artifact-job", "renderedVideo"),
     /artifact path not allowed/
   );
+});
+
+test("resolveJobThumbnail serves first frame-pool image and rejects traversal", () => {
+  const root = tempJobsRoot();
+  const { jobRoot } = writeJob(root, "thumb-job", { status: "succeeded" });
+  const framePool = path.join(jobRoot, "frame_pool");
+  const imageDir = path.join(framePool, "images");
+  fs.mkdirSync(imageDir, { recursive: true });
+  const imagePath = path.join(imageDir, "000001.png");
+  fs.writeFileSync(imagePath, "png");
+  fs.writeFileSync(
+    path.join(framePool, "manifest.jsonl"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      shotId: 0,
+      tSec: 0.1,
+      imageRef: "images/000001.png",
+      embeddingIndex: null,
+    })}\n`
+  );
+
+  assert.equal(resolveJobThumbnail("thumb-job").filePath, imagePath);
+
+  fs.writeFileSync(
+    path.join(framePool, "manifest.jsonl"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      shotId: 0,
+      tSec: 0.1,
+      imageRef: "../outside.png",
+      embeddingIndex: null,
+    })}\n`
+  );
+  assert.throws(() => resolveJobThumbnail("thumb-job"), /thumbnail path not allowed/);
 });

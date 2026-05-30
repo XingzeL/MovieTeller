@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 interface StartPageProps {
   onEnter: () => void;
@@ -20,7 +20,6 @@ type Lang = 'zh' | 'en';
 const content = {
   zh: {
     brand: '影语通Pro',
-    tagline: '影视 + AI 语言学习',
     title1: '把任何视频，',
     title2: '变成你的语言学习老师',
     desc: '上传本地视频或链接，生成解说声道视频 + 语言学习素材。',
@@ -36,7 +35,6 @@ const content = {
   },
   en: {
     brand: 'NarraLingo',
-    tagline: 'Films + AI Language Learning',
     title1: 'Turn any video',
     title2: 'into your language learning teacher',
     desc: 'Upload local videos or links to generate narrated videos with audio tracks + language learning materials.',
@@ -95,10 +93,6 @@ export function StartPage({ onEnter }: StartPageProps) {
       {/* Hero Section - 清晰价值主张版 */}
       <section className="max-w-5xl mx-auto px-8 pt-16 pb-20">
         <div className="max-w-3xl">
-          <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-[#d1fae5] text-xs font-semibold tracking-[0.08em] text-[#166534] mb-6 shadow-sm">
-            {t.tagline}
-          </div>
-
           <h1 className="text-[52px] md:text-[68px] leading-[1.08] font-extrabold tracking-[-0.04em] mb-6">
             {t.title1}<br />
             <span className="text-[#718096]">{t.title2}</span>
@@ -125,13 +119,6 @@ export function StartPage({ onEnter }: StartPageProps) {
             </button>
           </div>
 
-          {/* 核心卖点快速说明 */}
-          <div className="mt-8 flex flex-wrap gap-x-8 gap-y-2 text-sm text-[#718096]">
-            <div>{t.benefit1}</div>
-            <div>{t.benefit2}</div>
-            <div>{t.benefit3}</div>
-            <div>{t.benefit4}</div>
-          </div>
         </div>
       </section>
 
@@ -166,6 +153,14 @@ export function StartPage({ onEnter }: StartPageProps) {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* 核心卖点 - 移到国旗区域下方 */}
+          <div className="mt-6 flex flex-wrap gap-x-8 gap-y-2 text-sm text-[#718096]">
+            <div>{t.benefit1}</div>
+            <div>{t.benefit2}</div>
+            <div>{t.benefit3}</div>
+            <div>{t.benefit4}</div>
           </div>
 
         </div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import UploadPage from './UploadPage'
 import { StartPage } from './components/StartPage'
+import { Dashboard } from './components/Dashboard'
 
 function jobIdFromUrl(): string | null {
   const raw = new URLSearchParams(window.location.search).get('jobId')
@@ -20,7 +21,8 @@ function setJobIdInUrl(jobId: string | null) {
 }
 
 export default function App() {
-  const [showFunctionalApp, setShowFunctionalApp] = useState(false)
+  // 'start' | 'dashboard' | 'functional'
+  const [view, setView] = useState<'start' | 'dashboard' | 'functional'>('start')
   const [jobId, setJobId] = useState<string | null>(() => jobIdFromUrl())
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export default function App() {
   const selectJob = useCallback((nextId: string) => {
     setJobIdInUrl(nextId)
     setJobId(nextId)
-    setShowFunctionalApp(true) // 进入功能页
+    setView('functional')
   }, [])
 
   const clearJob = useCallback(() => {
@@ -40,12 +42,27 @@ export default function App() {
     setJobId(null)
   }, [])
 
-  // 如果还没进入功能页，显示 Start Page
-  if (!showFunctionalApp) {
-    return <StartPage onEnter={() => setShowFunctionalApp(true)} />
+  // Start Page
+  if (view === 'start') {
+    return (
+      <StartPage 
+        onEnter={() => setView('dashboard')} 
+      />
+    )
   }
 
-  // 进入功能页（原有的上传 + Job 面板）
+  // Dashboard (new workspace after login in the future)
+  if (view === 'dashboard') {
+    return (
+      <Dashboard 
+        onGoHome={() => setView('start')} 
+        onCreateVideo={() => setView('functional')} 
+        onSelectJob={selectJob}
+      />
+    )
+  }
+
+  // Functional Upload + Job area
   return (
     <div className="min-h-dvh text-[var(--text-dark)] bg-[#f0fdf4]">
       <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
@@ -56,12 +73,12 @@ export default function App() {
             </h1>
             <button 
               onClick={() => {
-                setShowFunctionalApp(false)
+                setView('dashboard')
                 clearJob()
               }}
               className="text-xs px-3 py-1 rounded-full bg-[#d1fae5] hover:bg-[#bbf7d0] border border-[#86efac] text-[#166534] font-medium transition-colors"
             >
-              Back to Home
+              Back to Dashboard
             </button>
           </div>
           <p className="mt-2 text-sm font-medium text-[#4a5568]">

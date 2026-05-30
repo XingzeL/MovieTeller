@@ -41,6 +41,12 @@ export function jobRecordToDto(record) {
     createdAt: record.created_at,
     updatedAt: record.updated_at,
     cancelRequestedAt: record.cancel_requested_at ?? null,
+
+    // 新增：用于 Dashboard 历史记录与存储策略
+    originalSource: record.original_source ?? null,
+    videoDownloadedAt: record.video_downloaded_at ?? null,
+    videoPurgedAt: record.video_purged_at ?? null,
+    videoStateVersion: record.video_state_version ?? 0,
   };
 }
 
@@ -57,5 +63,11 @@ export function jobRecordToListItemDto(record) {
     updatedAt: record.updated_at,
     cancelRequestedAt: record.cancel_requested_at ?? null,
     inputFileName: inputPath ? path.basename(inputPath) : null,
+
+    // 新增（列表页常用）
+    originalSource: record.original_source ?? null,
+    videoDownloadedAt: record.video_downloaded_at ?? null,
+    videoPurgedAt: record.video_purged_at ?? null,
+    videoStateVersion: record.video_state_version ?? 0,
   };
 }
