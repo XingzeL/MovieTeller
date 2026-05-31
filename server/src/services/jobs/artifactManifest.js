@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { jobPathsFromRoot } from "../../config/jobs.js";
+import { readJobRequestOptions } from "./readJobRequest.js";
 import { readJobRecord } from "./readJob.js";
 
 /** User-facing artifact kinds exposed in API / frontend downloads. */
@@ -76,13 +77,15 @@ function listFromLegacyArtifacts(jobId, outputRoot, artifacts) {
  */
 export function listJobArtifacts(jobId) {
   const { record, paths } = readJobRecord(jobId);
+  const request = readJobRequestOptions(paths.root);
   const manifestEntries = readManifestFile(paths.root);
   if (manifestEntries && manifestEntries.length > 0) {
     return manifestEntries
       .filter(
         (entry) =>
           PRODUCT_ARTIFACT_KINDS.has(String(entry.kind || "")) &&
-          fs.existsSync(entry.path)
+          fs.existsSync(entry.path) &&
+          (request.enableSpeech || String(entry.kind) !== "renderedVideo")
       )
       .map((entry) => ({
         kind: entry.kind,
@@ -91,11 +94,15 @@ export function listJobArtifacts(jobId) {
         sizeBytes: fs.statSync(entry.path).size,
       }));
   }
-  return listFromLegacyArtifacts(
+  const items = listFromLegacyArtifacts(
     jobId,
     record.output_root,
     record.artifacts || {}
   );
+  if (!request.enableSpeech) {
+    return items.filter((item) => item.kind !== "renderedVideo");
+  }
+  return items;
 }
 
 /**
@@ -104,6 +111,12 @@ export function listJobArtifacts(jobId) {
  */
 export function resolveArtifactDownload(jobId, kind) {
   const { record, paths } = readJobRecord(jobId);
+  const request = readJobRequestOptions(paths.root);
+  if (kind === "renderedVideo" && !request.enableSpeech) {
+    const err = new Error("artifact not available");
+    err.statusCode = 404;
+    throw err;
+  }
   const manifestEntries = readManifestFile(paths.root);
   if (manifestEntries) {
     if (!PRODUCT_ARTIFACT_KINDS.has(kind)) {

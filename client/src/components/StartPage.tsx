@@ -1,8 +1,5 @@
 import { useState } from 'react';
-
-interface StartPageProps {
-  onEnter: () => void;
-}
+import { useNavigate } from 'react-router-dom';
 
 const languages = [
   { code: 'en', name: 'English', flag: '🇬🇧' },
@@ -50,7 +47,8 @@ const content = {
   },
 };
 
-export function StartPage({ onEnter }: StartPageProps) {
+export function StartPage() {
+  const navigate = useNavigate();
   const [lang, setLang] = useState<Lang>('en');
   const t = content[lang];
 
@@ -104,7 +102,8 @@ export function StartPage({ onEnter }: StartPageProps) {
 
           <div className="flex flex-wrap items-center gap-4">
             <button
-              onClick={onEnter}
+              type="button"
+              onClick={() => navigate('/dashboard')}
               className="inline-flex items-center justify-center gap-3 bg-gradient-to-r from-[#86efac] to-[#4ade80] text-white px-10 py-5 rounded-2xl font-bold text-lg shadow-lg hover:shadow-xl active:scale-[0.985] transition-all"
             >
               {t.ctaPrimary}
@@ -210,7 +209,8 @@ export function StartPage({ onEnter }: StartPageProps) {
       {/* 底部轻量 CTA */}
       <div className="py-10 text-center">
         <button
-          onClick={onEnter}
+          type="button"
+          onClick={() => navigate('/dashboard')}
           className="text-[#4ea8de] hover:text-[#ff8fa3] font-semibold text-lg transition-colors underline underline-offset-4"
         >
           立即进入 NarraLingo →

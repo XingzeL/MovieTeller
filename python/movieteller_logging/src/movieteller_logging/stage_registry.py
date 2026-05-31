@@ -98,6 +98,9 @@ OVERALL_STATUS_LABELS: dict[str, str] = {
     "unknown": "处理中",
 }
 
+# Web progress API: hide ingest/subtitle/frame-pool jargon before narration.
+USER_FACING_PRE_NARRATION_LABEL = "预处理中"
+
 _MACRO_BY_ID: dict[str, MacroStage] = {stage.id: stage for stage in MACRO_STAGES}
 _LOG_ALIAS_TO_MACRO: dict[str, str] = {}
 for _stage in MACRO_STAGES:
@@ -138,6 +141,24 @@ def stage_label(stage: str | None, *, terminal: bool = False) -> str | None:
     if macro is None:
         return None
     return macro_label(macro, terminal=terminal)
+
+
+def user_facing_macro_label(macro_id: str | None, *, terminal: bool = False) -> str | None:
+    """Simplified label for HTTP progress polling (percent still uses full macro weights)."""
+    if macro_id is None:
+        return None
+    if macro_index(macro_id) < macro_index("narration"):
+        return USER_FACING_PRE_NARRATION_LABEL
+    return macro_label(macro_id, terminal=terminal)
+
+
+def user_facing_stage_label(stage: str | None, *, terminal: bool = False) -> str | None:
+    if not stage:
+        return None
+    macro = resolve_macro(stage.strip())
+    if macro is None:
+        return None
+    return user_facing_macro_label(macro, terminal=terminal)
 
 
 def resolve_macro(stage: str | None) -> str | None:

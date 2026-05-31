@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
+import { WorkflowProgressBar } from './WorkflowProgressBar'
 import type { JobListItem, JobListResponse, JobStatus } from '../types/job'
 
-type DashboardProps = {
-  onGoHome: () => void
-  onCreateVideo: () => void
-  onSelectJob: (jobId: string) => void
-}
-
-const HISTORY_LIMIT = 8
+// 不再对历史记录做前端数量限制（改用「创建超过 3 天即彻底删除」的后端保留策略）
 
 function statusLabel(status: JobStatus) {
   switch (status) {
@@ -45,6 +41,14 @@ function StatusBadge({ status }: { status: JobStatus }) {
   return (
     <span className="inline-flex rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-600">
       {statusLabel(status)}
+    </span>
+  )
+}
+
+function DownloadedBadge() {
+  return (
+    <span className="inline-flex rounded-full bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-700">
+      已下载
     </span>
   )
 }
@@ -94,7 +98,9 @@ function SourceInfo({ job }: { job: JobListItem }) {
   return null
 }
 
-export function Dashboard({ onGoHome, onCreateVideo, onSelectJob }: DashboardProps) {
+export function Dashboard() {
+  const navigate = useNavigate()
+
   const [jobs, setJobs] = useState<JobListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -104,12 +110,14 @@ export function Dashboard({ onGoHome, onCreateVideo, onSelectJob }: DashboardPro
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        const res = await fetch(`/api/jobs?limit=${HISTORY_LIMIT}`)
+        // 拉取较大量数据（后端上限已放宽到 1000），不再做前端 8 条限制
+        const res = await fetch(`/api/jobs?limit=1000`)
         const data = (await res.json()) as JobListResponse & { error?: string }
         if (!res.ok) {
           throw new Error(data.error ?? `无法加载历史记录 (${res.status})`)
         }
         setJobs(data.jobs)
+        setHiddenThumbnails({})
         setError(null)
       } catch (err) {
         setError(err instanceof Error ? err.message : '无法加载历史记录')
@@ -121,6 +129,30 @@ export function Dashboard({ onGoHome, onCreateVideo, onSelectJob }: DashboardPro
     void fetchJobs()
   }, [])
 
+  // Lightweight auto-refresh of the job list while any job is active.
+  // This lets completed jobs "graduate" from progress view → succeeded view with download buttons.
+  useEffect(() => {
+    const hasActive = jobs.some((j) => j.status === 'running' || j.status === 'queued')
+    if (!hasActive) return
+
+    const id = window.setInterval(() => {
+      // Re-fetch silently (keep existing error/loading state)
+      fetch('/api/jobs?limit=1000')
+        .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+        .then((data: JobListResponse) => {
+          if (Array.isArray(data.jobs)) {
+            setJobs(data.jobs)
+            setHiddenThumbnails({})
+          }
+        })
+        .catch(() => {
+          /* ignore transient errors during background refresh */
+        })
+    }, 12000) // every 12s while there is work in flight
+
+    return () => window.clearInterval(id)
+  }, [jobs])
+
   const filteredJobs = useMemo(() => {
     const keyword = query.trim().toLowerCase()
     if (!keyword) return jobs
@@ -129,14 +161,29 @@ export function Dashboard({ onGoHome, onCreateVideo, onSelectJob }: DashboardPro
 
   const handleReGenerate = (job: JobListItem) => {
     console.log('Re-generating from job:', job)
-    onCreateVideo()
+    navigate('/create')
+  }
+
+  const markVideoDownloaded = (jobId: string) => {
+    const downloadedAt = new Date().toISOString()
+    setJobs((current) =>
+      current.map((job) =>
+        job.jobId === jobId
+          ? {
+              ...job,
+              videoDownloadedAt: job.videoDownloadedAt ?? downloadedAt,
+              videoStateVersion: (job.videoStateVersion ?? 0) + 1,
+            }
+          : job,
+      ),
+    )
   }
 
   return (
     <div className="flex min-h-dvh bg-[#f0fdf4] text-[#4a5568]">
       <div className="w-56 flex-shrink-0 border-r border-[#d1fae5] bg-white">
         <div className="p-5">
-          <div onClick={onGoHome} className="mb-8 flex cursor-pointer items-center gap-2">
+          <div onClick={() => navigate('/')} className="mb-8 flex cursor-pointer items-center gap-2">
             <div className="bg-gradient-to-r from-[#86efac] to-[#4ade80] bg-clip-text text-2xl font-extrabold tracking-tighter text-transparent">
               NarraLingo
             </div>
@@ -147,7 +194,8 @@ export function Dashboard({ onGoHome, onCreateVideo, onSelectJob }: DashboardPro
 
           <nav className="space-y-1 text-sm">
             <button
-              onClick={onGoHome}
+              type="button"
+              onClick={() => navigate('/')}
               className="flex w-full items-center gap-3 rounded-xl bg-[#f0fdf4] px-3 py-2.5 text-left font-medium text-[#166534]"
             >
               <span className="text-lg">Home</span>
@@ -200,7 +248,8 @@ export function Dashboard({ onGoHome, onCreateVideo, onSelectJob }: DashboardPro
               Quick Start
             </button>
             <button
-              onClick={onCreateVideo}
+              type="button"
+              onClick={() => navigate('/create')}
               className="flex items-center gap-2 rounded-full bg-[#166534] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#14532d]"
             >
               Create a Video
@@ -224,7 +273,7 @@ export function Dashboard({ onGoHome, onCreateVideo, onSelectJob }: DashboardPro
           </div>
 
           <div className="mb-4 text-[12px] text-[#64748b]">
-            为控制存储成本，生成的视频文件在您下载一次后会自动清理。学习卡将长期保留。
+            任务记录及所有相关文件（视频、学习卡等）将在创建 3 天后自动清理。
           </div>
 
           {error && (
@@ -238,7 +287,7 @@ export function Dashboard({ onGoHome, onCreateVideo, onSelectJob }: DashboardPro
           ) : filteredJobs.length === 0 ? (
             <div className="py-12 text-center">
               <div className="mb-2 text-xl font-semibold text-[#166534]">还没有创建过视频</div>
-              <button onClick={onCreateVideo} className="mt-4 text-[#166534] underline">
+              <button type="button" onClick={() => navigate('/create')} className="mt-4 text-[#166534] underline">
                 立即创建第一个视频
               </button>
             </div>
@@ -248,17 +297,27 @@ export function Dashboard({ onGoHome, onCreateVideo, onSelectJob }: DashboardPro
                 const isSucceeded = job.status === 'succeeded'
                 const isActive = job.status === 'running' || job.status === 'queued'
                 const videoUnavailable = Boolean(job.videoDownloadedAt || job.videoPurgedAt)
-                const thumbnailUrl = `/api/jobs/${encodeURIComponent(job.jobId)}/thumbnail`
-                const showThumbnail = !hiddenThumbnails[job.jobId]
+                const canDownloadVideo =
+                  isSucceeded && !videoUnavailable && job.enableSpeech !== false
+                const thumbnailVersion = String(
+                  job.updatedAt ?? job.createdAt ?? job.videoStateVersion ?? '',
+                )
+                const thumbnailKey = `${job.jobId}:${thumbnailVersion}`
+                const thumbnailUrl = `/api/jobs/${encodeURIComponent(job.jobId)}/thumbnail?v=${encodeURIComponent(thumbnailVersion)}`
+                const showThumbnail = !hiddenThumbnails[thumbnailKey]
 
                 return (
                   <article
                     key={job.jobId}
-                    className="group overflow-hidden rounded-2xl border border-[#d1fae5] bg-white shadow-sm transition hover:shadow-md"
+                    onClick={() => {
+                      if (isSucceeded) navigate(`/study-cards/${job.jobId}`)
+                      if (isActive) navigate(`/jobs/${job.jobId}`)
+                    }}
+                    className={`group overflow-hidden rounded-2xl border border-[#d1fae5] bg-white shadow-sm transition hover:shadow-md ${
+                      isSucceeded || isActive ? 'cursor-pointer' : ''
+                    }`}
                   >
-                    <button
-                      type="button"
-                      onClick={() => onSelectJob(job.jobId)}
+                    <div
                       className="relative flex aspect-video w-full items-center justify-center overflow-hidden bg-gradient-to-br from-[#86efac]/30 to-[#4ade80]/30 text-left"
                     >
                       {showThumbnail ? (
@@ -267,67 +326,66 @@ export function Dashboard({ onGoHome, onCreateVideo, onSelectJob }: DashboardPro
                           alt=""
                           loading="lazy"
                           onError={() =>
-                            setHiddenThumbnails((prev) => ({ ...prev, [job.jobId]: true }))
+                            setHiddenThumbnails((prev) => ({ ...prev, [thumbnailKey]: true }))
                           }
                           className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
                         />
                       ) : (
                         <div className="text-sm font-semibold text-[#166534] opacity-70">
-                          查看任务详情
+                          暂无缩略图
                         </div>
                       )}
-                      <div className="absolute inset-0 bg-[#052e16]/0 transition group-hover:bg-[#052e16]/10" />
-                    </button>
+                    </div>
 
                     <div className="p-4">
-                      <button
-                        type="button"
-                        onClick={() => onSelectJob(job.jobId)}
-                        className="line-clamp-2 w-full text-left font-semibold text-[#166534] hover:underline"
+                      <div
+                        className="line-clamp-2 w-full text-left font-semibold text-[#166534]"
                         title={displayTitle(job)}
                       >
                         {displayTitle(job)}
-                      </button>
+                      </div>
 
                       <div className="mt-1 text-xs text-[#718096]">{formatDate(job.createdAt)}</div>
                       <SourceInfo job={job} />
 
-                      <div className="mt-3 flex items-center justify-between gap-3">
-                        <StatusBadge status={job.status} />
-                        <button
-                          type="button"
-                          onClick={() => onSelectJob(job.jobId)}
-                          className="text-xs font-semibold text-[#166534] hover:underline"
-                        >
-                          详情
-                        </button>
+                      {/* Live progress for running / queued jobs — shows current stage + % + animated bar */}
+                      {isActive && (
+                        <WorkflowProgressBar
+                          jobId={job.jobId}
+                          pollMs={4000}
+                          active
+                          compact
+                        />
+                      )}
+
+                      <div className="mt-3 flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {/* For active jobs the live mini progress already shows detailed stage + % */}
+                          {!isActive && <StatusBadge status={job.status} />}
+                          {isSucceeded && videoUnavailable && <DownloadedBadge />}
+                        </div>
                       </div>
 
                       <div className="mt-4 flex flex-wrap gap-2">
-                        {isSucceeded && !videoUnavailable && (
+                        {canDownloadVideo && (
                           <a
                             href={`/api/jobs/${encodeURIComponent(job.jobId)}/artifacts/renderedVideo`}
                             download
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              markVideoDownloaded(job.jobId)
+                            }}
                             className="rounded-lg bg-[#166534] px-3 py-1.5 text-xs font-semibold text-white no-underline transition hover:bg-[#14532d] active:scale-[0.985]"
                           >
                             下载完整视频
                           </a>
                         )}
 
-                        {isSucceeded && videoUnavailable && (
-                          <button
-                            type="button"
-                            onClick={() => handleReGenerate(job)}
-                            className="rounded-lg bg-[#166534] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#14532d] active:scale-[0.985]"
-                          >
-                            重新生成解说
-                          </button>
-                        )}
-
                         {isSucceeded && (
                           <a
                             href={`/api/jobs/${encodeURIComponent(job.jobId)}/artifacts/studyCardsHtml`}
                             download
+                            onClick={(event) => event.stopPropagation()}
                             className="rounded-lg border border-[#86efac] bg-white px-3 py-1.5 text-xs font-semibold text-[#166534] no-underline transition hover:bg-[#f0fdf4] active:scale-[0.985]"
                           >
                             下载学习卡
@@ -337,7 +395,10 @@ export function Dashboard({ onGoHome, onCreateVideo, onSelectJob }: DashboardPro
                         {(job.status === 'failed' || job.status === 'canceled') && (
                           <button
                             type="button"
-                            onClick={() => handleReGenerate(job)}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleReGenerate(job)
+                            }}
                             className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 active:scale-[0.985]"
                           >
                             重新生成
@@ -351,7 +412,7 @@ export function Dashboard({ onGoHome, onCreateVideo, onSelectJob }: DashboardPro
                         )}
                       </div>
 
-                      {isSucceeded && videoUnavailable && (
+                      {isSucceeded && videoUnavailable && job.enableSpeech !== false && (
                         <div className="mt-2 text-[10px] leading-snug text-[#9ca3af]">
                           视频文件已清理或等待清理。学习卡仍可下载。
                         </div>

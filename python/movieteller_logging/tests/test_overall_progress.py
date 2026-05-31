@@ -6,6 +6,18 @@ from movieteller_logging.stage_registry import resolve_macro
 from movieteller_logging.progress import progress_from_events
 
 
+def test_overall_progress_pre_narration_macros_show_preprocessing_label() -> None:
+    for stage in ("subtitle_extraction", "frame_pool", "subtitle_context"):
+        job = progress_from_events(
+            [
+                {"event": events.WORKFLOW_START, "stage": "workflow"},
+                {"event": events.WORKFLOW_STAGE_START, "stage": stage},
+            ]
+        )
+        out = overall_progress(job)
+        assert out["label"] == "预处理中", stage
+
+
 def test_overall_progress_succeeded_is_100_percent() -> None:
     job = progress_from_events(
         [
@@ -84,6 +96,29 @@ def test_overall_progress_shows_tts_macro_stage_label() -> None:
     out = overall_progress(job)
     assert resolve_macro(job.current_stage) == "tts"
     assert out["label"] == "语音合成"
+
+
+def test_overall_progress_ignores_disabled_tts_stage_start() -> None:
+    job = progress_from_events(
+        [
+            {"event": events.WORKFLOW_START, "stage": "workflow"},
+            {"event": events.WORKFLOW_STAGE_START, "stage": "narration"},
+            {
+                "event": events.WORKFLOW_STAGE_START,
+                "stage": "tts",
+                "enabled": False,
+            },
+            {
+                "event": events.STAGE_GROUP_PROGRESS,
+                "stage": "narration_group",
+                "completed": 1,
+                "total": 3,
+            },
+        ]
+    )
+    out = overall_progress(job)
+    assert resolve_macro(job.current_stage) == "narration"
+    assert out["label"] == "生成旁白"
 
 
 def test_overall_progress_does_not_regress_from_tts_to_narration_group() -> None:

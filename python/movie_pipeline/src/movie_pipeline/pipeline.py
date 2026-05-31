@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
@@ -96,6 +97,22 @@ class _CandidateWorkItem:
     candidate: NarrationCandidate
 
 
+@dataclass
+class _DeferredTtsStage:
+    """Emit workflow.stage.start for TTS only when the first segment synthesizes."""
+
+    log: StageLogger
+    _started: bool = field(default=False, init=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    def ensure_started(self) -> None:
+        with self._lock:
+            if self._started:
+                return
+            self.log.start()
+            self._started = True
+
+
 @dataclass(frozen=True)
 class _CandidateWorker:
     ctx: RunContext
@@ -108,6 +125,7 @@ class _CandidateWorker:
     synthesizer: Callable[..., object] | None
     limiters: CapabilityLimiters
     cli_progress: CliProgressReporter | None = None
+    deferred_tts: _DeferredTtsStage | None = None
 
     def run_candidate(self, item: _CandidateWorkItem) -> NarratedSegment:
         seg = item.candidate
@@ -255,6 +273,8 @@ class _CandidateWorker:
                         **classify_error(exc),
                     )
             if speech_enabled:
+                if self.deferred_tts is not None:
+                    self.deferred_tts.ensure_started()
                 if self.synthesizer is None:
                     raise RuntimeError("Narration speech synthesizer is not available")
                 if not self.resolved_speech_output_dir:
@@ -504,6 +524,11 @@ def narrate_analysis_candidates(
             candidates,
             group_size=parallelism.segment_group_size,
         )
+        deferred_tts = (
+            _DeferredTtsStage(log=fixed_stage_logs["tts"])
+            if speech_enabled
+            else None
+        )
         worker = _CandidateWorker(
             ctx=ctx,
             video_path=video_path,
@@ -515,6 +540,7 @@ def narrate_analysis_candidates(
             synthesizer=call_synthesizer,
             limiters=CapabilityLimiters.from_options(settings.capability_concurrency_options()),
             cli_progress=cli_progress,
+            deferred_tts=deferred_tts,
         )
         try:
             group_results = StageExecutor().map_ordered(
@@ -534,6 +560,7 @@ def narrate_analysis_candidates(
             narrated_segments=narrated,
             polish_enabled=polish_enabled,
             speech_enabled=speech_enabled,
+            deferred_tts=deferred_tts,
         )
         return narrated
     finally:
@@ -568,8 +595,10 @@ def _start_pipeline_stage_logs(
             enabled=speech_enabled,
         ),
     }
-    for stage_log in logs.values():
-        stage_log.start()
+    logs["narration"].start()
+    if polish_enabled:
+        logs["polish"].start()
+        logs["study_enrichment"].start()
     return logs
 
 
@@ -579,6 +608,7 @@ def _finish_pipeline_stage_logs(
     narrated_segments: tuple[NarratedSegment, ...],
     polish_enabled: bool,
     speech_enabled: bool,
+    deferred_tts: _DeferredTtsStage | None = None,
 ) -> None:
     segment_count = len(narrated_segments)
     logs["narration"].done(segment_count=segment_count)
@@ -596,6 +626,8 @@ def _finish_pipeline_stage_logs(
         logs["polish"].skipped("disabled_by_request", segment_count=segment_count)
         logs["study_enrichment"].skipped("not_requested", segment_count=segment_count)
     if speech_enabled:
+        if deferred_tts is not None:
+            deferred_tts.ensure_started()
         speech_count = sum(1 for segment in narrated_segments if segment.speech is not None)
         tts_failed_count = segment_count - speech_count
         artifact_reused = any(

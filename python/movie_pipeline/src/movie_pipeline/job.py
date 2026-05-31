@@ -208,14 +208,14 @@ def workflow_artifacts_from_payload(data: dict[str, Any]) -> WorkflowArtifacts:
     )
 
 
+from movie_pipeline.workflow_persist import (
+    merge_preserved_workflow_fields,
+    write_workflow_json_payload as write_job_record_payload,
+)
+
+
 def write_job_record(record: JobRecord, path: str | Path) -> str:
-    out = Path(path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(
-        json.dumps(record.to_dict(), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    return str(out)
+    return write_job_record_payload(record.to_dict(), path)
 
 
 def read_job_record(path: str | Path) -> JobRecord:

@@ -3,10 +3,11 @@ import path from "node:path";
 
 import { getJobsRoot, isSafeJobId, jobPathsFromRoot } from "../../config/jobs.js";
 import { readWorkflowRecord } from "./jobProcess.js";
+import { readJobRequestMetadata } from "./readJobRequest.js";
 import { jobRecordToListItemDto } from "./readJob.js";
 
 const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
+const MAX_LIMIT = 1000; // 提高上限，支持前端展示全部历史 + 定时清理扫描
 
 /**
  * @param {unknown} value
@@ -31,7 +32,7 @@ function parsePositiveInt(value, fallback, max) {
 
 /**
  * @param {string} jobsRoot
- * @returns {Array<{ jobId: string, record: Record<string, unknown> }>}
+ * @returns {Array<{ jobId: string, record: Record<string, unknown>, jobRoot: string }>}
  */
 function collectJobRecords(jobsRoot) {
   if (!fs.existsSync(jobsRoot)) {
@@ -56,6 +57,7 @@ function collectJobRecords(jobsRoot) {
     entries.push({
       jobId: String(record.job_id || name),
       record,
+      jobRoot,
     });
   }
   return entries;
@@ -85,7 +87,9 @@ export function listJobs(opts = {}) {
   const page = sorted.slice(offset, offset + limit);
 
   return {
-    jobs: page.map(({ record }) => jobRecordToListItemDto(record)),
+    jobs: page.map(({ record, jobRoot }) =>
+      jobRecordToListItemDto(record, readJobRequestMetadata(jobRoot))
+    ),
     total,
     limit,
     offset,

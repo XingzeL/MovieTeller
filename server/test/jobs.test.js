@@ -33,11 +33,13 @@ import {
 } from "../src/services/jobs/uploadValidation.js";
 
 const repoRoot = path.resolve(process.cwd(), "..");
+const tempJobRoots = new Set();
 
 function tempJobsRoot() {
   const parent = path.join(repoRoot, "artifacts");
   fs.mkdirSync(parent, { recursive: true });
   const root = fs.mkdtempSync(path.join(parent, "test-jobs-"));
+  tempJobRoots.add(root);
   process.env.JOBS_ROOT = root;
   return root;
 }
@@ -67,6 +69,10 @@ function writeJob(root, jobId, overrides = {}) {
 
 test.afterEach(() => {
   clearJobQueueForTests();
+  for (const root of tempJobRoots) {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+  tempJobRoots.clear();
   delete process.env.JOBS_ROOT;
   delete process.env.MAX_RUNNING_JOBS;
 });
@@ -377,4 +383,72 @@ test("resolveJobThumbnail serves first frame-pool image and rejects traversal", 
     })}\n`
   );
   assert.throws(() => resolveJobThumbnail("thumb-job"), /thumbnail path not allowed/);
+});
+
+test("list jobs resolve display title from request.json when workflow lacks original_source", () => {
+  const root = tempJobsRoot();
+  const { jobRoot, paths } = writeJob(root, "title-job", {
+    status: "succeeded",
+  });
+  fs.writeFileSync(
+    paths.requestJsonPath,
+    `${JSON.stringify(
+      { enableSpeech: true, originalFilename: "my-lecture.mp4" },
+      null,
+      2
+    )}\n`
+  );
+
+  const listed = listJobs({ jobsRoot: root, limit: 10 }).jobs.find(
+    (job) => job.jobId === "title-job"
+  );
+  assert.ok(listed);
+  assert.equal(listed.originalSource?.original_filename, "my-lecture.mp4");
+  assert.equal(listed.inputFileName, "source.mp4");
+});
+
+test("jobs without enableSpeech omit rendered video from list API and artifacts", () => {
+  const root = tempJobsRoot();
+  const { jobRoot, paths } = writeJob(root, "no-speech-job", {
+    status: "succeeded",
+  });
+  fs.writeFileSync(
+    paths.requestJsonPath,
+    `${JSON.stringify({ enableSpeech: false, enableEmbedVideo: true }, null, 2)}\n`
+  );
+  const artifactPath = path.join(jobRoot, "render", "narrated.mp4");
+  fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
+  fs.writeFileSync(artifactPath, "video");
+  fs.writeFileSync(
+    paths.artifactManifestPath,
+    JSON.stringify([
+      {
+        kind: "renderedVideo",
+        label: "Rendered video",
+        path: artifactPath,
+        mediaType: "video/mp4",
+      },
+      {
+        kind: "studyCardsHtml",
+        label: "Study cards",
+        path: path.join(jobRoot, "study_cards", "study_cards.html"),
+        mediaType: "text/html",
+      },
+    ])
+  );
+  fs.mkdirSync(path.join(jobRoot, "study_cards"), { recursive: true });
+  fs.writeFileSync(path.join(jobRoot, "study_cards", "study_cards.html"), "<html></html>");
+
+  const listed = listJobs({ jobsRoot: root, limit: 10 }).jobs.find(
+    (job) => job.jobId === "no-speech-job"
+  );
+  assert.ok(listed);
+  assert.equal(listed.enableSpeech, false);
+
+  const artifacts = listJobArtifacts("no-speech-job");
+  assert.ok(artifacts.every((item) => item.kind !== "renderedVideo"));
+  assert.throws(
+    () => resolveArtifactDownload("no-speech-job", "renderedVideo"),
+    /artifact not available/
+  );
 });

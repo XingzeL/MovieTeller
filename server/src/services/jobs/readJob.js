@@ -6,6 +6,7 @@ import {
   jobPathsFromRoot,
   resolveJobRoot,
 } from "../../config/jobs.js";
+import { resolveOriginalSourceForDto } from "./jobDisplaySource.js";
 
 /**
  * @param {string} jobId
@@ -26,8 +27,9 @@ export function readJobRecord(jobId) {
 
 /**
  * @param {Record<string, unknown>} record
+ * @param {import("./readJobRequest.js").JobRequestMetadata} [request]
  */
-export function jobRecordToDto(record) {
+export function jobRecordToDto(record, request = {}) {
   return {
     jobId: record.job_id,
     status: record.status,
@@ -43,17 +45,21 @@ export function jobRecordToDto(record) {
     cancelRequestedAt: record.cancel_requested_at ?? null,
 
     // 新增：用于 Dashboard 历史记录与存储策略
-    originalSource: record.original_source ?? null,
+    originalSource: resolveOriginalSourceForDto(record, request),
     videoDownloadedAt: record.video_downloaded_at ?? null,
     videoPurgedAt: record.video_purged_at ?? null,
     videoStateVersion: record.video_state_version ?? 0,
+
+    enableSpeech: request.enableSpeech !== false,
+    enableEmbedVideo: request.enableEmbedVideo !== false,
   };
 }
 
 /**
  * @param {Record<string, unknown>} record
+ * @param {import("./readJobRequest.js").JobRequestMetadata} [request]
  */
-export function jobRecordToListItemDto(record) {
+export function jobRecordToListItemDto(record, request = {}) {
   const inputPath = String(record.input_video_path || "");
   return {
     jobId: record.job_id,
@@ -65,9 +71,12 @@ export function jobRecordToListItemDto(record) {
     inputFileName: inputPath ? path.basename(inputPath) : null,
 
     // 新增（列表页常用）
-    originalSource: record.original_source ?? null,
+    originalSource: resolveOriginalSourceForDto(record, request),
     videoDownloadedAt: record.video_downloaded_at ?? null,
     videoPurgedAt: record.video_purged_at ?? null,
     videoStateVersion: record.video_state_version ?? 0,
+
+    enableSpeech: request.enableSpeech !== false,
+    enableEmbedVideo: request.enableEmbedVideo !== false,
   };
 }

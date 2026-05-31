@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import type { JobArtifactItem, JobDto } from '../types/job'
+import { StudyCardPreviewFrame } from './StudyCardPreviewFrame'
 import { WorkflowProgressBar } from './WorkflowProgressBar'
 
 type Props = {
@@ -140,7 +141,10 @@ export function JobPanel({ jobId, onClear }: Props) {
       {/* Progressive beautiful previews — study cards appear first, then video */}
       {(() => {
         const study = artifacts.find((a) => a.kind === 'studyCardsHtml')
-        const video = artifacts.find((a) => a.kind === 'renderedVideo')
+        const video =
+          job?.enableSpeech !== false
+            ? artifacts.find((a) => a.kind === 'renderedVideo')
+            : undefined
 
         if (!study && !video) return null
 
@@ -163,16 +167,13 @@ export function JobPanel({ jobId, onClear }: Props) {
                   </a>
                 </div>
                 <div className="p-3">
-                  <iframe
+                  <StudyCardPreviewFrame
                     src={`${study.downloadUrl}?inline=true`}
-                    className="w-full rounded-xl border border-[#d1fae5] bg-white"
-                    style={{ height: '420px' }}
                     title="学习卡预览"
-                    sandbox="allow-scripts allow-same-origin"
                   />
                 </div>
                 <div className="border-t border-[#d1fae5] bg-[#f8fafc] px-5 py-2.5 text-center text-xs text-[#64748b]">
-                  以上为学习卡开头内容 · 点击上方按钮下载完整 HTML（单文件，可离线打开）
+                  仅展示学习卡开头预览 · 完整内容请下载 HTML 离线浏览
                 </div>
               </div>
             )}

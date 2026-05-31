@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 from movieteller_logging import overall_progress, progress_from_jsonl
 
-from movie_pipeline.job import JobRecord, write_job_record
+from movie_pipeline.job import JobRecord
+from movie_pipeline.workflow_persist import (
+    merge_preserved_workflow_fields,
+    write_workflow_json_payload,
+)
 
 
 def write_workflow_manifest(
@@ -39,4 +44,5 @@ def write_workflow_manifest(
         error=error,
         artifacts=artifacts or {},
     )
-    write_job_record(record, path)
+    payload = merge_preserved_workflow_fields(record.to_dict(), path)
+    write_workflow_json_payload(payload, path)

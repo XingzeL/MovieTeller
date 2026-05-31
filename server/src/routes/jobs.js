@@ -9,6 +9,7 @@ import { enqueueJobUpload, cancelJob } from "../services/jobs/jobQueue.js";
 import { retryJob } from "../services/jobs/retryJob.js";
 import { listJobs } from "../services/jobs/listJobs.js";
 import { readJobLogs } from "../services/jobs/readJobLogs.js";
+import { readJobRequestMetadata } from "../services/jobs/readJobRequest.js";
 import { jobRecordToDto, readJobRecord } from "../services/jobs/readJob.js";
 import { purgeVideoForJob } from "../services/jobs/purgeVideo.js";
 import { resolveJobThumbnail } from "../services/jobs/thumbnail.js";
@@ -80,8 +81,10 @@ router.post("/jobs", upload.single("file"), (req, res) => {
 
 router.get("/jobs/:jobId", (req, res) => {
   try {
-    const { record } = readJobRecord(req.params.jobId);
-    return res.json({ job: jobRecordToDto(record) });
+    const { record, paths } = readJobRecord(req.params.jobId);
+    return res.json({
+      job: jobRecordToDto(record, readJobRequestMetadata(paths.root)),
+    });
   } catch (err) {
     const status = err.statusCode === 404 ? 404 : 500;
     return res.status(status).json({ error: String(err?.message || err) });

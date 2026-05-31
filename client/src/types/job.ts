@@ -19,6 +19,9 @@ export type JobDto = {
   videoDownloadedAt?: string | null
   videoPurgedAt?: string | null
   videoStateVersion?: number
+  /** False when the user did not request TTS / narrated video export. */
+  enableSpeech?: boolean
+  enableEmbedVideo?: boolean
 }
 
 export type JobOriginalSource = {
@@ -52,6 +55,8 @@ export type JobListItem = {
   videoDownloadedAt?: string | null
   videoPurgedAt?: string | null
   videoStateVersion?: number
+  enableSpeech?: boolean
+  enableEmbedVideo?: boolean
 }
 
 export type JobListResponse = {

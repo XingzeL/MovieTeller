@@ -138,7 +138,18 @@ def test_full_workflow_emits_standard_stage_lifecycle_contract(tmp_path: Path) -
 
     for stage in log_events.FIXED_WORKFLOW_STAGES:
         assert stage in by_stage, stage
-        assert any(row["event"] == log_events.WORKFLOW_STAGE_START for row in by_stage[stage]), stage
+        stage_events = by_stage[stage]
+        disabled_skip_only = not any(
+            row["event"] == log_events.WORKFLOW_STAGE_START for row in stage_events
+        ) and any(
+            row["event"] == log_events.WORKFLOW_STAGE_SKIPPED
+            and row.get("skip_reason") == "disabled_by_request"
+            for row in stage_events
+        )
+        if not disabled_skip_only:
+            assert any(
+                row["event"] == log_events.WORKFLOW_STAGE_START for row in stage_events
+            ), stage
         terminal = [
             row for row in by_stage[stage]
             if row["event"] in {

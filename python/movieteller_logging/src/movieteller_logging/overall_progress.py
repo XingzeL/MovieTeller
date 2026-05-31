@@ -6,12 +6,12 @@ from movieteller_logging.progress import JobProgress
 from movieteller_logging.stage_registry import (
     OVERALL_STATUS_LABELS,
     macro_index,
-    macro_label,
     macro_stage_ids,
     macro_weights,
     progress_mode_for_macro,
     resolve_macro,
-    stage_label,
+    user_facing_macro_label,
+    user_facing_stage_label,
 )
 
 
@@ -37,8 +37,8 @@ def overall_progress(job: JobProgress) -> dict[str, object]:
 
     macro = resolve_macro(job.current_stage)
     percent = _percent_in_flight(job)
-    label = stage_label(job.current_stage) or (
-        macro_label(macro) if macro else OVERALL_STATUS_LABELS["running"]
+    label = user_facing_stage_label(job.current_stage) or (
+        user_facing_macro_label(macro) if macro else OVERALL_STATUS_LABELS["running"]
     )
     return {
         "status": status if status != "unknown" else "running",

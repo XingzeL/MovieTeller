@@ -90,7 +90,15 @@ export function createJobFromUpload(input) {
   const destVideo = path.join(paths.inputDir, `source${ext}`);
   fs.renameSync(input.file.path, destVideo);
 
+  const originalSource = buildOriginalSourceFromRequest(input, destVideo);
+
   const options = workflowOptionsFromForm(input.body);
+  if (originalSource.original_filename) {
+    options.originalFilename = originalSource.original_filename;
+  }
+  if (originalSource.source_url) {
+    options.sourceUrl = originalSource.source_url;
+  }
   fs.writeFileSync(
     paths.requestJsonPath,
     `${JSON.stringify(options, null, 2)}\n`,
@@ -105,8 +113,6 @@ export function createJobFromUpload(input) {
 
   const shouldSpawn = input.spawn !== false;
   const status = shouldSpawn ? "queued" : "queued";
-
-  const originalSource = buildOriginalSourceFromRequest(input, destVideo);
 
   const queuedRecord = {
     job_id: jobId,

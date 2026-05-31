@@ -63,7 +63,12 @@ def progress_from_events(raw_events: Iterable[Mapping[str, Any]]) -> JobProgress
         last_event = event
         job_id = _str_or_none(row.get("job_id")) or job_id
         stage = _str_or_none(row.get("stage"))
-        current_stage = _update_current_stage(current_stage, event=event, stage=stage)
+        current_stage = _update_current_stage(
+            current_stage,
+            event=event,
+            stage=stage,
+            row=row,
+        )
 
         level = _str_or_none(row.get("level"))
         row_status = _str_or_none(row.get("status"))
@@ -129,9 +134,13 @@ def _update_current_stage(
     *,
     event: str,
     stage: str | None,
+    row: Mapping[str, Any] | None = None,
 ) -> str | None:
     if not stage:
         return current_stage
+    if event == events.WORKFLOW_STAGE_START:
+        if row is not None and row.get("enabled") is False:
+            return current_stage
     if event == events.WORKFLOW_STAGE_START or event in _WORKFLOW_STAGE_TERMINAL:
         if _should_update_current_stage(current_stage, stage):
             return stage
