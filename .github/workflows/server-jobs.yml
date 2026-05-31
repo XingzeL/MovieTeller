@@ -1,0 +1,40 @@
+name: Server jobs tests
+
+on:
+  push:
+    paths:
+      - "server/**"
+      - "docs/**"
+      - ".github/workflows/server-jobs.yml"
+  pull_request:
+    paths:
+      - "server/**"
+      - "docs/**"
+      - ".github/workflows/server-jobs.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+      - name: jobs.test.js
+        run: node --test --test-force-exit test/jobs.test.js
+      - name: retention.scan.test.js
+        run: node --test --test-force-exit test/retention.scan.test.js
+      - name: auth.session.test.js
+        run: node --test --test-force-exit test/auth.session.test.js
+      - name: jobs.acl.test.js
+        run: node --test --test-force-exit test/jobs.acl.test.js
+      - name: job.video-purge.test.js
+        run: node --test --test-force-exit test/job.video-purge.test.js
+      - name: worker.mode.test.js
+        run: node --test --test-force-exit test/worker.mode.test.js
+      - name: claimJob.test.js
+        run: node --test --test-force-exit test/claimJob.test.js

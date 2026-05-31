@@ -8,10 +8,12 @@
 
 | 有 | 尚无 |
 |----|------|
-| 单机本地：上传、队列、后台 Python、进度/日志、取消、产物下载 | 多用户账号、数据库、分布式队列 |
-| 文件态 Job：`artifacts/jobs/{jobId}/` | 服务重启后自动续跑（仅将僵尸 Job 标 `failed`） |
-| 前端任务列表 + Job 详情页 | 仓库内固定 E2E 样例视频（可自备 mp4 跑 smoke） |
-| 对外产物：**旁白成片** + **学习卡片** | 润色/字幕上下文无 UI 开关（默认开启） |
+| 单机本地：上传、队列、后台 Python、进度/日志、取消、产物下载 | 生产级 Clerk / Postgres（见 Phase 2 设计文档） |
+| Cookie 会话 + 每用户 Job ACL（`user_id`） | 分布式多 Worker（Phase 2 队列） |
+| 文件态 Job：`artifacts/jobs/{jobId}/` | 服务重启后自动续跑（combined 下僵尸 Job 标 `failed`） |
+| 列表 `limit` 最大 **1000**；**3 天** retention 删除整 Job 目录 | UI 仅展示「最近 8 条」（已取消，见 [job-lifecycle.md](./job-lifecycle.md)） |
+| 视频下载一次 + 410；学习卡长期可访问 | 润色/字幕上下文无 UI 开关（默认开启） |
+| 对外产物：**旁白成片** + **学习卡片**（manifest-only） | 仓库内固定 E2E 样例视频（可自备 mp4 跑 smoke） |
 
 产品化阶段规划见 [productization-roadmap.md](./productization-roadmap.md)。
 
