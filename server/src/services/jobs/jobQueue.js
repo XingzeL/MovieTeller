@@ -1,3 +1,7 @@
+/**
+ * In-process memory queue (single Node process only).
+ * Multi-instance deployments need Postgres SKIP LOCKED or BullMQ — see docs/job-queue-limitations.md.
+ */
 import fs from "node:fs";
 
 import { getJobsRoot, jobPathsFromRoot, resolveJobRoot } from "../../config/jobs.js";
@@ -68,10 +72,15 @@ function drainQueue() {
 }
 
 /**
- * @param {{ file: import('multer').File, body: Record<string, unknown> }} input
+ * @param {{ file: import('multer').File, body: Record<string, unknown>, userId: string }} input
  */
 export function enqueueJobUpload(input) {
-  const prepared = createJobFromUpload({ ...input, spawn: false });
+  const prepared = createJobFromUpload({
+    file: input.file,
+    body: input.body,
+    userId: input.userId,
+    spawn: false,
+  });
   if (running.size < maxRunningJobs()) {
     running.add(prepared.jobId);
     spawnPreparedJob(prepared);

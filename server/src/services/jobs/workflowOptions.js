@@ -14,7 +14,6 @@ const STRING_FIELDS = [
   "promptStyle",
   "ttsVoice",
   "ttsLanguage",
-  "userId",
   "sourceLanguage",
   "narrationLanguage",
   "subtitleLanguage",

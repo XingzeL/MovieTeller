@@ -1,9 +1,64 @@
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+
+import { apiFetch, ensureDevSession } from '../api/apiClient'
+
+type LoadState = 'loading' | 'ready' | 'forbidden' | 'not_found' | 'error'
 
 export function StudyCardPage() {
   const navigate = useNavigate()
   const { jobId } = useParams<{ jobId: string }>()
   const safeJobId = jobId?.trim()
+
+  const [loadState, setLoadState] = useState<LoadState>('loading')
+  const [message, setMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!safeJobId) {
+      setLoadState('not_found')
+      setMessage('学习卡不存在')
+      return
+    }
+
+    let cancelled = false
+
+    const run = async () => {
+      setLoadState('loading')
+      setMessage(null)
+      try {
+        await ensureDevSession()
+        const res = await apiFetch(`/api/jobs/${encodeURIComponent(safeJobId)}`)
+        const data = (await res.json()) as { error?: string }
+        if (cancelled) return
+
+        if (res.status === 404) {
+          setLoadState('not_found')
+          setMessage('任务不存在或您无权访问该学习卡')
+          return
+        }
+        if (res.status === 403) {
+          setLoadState('forbidden')
+          setMessage(data.error ?? '无法打开该学习卡')
+          return
+        }
+        if (!res.ok) {
+          setLoadState('error')
+          setMessage(data.error ?? `无法加载学习卡 (${res.status})`)
+          return
+        }
+        setLoadState('ready')
+      } catch (err) {
+        if (cancelled) return
+        setLoadState('error')
+        setMessage(err instanceof Error ? err.message : '无法加载学习卡')
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [safeJobId])
 
   if (!safeJobId) {
     return (
@@ -23,6 +78,7 @@ export function StudyCardPage() {
   }
 
   const artifactUrl = `/api/jobs/${encodeURIComponent(safeJobId)}/artifacts/studyCardsHtml`
+  const showIframe = loadState === 'ready'
 
   return (
     <div className="flex min-h-dvh flex-col bg-[#f0fdf4] text-[#4a5568]">
@@ -34,13 +90,15 @@ export function StudyCardPage() {
           <div className="truncate text-xs text-[#718096]">学习卡 · {safeJobId}</div>
         </div>
         <div className="flex items-center gap-2">
-          <a
-            href={artifactUrl}
-            download
-            className="rounded-full border border-[#86efac] bg-white px-4 py-2 text-sm font-semibold text-[#166534] no-underline transition hover:bg-[#f0fdf4]"
-          >
-            下载学习卡
-          </a>
+          {showIframe && (
+            <a
+              href={artifactUrl}
+              download
+              className="rounded-full border border-[#86efac] bg-white px-4 py-2 text-sm font-semibold text-[#166534] no-underline transition hover:bg-[#f0fdf4]"
+            >
+              下载学习卡
+            </a>
+          )}
           <button
             type="button"
             onClick={() => navigate('/dashboard')}
@@ -52,12 +110,42 @@ export function StudyCardPage() {
       </header>
 
       <main className="min-h-0 flex-1 bg-white">
-        <iframe
-          src={`${artifactUrl}?inline=true`}
-          title="完整学习卡"
-          className="block h-full min-h-[calc(100dvh-65px)] w-full border-0 bg-white"
-          sandbox="allow-scripts allow-same-origin"
-        />
+        {loadState === 'loading' && (
+          <div className="flex h-full min-h-[calc(100dvh-65px)] items-center justify-center text-[#718096]">
+            加载中…
+          </div>
+        )}
+
+        {(loadState === 'not_found' ||
+          loadState === 'forbidden' ||
+          loadState === 'error') && (
+          <div className="flex h-full min-h-[calc(100dvh-65px)] flex-col items-center justify-center px-6 text-center text-[#166534]">
+            <div className="text-lg font-semibold">
+              {loadState === 'forbidden' ? '无法访问' : loadState === 'not_found' ? '未找到' : '加载失败'}
+            </div>
+            {message && <p className="mt-2 max-w-md text-sm text-[#718096]">{message}</p>}
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard')}
+              className="mt-6 rounded-full bg-[#166534] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#14532d]"
+            >
+              返回 Dashboard
+            </button>
+          </div>
+        )}
+
+        {showIframe && (
+          <iframe
+            src={`${artifactUrl}?inline=true`}
+            title="完整学习卡"
+            className="block h-full min-h-[calc(100dvh-65px)] w-full border-0 bg-white"
+            sandbox="allow-scripts allow-same-origin"
+            onError={() => {
+              setLoadState('error')
+              setMessage('学习卡预览加载失败')
+            }}
+          />
+        )}
       </main>
     </div>
   )

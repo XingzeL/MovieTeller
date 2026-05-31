@@ -62,9 +62,17 @@ function buildOriginalSourceFromRequest(req, destVideoPath) {
 }
 
 /**
- * @param {{ file: { path: string, originalname?: string }, body: Record<string, unknown>, spawn?: boolean }} input
+ * @param {{ file: { path: string, originalname?: string }, body: Record<string, unknown>, userId: string, spawn?: boolean }} input
  */
 export function createJobFromUpload(input) {
+  const userId =
+    typeof input.userId === "string" && input.userId.trim()
+      ? input.userId.trim()
+      : null;
+  if (!userId) {
+    throw new Error("userId is required to create a job");
+  }
+
   const jobsRoot = getJobsRoot();
   const jobId = crypto.randomUUID();
   const jobRoot = resolveJobRoot(jobsRoot, jobId);
@@ -106,11 +114,6 @@ export function createJobFromUpload(input) {
   );
 
   const now = utcNowIso();
-  const userId =
-    typeof input.body.userId === "string" && input.body.userId.trim()
-      ? input.body.userId.trim()
-      : null;
-
   const shouldSpawn = input.spawn !== false;
   const status = shouldSpawn ? "queued" : "queued";
 

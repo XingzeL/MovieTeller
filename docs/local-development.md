@@ -102,6 +102,13 @@ npm run dev
 
 浏览器打开 **http://localhost:5173**（以终端输出为准）。`/api` 由 [client/vite.config.ts](../client/vite.config.ts) 代理到 `localhost:3001`；改端口需前后端一致。
 
+### 多用户（Phase 1 demo 会话）
+
+- 身份由 Cookie `mt_uid` 表示；未设置时使用 `DEMO_USER_ID`（默认 `demo-user`）。
+- 开发切换用户：`POST /api/dev/session`，body `{"userId":"user-a"}`（仅非 production）。
+- 前端 `fetch` 需 `credentials: 'include'`（见 `client/src/api/apiClient.ts`）；iframe / 下载链接依赖同一 Cookie。
+- 无 `user_id` 的历史 Job 不会出现在任何用户列表中。详见 [multi-user-storage-and-transport.md](./multi-user-storage-and-transport.md)。
+
 ### 前端能做什么
 
 1. **上传创建 Job**：`POST /api/jobs`（MP4 等，见 API 文档）；可用 `?jobId=` 打开已有任务。

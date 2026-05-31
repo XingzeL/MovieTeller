@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { apiFetch, ensureDevSession } from '../api/apiClient'
 import { WorkflowProgressBar } from './WorkflowProgressBar'
 import type { JobListItem, JobListResponse, JobStatus } from '../types/job'
 
@@ -110,8 +111,8 @@ export function Dashboard() {
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        // 拉取较大量数据（后端上限已放宽到 1000），不再做前端 8 条限制
-        const res = await fetch(`/api/jobs?limit=1000`)
+        await ensureDevSession()
+        const res = await apiFetch(`/api/jobs?limit=1000`)
         const data = (await res.json()) as JobListResponse & { error?: string }
         if (!res.ok) {
           throw new Error(data.error ?? `无法加载历史记录 (${res.status})`)
@@ -137,7 +138,7 @@ export function Dashboard() {
 
     const id = window.setInterval(() => {
       // Re-fetch silently (keep existing error/loading state)
-      fetch('/api/jobs?limit=1000')
+      apiFetch('/api/jobs?limit=1000')
         .then((r) => (r.ok ? r.json() : Promise.reject(r)))
         .then((data: JobListResponse) => {
           if (Array.isArray(data.jobs)) {
@@ -173,6 +174,8 @@ export function Dashboard() {
               ...job,
               videoDownloadedAt: job.videoDownloadedAt ?? downloadedAt,
               videoStateVersion: (job.videoStateVersion ?? 0) + 1,
+              canDownloadVideo: false,
+              videoState: 'downloaded',
             }
           : job,
       ),
@@ -298,7 +301,10 @@ export function Dashboard() {
                 const isActive = job.status === 'running' || job.status === 'queued'
                 const videoUnavailable = Boolean(job.videoDownloadedAt || job.videoPurgedAt)
                 const canDownloadVideo =
-                  isSucceeded && !videoUnavailable && job.enableSpeech !== false
+                  job.canDownloadVideo ??
+                  (isSucceeded && !videoUnavailable && job.enableSpeech !== false)
+                const canOpenStudyCards =
+                  job.canOpenStudyCards ?? isSucceeded
                 const thumbnailVersion = String(
                   job.updatedAt ?? job.createdAt ?? job.videoStateVersion ?? '',
                 )
@@ -310,7 +316,9 @@ export function Dashboard() {
                   <article
                     key={job.jobId}
                     onClick={() => {
-                      if (isSucceeded) navigate(`/study-cards/${job.jobId}`)
+                      if (isSucceeded && canOpenStudyCards) {
+                        navigate(`/study-cards/${job.jobId}`)
+                      }
                       if (isActive) navigate(`/jobs/${job.jobId}`)
                     }}
                     className={`group overflow-hidden rounded-2xl border border-[#d1fae5] bg-white shadow-sm transition hover:shadow-md ${
@@ -381,7 +389,7 @@ export function Dashboard() {
                           </a>
                         )}
 
-                        {isSucceeded && (
+                        {canOpenStudyCards && (
                           <a
                             href={`/api/jobs/${encodeURIComponent(job.jobId)}/artifacts/studyCardsHtml`}
                             download

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { apiFetch } from '../api/apiClient'
 import type { JobArtifactItem, JobDto } from '../types/job'
 import { StudyCardPreviewFrame } from './StudyCardPreviewFrame'
 import { WorkflowProgressBar } from './WorkflowProgressBar'
@@ -15,7 +16,7 @@ export function JobPanel({ jobId, onClear }: Props) {
   const [error, setError] = useState<string | null>(null)
 
   const fetchJob = useCallback(async () => {
-    const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`)
+    const res = await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}`)
     const data = (await res.json()) as { job?: JobDto; error?: string }
     if (!res.ok) {
       throw new Error(data.error ?? `Job request failed (${res.status})`)
@@ -24,7 +25,7 @@ export function JobPanel({ jobId, onClear }: Props) {
   }, [jobId])
 
   const fetchArtifacts = useCallback(async () => {
-    const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/artifacts`)
+    const res = await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/artifacts`)
     const data = (await res.json()) as { artifacts?: JobArtifactItem[]; error?: string }
     if (!res.ok) return []
     return data.artifacts ?? []
@@ -67,13 +68,13 @@ export function JobPanel({ jobId, onClear }: Props) {
     job?.status === 'canceled'
 
   const handleCancel = async () => {
-    await fetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' })
+    await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' })
     const nextJob = await fetchJob()
     setJob(nextJob)
   }
 
   const handleRetry = async () => {
-    const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/retry`, {
+    const res = await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/retry`, {
       method: 'POST',
     })
     const data = (await res.json()) as { error?: string }
@@ -141,10 +142,9 @@ export function JobPanel({ jobId, onClear }: Props) {
       {/* Progressive beautiful previews — study cards appear first, then video */}
       {(() => {
         const study = artifacts.find((a) => a.kind === 'studyCardsHtml')
-        const video =
-          job?.enableSpeech !== false
-            ? artifacts.find((a) => a.kind === 'renderedVideo')
-            : undefined
+        const video = job?.canDownloadVideo
+          ? artifacts.find((a) => a.kind === 'renderedVideo')
+          : undefined
 
         if (!study && !video) return null
 

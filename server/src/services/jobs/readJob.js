@@ -7,6 +7,7 @@ import {
   resolveJobRoot,
 } from "../../config/jobs.js";
 import { resolveOriginalSourceForDto } from "./jobDisplaySource.js";
+import { buildJobAvailability } from "./jobAvailability.js";
 
 /**
  * @param {string} jobId
@@ -29,7 +30,20 @@ export function readJobRecord(jobId) {
  * @param {Record<string, unknown>} record
  * @param {import("./readJobRequest.js").JobRequestMetadata} [request]
  */
-export function jobRecordToDto(record, request = {}) {
+/**
+ * @param {Record<string, unknown>} record
+ * @param {import("./readJobRequest.js").JobRequestMetadata} [request]
+ * @param {string} [jobRoot]
+ */
+export function jobRecordToDto(record, request = {}, jobRoot = "") {
+  const availability = jobRoot
+    ? buildJobAvailability(record, request, jobRoot)
+    : {
+        videoState: "not_generated",
+        canDownloadVideo: false,
+        canOpenStudyCards: false,
+      };
+
   return {
     jobId: record.job_id,
     status: record.status,
@@ -44,7 +58,6 @@ export function jobRecordToDto(record, request = {}) {
     updatedAt: record.updated_at,
     cancelRequestedAt: record.cancel_requested_at ?? null,
 
-    // 新增：用于 Dashboard 历史记录与存储策略
     originalSource: resolveOriginalSourceForDto(record, request),
     videoDownloadedAt: record.video_downloaded_at ?? null,
     videoPurgedAt: record.video_purged_at ?? null,
@@ -52,6 +65,10 @@ export function jobRecordToDto(record, request = {}) {
 
     enableSpeech: request.enableSpeech !== false,
     enableEmbedVideo: request.enableEmbedVideo !== false,
+
+    videoState: availability.videoState,
+    canDownloadVideo: availability.canDownloadVideo,
+    canOpenStudyCards: availability.canOpenStudyCards,
   };
 }
 
@@ -59,8 +76,21 @@ export function jobRecordToDto(record, request = {}) {
  * @param {Record<string, unknown>} record
  * @param {import("./readJobRequest.js").JobRequestMetadata} [request]
  */
-export function jobRecordToListItemDto(record, request = {}) {
+/**
+ * @param {Record<string, unknown>} record
+ * @param {import("./readJobRequest.js").JobRequestMetadata} [request]
+ * @param {string} [jobRoot]
+ */
+export function jobRecordToListItemDto(record, request = {}, jobRoot = "") {
   const inputPath = String(record.input_video_path || "");
+  const availability = jobRoot
+    ? buildJobAvailability(record, request, jobRoot)
+    : {
+        videoState: "not_generated",
+        canDownloadVideo: false,
+        canOpenStudyCards: false,
+      };
+
   return {
     jobId: record.job_id,
     status: record.status,
@@ -69,8 +99,8 @@ export function jobRecordToListItemDto(record, request = {}) {
     updatedAt: record.updated_at,
     cancelRequestedAt: record.cancel_requested_at ?? null,
     inputFileName: inputPath ? path.basename(inputPath) : null,
+    userId: record.user_id ?? null,
 
-    // 新增（列表页常用）
     originalSource: resolveOriginalSourceForDto(record, request),
     videoDownloadedAt: record.video_downloaded_at ?? null,
     videoPurgedAt: record.video_purged_at ?? null,
@@ -78,5 +108,9 @@ export function jobRecordToListItemDto(record, request = {}) {
 
     enableSpeech: request.enableSpeech !== false,
     enableEmbedVideo: request.enableEmbedVideo !== false,
+
+    videoState: availability.videoState,
+    canDownloadVideo: availability.canDownloadVideo,
+    canOpenStudyCards: availability.canOpenStudyCards,
   };
 }

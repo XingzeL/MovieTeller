@@ -1,25 +1,28 @@
 import express from "express";
-import fs from "node:fs";
 import multer from "multer";
 import os from "node:os";
 import path from "node:path";
 
-import { listJobArtifacts, resolveArtifactDownload } from "../services/jobs/artifactManifest.js";
-import { enqueueJobUpload, cancelJob } from "../services/jobs/jobQueue.js";
-import { retryJob } from "../services/jobs/retryJob.js";
-import { listJobs } from "../services/jobs/listJobs.js";
-import { readJobLogs } from "../services/jobs/readJobLogs.js";
+import { appendAuditEvent } from "../services/audit/auditLog.js";
+import {
+  listArtifactsForUser,
+  cancelJobForUser,
+  listJobsForUser,
+  markVideoDownloadedForUser,
+  readJobForUser,
+  readJobLogsForUser,
+  resolveArtifactForUser,
+  resolveThumbnailForUser,
+  retryJobForUser,
+} from "../services/jobs/jobAccess.js";
+import { enqueueJobUpload } from "../services/jobs/jobQueue.js";
 import { readJobRequestMetadata } from "../services/jobs/readJobRequest.js";
-import { jobRecordToDto, readJobRecord } from "../services/jobs/readJob.js";
-import { purgeVideoForJob } from "../services/jobs/purgeVideo.js";
-import { resolveJobThumbnail } from "../services/jobs/thumbnail.js";
+import { jobRecordToDto } from "../services/jobs/readJob.js";
 import {
   removeUploadedTempFile,
   validateJobUploadFile,
 } from "../services/jobs/uploadValidation.js";
-import {
-  readWorkflowProgressFromLog,
-} from "../services/workflow/readWorkflowProgress.js";
+import { readWorkflowProgressFromLog } from "../services/workflow/readWorkflowProgress.js";
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -47,7 +50,7 @@ router.get("/jobs", (req, res) => {
       offsetRaw !== undefined && String(offsetRaw).trim() !== ""
         ? Number(offsetRaw)
         : undefined;
-    const payload = listJobs({
+    const payload = listJobsForUser(req.user.id, {
       limit: Number.isNaN(limit) ? undefined : limit,
       offset: Number.isNaN(offset) ? undefined : offset,
     });
@@ -71,6 +74,12 @@ router.post("/jobs", upload.single("file"), (req, res) => {
     const created = enqueueJobUpload({
       file: req.file,
       body: req.body ?? {},
+      userId: req.user.id,
+    });
+    appendAuditEvent({
+      jobId: created.jobId,
+      userId: req.user.id,
+      event: "job.created",
     });
     return res.status(201).json(created);
   } catch (err) {
@@ -81,9 +90,13 @@ router.post("/jobs", upload.single("file"), (req, res) => {
 
 router.get("/jobs/:jobId", (req, res) => {
   try {
-    const { record, paths } = readJobRecord(req.params.jobId);
+    const { record, paths } = readJobForUser(req.user.id, req.params.jobId);
     return res.json({
-      job: jobRecordToDto(record, readJobRequestMetadata(paths.root)),
+      job: jobRecordToDto(
+        record,
+        readJobRequestMetadata(paths.root),
+        paths.root
+      ),
     });
   } catch (err) {
     const status = err.statusCode === 404 ? 404 : 500;
@@ -93,7 +106,7 @@ router.get("/jobs/:jobId", (req, res) => {
 
 router.get("/jobs/:jobId/progress", async (req, res) => {
   try {
-    const { paths } = readJobRecord(req.params.jobId);
+    const { paths } = readJobForUser(req.user.id, req.params.jobId);
     const progress = await readWorkflowProgressFromLog(paths.workflowLogPath);
     return res.json({ progress });
   } catch (err) {
@@ -114,7 +127,7 @@ router.get("/jobs/:jobId/logs", (req, res) => {
       afterRaw !== undefined && String(afterRaw).trim() !== ""
         ? Number(afterRaw)
         : undefined;
-    const payload = readJobLogs(req.params.jobId, {
+    const payload = readJobLogsForUser(req.user.id, req.params.jobId, {
       limit: Number.isNaN(limit) ? undefined : limit,
       after: Number.isNaN(after) ? undefined : after,
     });
@@ -127,7 +140,7 @@ router.get("/jobs/:jobId/logs", (req, res) => {
 
 router.get("/jobs/:jobId/artifacts", (req, res) => {
   try {
-    const artifacts = listJobArtifacts(req.params.jobId);
+    const artifacts = listArtifactsForUser(req.user.id, req.params.jobId);
     return res.json({ artifacts });
   } catch (err) {
     const status = err.statusCode === 404 ? 404 : 500;
@@ -137,8 +150,10 @@ router.get("/jobs/:jobId/artifacts", (req, res) => {
 
 router.get("/jobs/:jobId/thumbnail", (req, res) => {
   try {
-    const { filePath } = resolveJobThumbnail(req.params.jobId);
-    res.type(path.extname(filePath).toLowerCase() === ".jpg" ? "image/jpeg" : "image/png");
+    const { filePath } = resolveThumbnailForUser(req.user.id, req.params.jobId);
+    res.type(
+      path.extname(filePath).toLowerCase() === ".jpg" ? "image/jpeg" : "image/png"
+    );
     res.setHeader("Cache-Control", "private, max-age=300");
     return res.sendFile(filePath, (err) => {
       if (err) {
@@ -153,18 +168,26 @@ router.get("/jobs/:jobId/thumbnail", (req, res) => {
 
 router.get("/jobs/:jobId/artifacts/:kind", (req, res) => {
   try {
-    const { filePath, label } = resolveArtifactDownload(
+    const { filePath, label } = resolveArtifactForUser(
+      req.user.id,
       req.params.jobId,
       req.params.kind
     );
 
-    const wantsInline = req.query.inline === '1' || req.query.inline === 'true';
+    const wantsInline =
+      req.query.inline === "1" || req.query.inline === "true";
 
     if (wantsInline) {
-      // For preview in <iframe> or <video> — serve content inline without forcing download
-      const mime = label && label.toLowerCase().endsWith('.html') ? 'text/html' : undefined;
+      appendAuditEvent({
+        jobId: req.params.jobId,
+        userId: req.user.id,
+        event: "artifact.access",
+        detail: { kind: req.params.kind, inline: true },
+      });
+      const mime =
+        label && label.toLowerCase().endsWith(".html") ? "text/html" : undefined;
       if (mime) res.type(mime);
-      res.setHeader('Content-Disposition', 'inline');
+      res.setHeader("Content-Disposition", "inline");
       return res.sendFile(filePath, (err) => {
         if (err) {
           console.error("artifact inline send failed", label, err);
@@ -172,7 +195,6 @@ router.get("/jobs/:jobId/artifacts/:kind", (req, res) => {
       });
     }
 
-    // Default behavior: force download (used by the "下载完整..." buttons)
     const isVideoDownload = req.params.kind === "renderedVideo";
 
     return res.download(filePath, path.basename(filePath), (err) => {
@@ -181,61 +203,65 @@ router.get("/jobs/:jobId/artifacts/:kind", (req, res) => {
         return;
       }
 
-      // === 加强版存储策略：视频下载后打标 + 异步清理 ===
       if (isVideoDownload) {
         try {
-          const { record, paths } = readJobRecord(req.params.jobId);
-
-          // 简单乐观并发保护：只有在还没被标记时才写入
-          if (!record.video_downloaded_at) {
-            const previousVersion = record.video_state_version || 0;
-
-            record.video_downloaded_at = new Date().toISOString();
-            record.video_state_version = previousVersion + 1;
-
-            fs.writeFileSync(paths.workflowJsonPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
-
-            console.log(`[Storage] video_downloaded_at marked for job ${req.params.jobId} (version ${record.video_state_version})`);
-
-            // 异步触发清理（不阻塞下载响应）
-            setImmediate(() => {
-              try {
-                purgeVideoForJob(req.params.jobId);
-              } catch (purgeErr) {
-                console.error(`[Storage] purgeVideoForJob failed for ${req.params.jobId}`, purgeErr);
-              }
-            });
-          } else {
-            console.log(`[Storage] Video download requested again for job ${req.params.jobId} (already marked at ${record.video_downloaded_at})`);
-          }
+          markVideoDownloadedForUser(req.user.id, req.params.jobId);
+          appendAuditEvent({
+            jobId: req.params.jobId,
+            userId: req.user.id,
+            event: "job.video_downloaded",
+          });
         } catch (e) {
           console.error("Failed to mark video_downloaded_at", e);
         }
+      } else {
+        appendAuditEvent({
+          jobId: req.params.jobId,
+          userId: req.user.id,
+          event: "artifact.access",
+          detail: { kind: req.params.kind, inline: false },
+        });
       }
     });
   } catch (err) {
-    const status = err.statusCode === 404 || err.statusCode === 403 ? err.statusCode : 500;
+    const status =
+      err.statusCode === 404 || err.statusCode === 403 ? err.statusCode : 500;
     return res.status(status).json({ error: String(err?.message || err) });
   }
 });
 
 router.post("/jobs/:jobId/cancel", (req, res) => {
   try {
-    const payload = cancelJob(req.params.jobId);
+    const payload = cancelJobForUser(req.user.id, req.params.jobId);
+    appendAuditEvent({
+      jobId: req.params.jobId,
+      userId: req.user.id,
+      event: "job.canceled",
+      detail: { status: payload.status },
+    });
     return res.json(payload);
   } catch (err) {
-    return res.status(500).json({ error: String(err?.message || err) });
+    const status = err.statusCode === 404 ? 404 : 500;
+    return res.status(status).json({ error: String(err?.message || err) });
   }
 });
 
 router.post("/jobs/:jobId/retry", (req, res) => {
   try {
-    const payload = retryJob(req.params.jobId);
+    const payload = retryJobForUser(req.user.id, req.params.jobId);
+    appendAuditEvent({
+      jobId: req.params.jobId,
+      userId: req.user.id,
+      event: "job.retried",
+    });
     return res.json(payload);
   } catch (err) {
-    const status = err.statusCode === 404 || err.statusCode === 409 || err.statusCode === 400
-      ? err.statusCode
-      : 500;
+    const status =
+      err.statusCode === 404 ||
+      err.statusCode === 409 ||
+      err.statusCode === 400
+        ? err.statusCode
+        : 500;
     return res.status(status).json({ error: String(err?.message || err) });
   }
 });

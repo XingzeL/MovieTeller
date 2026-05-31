@@ -1,5 +1,6 @@
 import { Component } from 'react'
 
+import { apiFetch, ensureDevSession } from './api/apiClient'
 import { JobPanel } from './components/JobPanel'
 import { UploadForm } from './components/UploadForm'
 import type { CreateJobResponse } from './types/job'
@@ -85,7 +86,8 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
       fd.append('ttsLanguage', this.state.ttsLanguage)
       fd.append('narrationLanguage', this.state.ttsLanguage)
       fd.append('subtitleLanguage', this.state.videoLanguage)
-      const res = await fetch('/api/jobs', { method: 'POST', body: fd })
+      await ensureDevSession()
+      const res = await apiFetch('/api/jobs', { method: 'POST', body: fd })
       const data = (await res.json()) as CreateJobResponse & { error?: string }
       if (!res.ok) {
         this.setState({

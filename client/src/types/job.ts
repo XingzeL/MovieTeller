@@ -5,6 +5,13 @@ export type JobStatus =
   | 'failed'
   | 'canceled'
 
+export type VideoState =
+  | 'not_generated'
+  | 'disabled'
+  | 'available'
+  | 'downloaded'
+  | 'purged'
+
 export type JobDto = {
   jobId: string
   status: JobStatus
@@ -22,6 +29,9 @@ export type JobDto = {
   /** False when the user did not request TTS / narrated video export. */
   enableSpeech?: boolean
   enableEmbedVideo?: boolean
+  videoState?: VideoState
+  canDownloadVideo?: boolean
+  canOpenStudyCards?: boolean
 }
 
 export type JobOriginalSource = {
@@ -57,6 +67,9 @@ export type JobListItem = {
   videoStateVersion?: number
   enableSpeech?: boolean
   enableEmbedVideo?: boolean
+  videoState?: VideoState
+  canDownloadVideo?: boolean
+  canOpenStudyCards?: boolean
 }
 
 export type JobListResponse = {

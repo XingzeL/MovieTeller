@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { apiFetch } from '../api/apiClient'
 import type { JobLogsResponse } from '../types/job'
 
 const MAX_VISIBLE_LINES = 200
@@ -53,7 +54,7 @@ export function JobLogViewer({ jobId, active = true }: Props) {
   const fetchLogs = useCallback(async () => {
     const after = afterRef.current
     const url = `/api/jobs/${encodeURIComponent(jobId)}/logs?limit=${PAGE_LIMIT}&after=${after}`
-    const res = await fetch(url)
+    const res = await apiFetch(url)
     const data = (await res.json()) as JobLogsResponse & { error?: string }
     if (!res.ok) {
       throw new Error(data.error ?? `Logs request failed (${res.status})`)

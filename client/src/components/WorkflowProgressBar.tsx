@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import { apiFetch } from '../api/apiClient'
+
 export type WorkflowOverallProgress = {
   status: string
   percent: number
@@ -31,7 +33,7 @@ export function WorkflowProgressBar({ jobId, pollMs = 2500, active = true, compa
 
     const fetchProgress = async () => {
       try {
-        const res = await fetch(`/api/jobs/${encodeURIComponent(trimmedJobId)}/progress`)
+        const res = await apiFetch(`/api/jobs/${encodeURIComponent(trimmedJobId)}/progress`)
         const data = (await res.json()) as {
           progress?: WorkflowOverallProgress
           error?: string
