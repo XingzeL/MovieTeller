@@ -8,15 +8,6 @@ import { readJobRecord } from "./readJob.js";
 /** User-facing artifact kinds exposed in API / frontend downloads. */
 const PRODUCT_ARTIFACT_KINDS = new Set(["renderedVideo", "studyCardsHtml"]);
 
-/** @deprecated fallback only — prefer artifacts/manifest.json from Python */
-const LEGACY_ARTIFACT_KINDS = {
-  renderedVideo: {
-    label: "旁白成片",
-    pathKeys: ["renderedVideoPath", "renderJsonPath"],
-  },
-  studyCardsHtml: { label: "学习卡片", pathKeys: ["studyCardsHtmlPath"] },
-};
-
 /**
  * @param {string} jobRoot
  * @returns {Array<{ kind: string, label: string, path: string, mediaType?: string }> | null}
@@ -37,72 +28,25 @@ function readManifestFile(jobRoot) {
 
 /**
  * @param {string} jobId
- * @param {string} outputRoot
- * @param {Record<string, unknown>} artifacts
- */
-function listFromLegacyArtifacts(jobId, outputRoot, artifacts) {
-  const items = [];
-  const jobRootResolved = path.resolve(outputRoot);
-  for (const [kind, meta] of Object.entries(LEGACY_ARTIFACT_KINDS)) {
-    if (!PRODUCT_ARTIFACT_KINDS.has(kind)) continue;
-    let filePath = null;
-    for (const key of meta.pathKeys) {
-      const candidate = artifacts[key];
-      if (candidate && fs.existsSync(candidate)) {
-        filePath = candidate;
-        break;
-      }
-    }
-    if (!filePath) continue;
-    const resolved = path.resolve(String(filePath));
-    if (
-      !resolved.startsWith(jobRootResolved + path.sep) &&
-      resolved !== jobRootResolved
-    ) {
-      continue;
-    }
-    items.push({
-      kind,
-      label: meta.label,
-      path: resolved,
-      downloadUrl: `/api/jobs/${encodeURIComponent(jobId)}/artifacts/${kind}`,
-      sizeBytes: fs.statSync(resolved).size,
-    });
-  }
-  return items;
-}
-
-/**
- * @param {string} jobId
  */
 export function listJobArtifacts(jobId) {
-  const { record, paths } = readJobRecord(jobId);
+  const { paths } = readJobRecord(jobId);
   const request = readJobRequestOptions(paths.root);
   const manifestEntries = readManifestFile(paths.root);
-  if (manifestEntries && manifestEntries.length > 0) {
-    return manifestEntries
-      .filter(
-        (entry) =>
-          PRODUCT_ARTIFACT_KINDS.has(String(entry.kind || "")) &&
-          fs.existsSync(entry.path) &&
-          (request.enableSpeech || String(entry.kind) !== "renderedVideo")
-      )
-      .map((entry) => ({
-        kind: entry.kind,
-        label: entry.label || entry.kind,
-        downloadUrl: `/api/jobs/${encodeURIComponent(jobId)}/artifacts/${entry.kind}`,
-        sizeBytes: fs.statSync(entry.path).size,
-      }));
-  }
-  const items = listFromLegacyArtifacts(
-    jobId,
-    record.output_root,
-    record.artifacts || {}
-  );
-  if (!request.enableSpeech) {
-    return items.filter((item) => item.kind !== "renderedVideo");
-  }
-  return items;
+  if (!manifestEntries) return [];
+  return manifestEntries
+    .filter(
+      (entry) =>
+        PRODUCT_ARTIFACT_KINDS.has(String(entry.kind || "")) &&
+        fs.existsSync(entry.path) &&
+        (request.enableSpeech || String(entry.kind) !== "renderedVideo")
+    )
+    .map((entry) => ({
+      kind: entry.kind,
+      label: entry.label || entry.kind,
+      downloadUrl: `/api/jobs/${encodeURIComponent(jobId)}/artifacts/${entry.kind}`,
+      sizeBytes: fs.statSync(entry.path).size,
+    }));
 }
 
 /**
@@ -117,43 +61,21 @@ export function resolveArtifactDownload(jobId, kind) {
     err.statusCode = 404;
     throw err;
   }
-  const manifestEntries = readManifestFile(paths.root);
-  if (manifestEntries) {
-    if (!PRODUCT_ARTIFACT_KINDS.has(kind)) {
-      const err = new Error("unknown artifact kind");
-      err.statusCode = 404;
-      throw err;
-    }
-    const entry = manifestEntries.find((item) => item.kind === kind);
-    if (!entry?.path) {
-      const err = new Error("artifact not available");
-      err.statusCode = 404;
-      throw err;
-    }
-    return resolvePathWithinJob(record.output_root, entry.path, entry.label || kind);
-  }
-
-  if (!Object.prototype.hasOwnProperty.call(LEGACY_ARTIFACT_KINDS, kind)) {
+  if (!PRODUCT_ARTIFACT_KINDS.has(kind)) {
     const err = new Error("unknown artifact kind");
     err.statusCode = 404;
     throw err;
   }
-  const meta = LEGACY_ARTIFACT_KINDS[kind];
-  const artifacts = record.artifacts || {};
-  let filePath = null;
-  for (const key of meta.pathKeys) {
-    const candidate = artifacts[key];
-    if (candidate && fs.existsSync(candidate)) {
-      filePath = candidate;
-      break;
-    }
-  }
-  if (!filePath) {
+
+  const manifestEntries = readManifestFile(paths.root);
+  const entry = manifestEntries?.find((item) => item.kind === kind);
+  if (!entry?.path) {
     const err = new Error("artifact not available");
     err.statusCode = 404;
     throw err;
   }
-  return resolvePathWithinJob(record.output_root, filePath, meta.label);
+
+  return resolvePathWithinJob(record.output_root, entry.path, entry.label || kind);
 }
 
 /**

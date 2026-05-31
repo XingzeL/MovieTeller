@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import path from "node:path";
 
 import { jobPathsFromRoot } from "../../config/jobs.js";
 
@@ -29,39 +28,17 @@ function manifestArtifactExists(jobRoot, kind) {
 }
 
 /**
- * @param {Record<string, unknown>} record
  * @param {string} jobRoot
  */
-function legacyStudyCardsExists(record, jobRoot) {
-  const artifacts = record.artifacts || {};
-  const candidate = artifacts.studyCardsHtmlPath;
-  if (candidate && fs.existsSync(String(candidate))) return true;
-  const fallback = path.join(jobRoot, "study_cards", "study_cards.html");
-  return fs.existsSync(fallback);
+function studyCardsExists(jobRoot) {
+  return manifestArtifactExists(jobRoot, "studyCardsHtml");
 }
 
 /**
- * @param {Record<string, unknown>} record
  * @param {string} jobRoot
  */
-function studyCardsExists(record, jobRoot) {
-  if (manifestArtifactExists(jobRoot, "studyCardsHtml")) return true;
-  return legacyStudyCardsExists(record, jobRoot);
-}
-
-/**
- * @param {Record<string, unknown>} record
- * @param {string} jobRoot
- */
-function renderedVideoExists(record, jobRoot) {
-  if (manifestArtifactExists(jobRoot, "renderedVideo")) return true;
-  const artifacts = record.artifacts || {};
-  for (const key of ["renderedVideoPath", "renderJsonPath"]) {
-    const candidate = artifacts[key];
-    if (candidate && fs.existsSync(String(candidate))) return true;
-  }
-  const fallback = path.join(jobRoot, "render", "narrated.mp4");
-  return fs.existsSync(fallback);
+function renderedVideoExists(jobRoot) {
+  return manifestArtifactExists(jobRoot, "renderedVideo");
 }
 
 /**
@@ -84,7 +61,7 @@ export function buildJobAvailability(record, request = {}, jobRoot) {
     videoState = "purged";
   } else if (downloaded) {
     videoState = "downloaded";
-  } else if (status === "succeeded" && renderedVideoExists(record, jobRoot)) {
+  } else if (status === "succeeded" && renderedVideoExists(jobRoot)) {
     videoState = "available";
   } else {
     videoState = "not_generated";
@@ -92,7 +69,7 @@ export function buildJobAvailability(record, request = {}, jobRoot) {
 
   const canDownloadVideo = videoState === "available";
   const canOpenStudyCards =
-    status === "succeeded" && studyCardsExists(record, jobRoot);
+    status === "succeeded" && studyCardsExists(jobRoot);
 
   return {
     videoState,

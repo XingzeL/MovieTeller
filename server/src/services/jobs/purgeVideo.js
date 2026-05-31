@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
 import { readJobRecord } from "./readJob.js";
-import { listJobArtifacts, resolveArtifactDownload } from "./artifactManifest.js";
+import { resolveArtifactDownload } from "./artifactManifest.js";
 
 /**
  * 尝试清理某个 Job 的视频文件（仅当 video_downloaded_at 已标记时）
@@ -23,20 +23,12 @@ export function purgeVideoForJob(jobId) {
       return;
     }
 
-    // 通过 artifact 系统找到视频路径（优先使用 manifest）
     let videoFilePath = null;
     try {
-      const artifacts = listJobArtifacts(jobId);
-      const videoArtifact = artifacts.find(a => a.kind === "renderedVideo");
-      if (videoArtifact) {
-        const resolved = resolveArtifactDownload(jobId, "renderedVideo");
-        videoFilePath = resolved.filePath;
-      }
+      const resolved = resolveArtifactDownload(jobId, "renderedVideo");
+      videoFilePath = resolved.filePath;
     } catch (e) {
-      // 回退到 legacy 方式（如果 manifest 不存在）
-      if (record.artifacts?.renderedVideoPath && fs.existsSync(record.artifacts.renderedVideoPath)) {
-        videoFilePath = record.artifacts.renderedVideoPath;
-      }
+      videoFilePath = null;
     }
 
     if (videoFilePath && fs.existsSync(videoFilePath)) {

@@ -178,13 +178,12 @@ export function JobPanel({ jobId, onClear }: Props) {
               </div>
             )}
 
-            {/* Video Preview (first 10 seconds feel) */}
             {video && (
               <div className="overflow-hidden rounded-2xl border border-[#d1fae5] bg-white shadow-sm">
                 <div className="flex items-center justify-between border-b border-[#d1fae5] bg-[#f0fdf4] px-5 py-3">
                   <div>
                     <div className="text-sm font-semibold text-[#166534]">解说视频已生成</div>
-                    <div className="text-xs text-[#4b5563]">预览 · 前 10 秒（完整视频可下载）</div>
+                    <div className="text-xs text-[#4b5563]">完整视频仅可成功下载一次</div>
                   </div>
                   <a
                     href={video.downloadUrl}
@@ -194,18 +193,8 @@ export function JobPanel({ jobId, onClear }: Props) {
                     下载完整视频
                   </a>
                 </div>
-                <div className="p-4">
-                  <video
-                    controls
-                    className="mx-auto w-full max-w-[720px] rounded-xl border border-[#d1fae5] bg-black"
-                    style={{ maxHeight: '320px' }}
-                    src={`${video.downloadUrl}?inline=true`}
-                  >
-                    您的浏览器不支持 video 标签。
-                  </video>
-                  <p className="mt-2 text-center text-xs text-[#64748b]">
-                    视频从开头播放 · 拖动进度条可查看更多内容
-                  </p>
+                <div className="bg-white px-5 py-4 text-sm text-[#4b5563]">
+                  下载成功后，系统会标记视频已下载并清理视频文件；学习卡会继续保留。
                 </div>
               </div>
             )}

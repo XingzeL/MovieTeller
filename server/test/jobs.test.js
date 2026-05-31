@@ -309,7 +309,7 @@ test("requeueExistingJob rejects non-terminal status", () => {
   assert.throws(() => requeueExistingJob("running-job"), /cannot retry/);
 });
 
-test("artifact manifest wins over legacy artifacts and rejects traversal", () => {
+test("artifact manifest is the only product artifact source and rejects traversal", () => {
   const root = tempJobsRoot();
   const { jobRoot, paths } = writeJob(root, "artifact-job", {
     status: "succeeded",
@@ -349,6 +349,32 @@ test("artifact manifest wins over legacy artifacts and rejects traversal", () =>
     () => resolveArtifactDownload("artifact-job", "renderedVideo"),
     /artifact path not allowed/
   );
+});
+
+test("workflow artifact fields are not used as product artifact fallback", () => {
+  const root = tempJobsRoot();
+  const artifactPath = path.join(root, "legacy-only-job", "render", "narrated.mp4");
+  fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
+  fs.writeFileSync(artifactPath, "video");
+  writeJob(root, "legacy-only-job", {
+    status: "succeeded",
+    artifacts: {
+      renderedVideoPath: artifactPath,
+    },
+  });
+
+  assert.deepEqual(listJobArtifacts("legacy-only-job"), []);
+  assert.throws(
+    () => resolveArtifactDownload("legacy-only-job", "renderedVideo"),
+    /artifact not available/
+  );
+
+  const listed = listJobs({ jobsRoot: root, limit: 10 }).jobs.find(
+    (job) => job.jobId === "legacy-only-job"
+  );
+  assert.ok(listed);
+  assert.equal(listed.videoState, "not_generated");
+  assert.equal(listed.canDownloadVideo, false);
 });
 
 test("resolveJobThumbnail serves first frame-pool image and rejects traversal", () => {

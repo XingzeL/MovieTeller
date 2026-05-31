@@ -76,7 +76,7 @@ python -m movie_pipeline.job_runner \
 - `GET /api/jobs/:jobId`
 - `GET /api/jobs/:jobId/progress`
 - `GET /api/jobs/:jobId/logs?limit=500&after=0` — 返回 `{ lines, truncated, nextOffset, bytesRead }`，`after` 是上一轮 `nextOffset` 字节游标；不传 `after` 时保持兼容，返回最后 `limit` 行。
-- `GET /api/jobs/:jobId/artifacts`（优先读 `{job_root}/artifacts/manifest.json`）
+- `GET /api/jobs/:jobId/artifacts`（读取 `{job_root}/artifacts/manifest.json`）
 - `GET /api/jobs/:jobId/artifacts/:kind`
 - `POST /api/jobs/:jobId/cancel` — 未 spawn：返回 `{ status: "canceled" }`；已运行：返回 `{ status: "cancel_requested" }`，终态 `canceled` 由 Python 写入（时序与检查点见 [local-development.md §10](./local-development.md#10-取消语义与信号生效)）
 - `POST /api/jobs/:jobId/retry` — 仅 `failed` / `canceled`；在同一 Job 目录上重新入队（保留 artifact，依赖 Python stage resume）。返回 `{ jobId, status: "queued", retriedAt }`；`409` 若已在运行或状态不可重试
@@ -84,7 +84,7 @@ python -m movie_pipeline.job_runner \
 
 ## 产物 manifest
 
-成功 Job 在 Python 侧写入 `{job_root}/artifacts/manifest.json`，Node 下载 API 以该文件为单一来源（旧 Job 可回退 `workflow.json` 内 `artifacts` 字段）。
+成功 Job 在 Python 侧写入 `{job_root}/artifacts/manifest.json`，Node 下载 API 以该文件为单一来源；不再回退读取旧 Job 的 `workflow.json.artifacts` 字段。
 
 对用户暴露的下载类型仅两种：
 

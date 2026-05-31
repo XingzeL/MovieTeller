@@ -20,6 +20,9 @@ const running = new Set();
 /** @type {Array<{ jobId: string, jobRoot: string, jobsRoot: string, videoPath: string, userId: string | null }>} */
 const waiting = [];
 
+/** @type {Map<string, NodeJS.Timeout>} */
+const completionWatchers = new Map();
+
 function maxRunningJobs() {
   const raw = process.env.MAX_RUNNING_JOBS;
   const parsed = raw ? Number(raw) : DEFAULT_MAX_RUNNING;
@@ -46,6 +49,10 @@ export function isJobMarkedRunning(jobId) {
 function watchJobCompletion(jobId) {
   const jobsRoot = getJobsRoot();
   const paths = jobPathsFromRoot(resolveJobRoot(jobsRoot, jobId));
+  const existing = completionWatchers.get(jobId);
+  if (existing) {
+    clearInterval(existing);
+  }
   const interval = setInterval(() => {
     try {
       if (!fs.existsSync(paths.workflowJsonPath)) return;
@@ -53,12 +60,14 @@ function watchJobCompletion(jobId) {
       const terminal = ["succeeded", "failed", "canceled"].includes(record.status);
       if (!terminal) return;
       clearInterval(interval);
+      completionWatchers.delete(jobId);
       running.delete(jobId);
       drainQueue();
     } catch {
       /* keep polling */
     }
   }, 2000);
+  completionWatchers.set(jobId, interval);
 }
 
 function drainQueue() {
@@ -218,6 +227,10 @@ export function getJobQueueSnapshot() {
 }
 
 export function clearJobQueueForTests() {
+  for (const timer of completionWatchers.values()) {
+    clearInterval(timer);
+  }
+  completionWatchers.clear();
   running.clear();
   waiting.splice(0, waiting.length);
 }

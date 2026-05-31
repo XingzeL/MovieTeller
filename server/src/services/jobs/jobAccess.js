@@ -64,7 +64,15 @@ export function listArtifactsForUser(userId, jobId) {
  * @param {string} kind
  */
 export function resolveArtifactForUser(userId, jobId, kind) {
-  readJobForUser(userId, jobId);
+  const { record } = readJobForUser(userId, jobId);
+  if (
+    kind === "renderedVideo" &&
+    (record.video_downloaded_at || record.video_purged_at)
+  ) {
+    const err = new Error("video already downloaded");
+    err.statusCode = 410;
+    throw err;
+  }
   return resolveArtifactDownload(jobId, kind);
 }
 

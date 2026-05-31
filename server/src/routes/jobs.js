@@ -176,8 +176,12 @@ router.get("/jobs/:jobId/artifacts/:kind", (req, res) => {
 
     const wantsInline =
       req.query.inline === "1" || req.query.inline === "true";
+    const isVideoDownload = req.params.kind === "renderedVideo";
 
     if (wantsInline) {
+      if (isVideoDownload) {
+        return res.status(410).json({ error: "video inline preview is disabled" });
+      }
       appendAuditEvent({
         jobId: req.params.jobId,
         userId: req.user.id,
@@ -194,8 +198,6 @@ router.get("/jobs/:jobId/artifacts/:kind", (req, res) => {
         }
       });
     }
-
-    const isVideoDownload = req.params.kind === "renderedVideo";
 
     return res.download(filePath, path.basename(filePath), (err) => {
       if (err) {
@@ -225,7 +227,9 @@ router.get("/jobs/:jobId/artifacts/:kind", (req, res) => {
     });
   } catch (err) {
     const status =
-      err.statusCode === 404 || err.statusCode === 403 ? err.statusCode : 500;
+      err.statusCode === 404 || err.statusCode === 403 || err.statusCode === 410
+        ? err.statusCode
+        : 500;
     return res.status(status).json({ error: String(err?.message || err) });
   }
 });
