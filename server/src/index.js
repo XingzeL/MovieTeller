@@ -1,3 +1,3 @@
-import { startApiRuntime } from "./runtime/bootstrap.js";
+import { startCombinedRuntime } from "./runtime/combined.js";
 
-startApiRuntime();
+startCombinedRuntime();
