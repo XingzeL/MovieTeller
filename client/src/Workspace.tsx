@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
+import { apiFetch, ensureDevSession, getDevUserId } from './api/apiClient'
 import UploadPage from './UploadPage'
 
 /**
@@ -16,6 +18,29 @@ export function Workspace() {
   const { jobId: routeJobId } = useParams<{ jobId?: string }>()
 
   const resolvedJobId = routeJobId?.trim() || null
+
+  useEffect(() => {
+    let cancelled = false
+    const boot = async () => {
+      await ensureDevSession()
+      if (cancelled) return
+      try {
+        const res = await apiFetch('/api/dev/whoami')
+        if (res.ok) {
+          const data = (await res.json()) as { userId?: string }
+          if (data.userId && !getDevUserId()) {
+            console.debug('[Workspace] session user', data.userId)
+          }
+        }
+      } catch {
+        /* whoami optional */
+      }
+    }
+    void boot()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleJobIdChange = (newJobId: string) => {
     // A new job was created inside UploadPage → navigate to its dedicated page.

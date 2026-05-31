@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { apiFetch, ensureDevSession } from '../api/apiClient'
+import { apiFetch, ensureDevSession, getDevUserId } from '../api/apiClient'
+import {
+  ArtifactDownloadError,
+  downloadRenderedVideo,
+} from '../api/downloadArtifact'
 import { WorkflowProgressBar } from './WorkflowProgressBar'
+import { VideoStateBadge } from './VideoStateBadge'
 import type { JobListItem, JobListResponse, JobStatus } from '../types/job'
 
 // 不再对历史记录做前端数量限制（改用「创建超过 3 天即彻底删除」的后端保留策略）
@@ -107,11 +112,25 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [hiddenThumbnails, setHiddenThumbnails] = useState<Record<string, true>>({})
+  const [videoDownloadErrors, setVideoDownloadErrors] = useState<Record<string, string>>({})
+  const [downloadingJobId, setDownloadingJobId] = useState<string | null>(null)
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchJobs = async () => {
       try {
         await ensureDevSession()
+        try {
+          const who = await apiFetch('/api/dev/whoami')
+          if (who.ok) {
+            const body = (await who.json()) as { userId?: string }
+            if (body.userId) setSessionUserId(body.userId)
+          }
+        } catch {
+          /* optional */
+        }
+        const devUser = getDevUserId()
+        if (devUser) setSessionUserId((prev) => prev ?? devUser)
         const res = await apiFetch(`/api/jobs?limit=1000`)
         const data = (await res.json()) as JobListResponse & { error?: string }
         if (!res.ok) {
@@ -165,8 +184,15 @@ export function Dashboard() {
     navigate('/create')
   }
 
-  const markVideoDownloaded = (jobId: string) => {
+  const markVideoDownloaded = (jobId: string, opts?: { keepError?: boolean }) => {
     const downloadedAt = new Date().toISOString()
+    if (!opts?.keepError) {
+      setVideoDownloadErrors((prev) => {
+        const next = { ...prev }
+        delete next[jobId]
+        return next
+      })
+    }
     setJobs((current) =>
       current.map((job) =>
         job.jobId === jobId
@@ -180,6 +206,36 @@ export function Dashboard() {
           : job,
       ),
     )
+  }
+
+  const handleDownloadVideo = async (
+    jobId: string,
+    event: { stopPropagation: () => void },
+  ) => {
+    event.stopPropagation()
+    setDownloadingJobId(jobId)
+    setVideoDownloadErrors((prev) => {
+      const next = { ...prev }
+      delete next[jobId]
+      return next
+    })
+    try {
+      await downloadRenderedVideo(jobId)
+      markVideoDownloaded(jobId)
+    } catch (err) {
+      if (err instanceof ArtifactDownloadError && err.status === 410) {
+        markVideoDownloaded(jobId, { keepError: true })
+        setVideoDownloadErrors((prev) => ({
+          ...prev,
+          [jobId]: '视频已下载或已清理',
+        }))
+        return
+      }
+      const message = err instanceof Error ? err.message : '下载失败'
+      setVideoDownloadErrors((prev) => ({ ...prev, [jobId]: message }))
+    } finally {
+      setDownloadingJobId(null)
+    }
   }
 
   return (
@@ -228,7 +284,9 @@ export function Dashboard() {
               U
             </div>
             <div className="text-sm">
-              <div className="font-medium text-[#166534]">User Demo</div>
+              <div className="font-medium text-[#166534]">
+                {sessionUserId ?? getDevUserId() ?? 'User Demo'}
+              </div>
               <div className="text-xs text-[#718096]">Free Plan</div>
             </div>
           </div>
@@ -299,10 +357,16 @@ export function Dashboard() {
               {filteredJobs.map((job) => {
                 const isSucceeded = job.status === 'succeeded'
                 const isActive = job.status === 'running' || job.status === 'queued'
-                const videoUnavailable = Boolean(job.videoDownloadedAt || job.videoPurgedAt)
+                const videoUnavailable =
+                  job.videoState === 'downloaded' ||
+                  job.videoState === 'purged' ||
+                  Boolean(job.videoDownloadedAt || job.videoPurgedAt)
                 const canDownloadVideo =
                   job.canDownloadVideo ??
-                  (isSucceeded && !videoUnavailable && job.enableSpeech !== false)
+                  (isSucceeded &&
+                    job.videoState === 'available' &&
+                    !videoUnavailable &&
+                    job.enableSpeech !== false)
                 const canOpenStudyCards =
                   job.canOpenStudyCards ?? isSucceeded
                 const thumbnailVersion = String(
@@ -370,23 +434,25 @@ export function Dashboard() {
                         <div className="flex flex-wrap items-center gap-1.5">
                           {/* For active jobs the live mini progress already shows detailed stage + % */}
                           {!isActive && <StatusBadge status={job.status} />}
-                          {isSucceeded && videoUnavailable && <DownloadedBadge />}
+                          {isSucceeded && job.videoState && (
+                            <VideoStateBadge state={job.videoState} />
+                          )}
+                          {isSucceeded && videoUnavailable && !job.videoState && (
+                            <DownloadedBadge />
+                          )}
                         </div>
                       </div>
 
                       <div className="mt-4 flex flex-wrap gap-2">
                         {canDownloadVideo && (
-                          <a
-                            href={`/api/jobs/${encodeURIComponent(job.jobId)}/artifacts/renderedVideo`}
-                            download
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              markVideoDownloaded(job.jobId)
-                            }}
-                            className="rounded-lg bg-[#166534] px-3 py-1.5 text-xs font-semibold text-white no-underline transition hover:bg-[#14532d] active:scale-[0.985]"
+                          <button
+                            type="button"
+                            disabled={downloadingJobId === job.jobId}
+                            onClick={(event) => void handleDownloadVideo(job.jobId, event)}
+                            className="rounded-lg bg-[#166534] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#14532d] active:scale-[0.985] disabled:opacity-60"
                           >
-                            下载完整视频
-                          </a>
+                            {downloadingJobId === job.jobId ? '下载中…' : '下载完整视频'}
+                          </button>
                         )}
 
                         {canOpenStudyCards && (
@@ -419,6 +485,12 @@ export function Dashboard() {
                           </span>
                         )}
                       </div>
+
+                      {videoDownloadErrors[job.jobId] && (
+                        <div className="mt-2 text-[10px] leading-snug text-amber-700">
+                          {videoDownloadErrors[job.jobId]}
+                        </div>
+                      )}
 
                       {isSucceeded && videoUnavailable && job.enableSpeech !== false && (
                         <div className="mt-2 text-[10px] leading-snug text-[#9ca3af]">

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { apiFetch } from '../api/apiClient'
+import { apiFetch, ensureDevSession } from '../api/apiClient'
+import {
+  ArtifactDownloadError,
+  downloadRenderedVideo,
+} from '../api/downloadArtifact'
+import { VideoStateBadge } from './VideoStateBadge'
 import type { JobArtifactItem, JobDto } from '../types/job'
 import { StudyCardPreviewFrame } from './StudyCardPreviewFrame'
 import { WorkflowProgressBar } from './WorkflowProgressBar'
@@ -14,6 +19,8 @@ export function JobPanel({ jobId, onClear }: Props) {
   const [job, setJob] = useState<JobDto | null>(null)
   const [artifacts, setArtifacts] = useState<JobArtifactItem[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [videoDownloadError, setVideoDownloadError] = useState<string | null>(null)
+  const [downloadingVideo, setDownloadingVideo] = useState(false)
 
   const fetchJob = useCallback(async () => {
     const res = await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}`)
@@ -30,6 +37,10 @@ export function JobPanel({ jobId, onClear }: Props) {
     if (!res.ok) return []
     return data.artifacts ?? []
   }, [jobId])
+
+  useEffect(() => {
+    void ensureDevSession()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -89,6 +100,26 @@ export function JobPanel({ jobId, onClear }: Props) {
 
   const canRetry = job?.status === 'failed' || job?.status === 'canceled'
 
+  const handleDownloadVideo = async () => {
+    setDownloadingVideo(true)
+    setVideoDownloadError(null)
+    try {
+      await downloadRenderedVideo(jobId)
+      const nextJob = await fetchJob()
+      setJob(nextJob)
+    } catch (err) {
+      if (err instanceof ArtifactDownloadError && err.status === 410) {
+        setVideoDownloadError('视频已下载或已清理')
+        const nextJob = await fetchJob()
+        setJob(nextJob)
+        return
+      }
+      setVideoDownloadError(err instanceof Error ? err.message : '下载失败')
+    } finally {
+      setDownloadingVideo(false)
+    }
+  }
+
   return (
     <div className="mt-6 space-y-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-900/60">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -128,12 +159,15 @@ export function JobPanel({ jobId, onClear }: Props) {
       </div>
 
       {job && (
-        <p className="text-sm text-zinc-600 dark:text-zinc-300">
-          状态：<span className="font-medium">{job.status}</span>
-          {cancelRequested && job.status !== 'canceled'
-            ? ' · 取消已请求'
-            : null}
-          {job.currentStage ? ` · 阶段 ${job.currentStage}` : null}
+        <p className="flex flex-wrap items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+          <span>
+            状态：<span className="font-medium">{job.status}</span>
+            {cancelRequested && job.status !== 'canceled'
+              ? ' · 取消已请求'
+              : null}
+            {job.currentStage ? ` · 阶段 ${job.currentStage}` : null}
+          </span>
+          {job.videoState ? <VideoStateBadge state={job.videoState} /> : null}
         </p>
       )}
 
@@ -185,16 +219,20 @@ export function JobPanel({ jobId, onClear }: Props) {
                     <div className="text-sm font-semibold text-[#166534]">解说视频已生成</div>
                     <div className="text-xs text-[#4b5563]">完整视频仅可成功下载一次</div>
                   </div>
-                  <a
-                    href={video.downloadUrl}
-                    download
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#166534] px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-[#14532d]"
+                  <button
+                    type="button"
+                    disabled={downloadingVideo}
+                    onClick={() => void handleDownloadVideo()}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#166534] px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-[#14532d] disabled:opacity-60"
                   >
-                    下载完整视频
-                  </a>
+                    {downloadingVideo ? '下载中…' : '下载完整视频'}
+                  </button>
                 </div>
                 <div className="bg-white px-5 py-4 text-sm text-[#4b5563]">
                   下载成功后，系统会标记视频已下载并清理视频文件；学习卡会继续保留。
+                  {videoDownloadError ? (
+                    <p className="mt-2 text-amber-700">{videoDownloadError}</p>
+                  ) : null}
                 </div>
               </div>
             )}
