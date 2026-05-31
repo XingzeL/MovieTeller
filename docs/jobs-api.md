@@ -1,5 +1,7 @@
 # Job API（文件态）
 
+**生命周期、ACL、410、列表与 retention 产品决策**见 **[job-lifecycle.md](./job-lifecycle.md)**（合同优先于本文档的简述）。
+
 本地如何启动前后端、Job 目录布局与排障见 **[local-development.md](./local-development.md)**。
 
 ## 配置
@@ -72,7 +74,7 @@ python -m movie_pipeline.job_runner \
 
 ## 查询
 
-- `GET /api/jobs?limit=20&offset=0` — 按 `updated_at`（缺省则 `created_at`）**降序**分页；返回 `{ jobs, total, limit, offset }`。列表项字段：`jobId`、`status`、`currentStage`、`createdAt`、`updatedAt`、`cancelRequestedAt`、`inputFileName`。`limit` 默认 20、最大 100。
+- `GET /api/jobs?limit=20&offset=0` — 按 `updated_at`（缺省则 `created_at`）**降序**分页；返回 `{ jobs, total, limit, offset }`。列表项含 `videoState`、`canDownloadVideo`、`canOpenStudyCards` 等。`limit` 默认 20、**最大 1000**（产品决策见 [job-lifecycle.md § List and retention](./job-lifecycle.md)）。
 - `GET /api/jobs/:jobId`
 - `GET /api/jobs/:jobId/progress`
 - `GET /api/jobs/:jobId/logs?limit=500&after=0` — 返回 `{ lines, truncated, nextOffset, bytesRead }`，`after` 是上一轮 `nextOffset` 字节游标；不传 `after` 时保持兼容，返回最后 `limit` 行。
