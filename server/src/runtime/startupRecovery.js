@@ -46,25 +46,14 @@ function isRunnerAlive(jobRoot) {
       /* fall through */
     }
   }
-  if (!fs.existsSync(paths.workflowJsonPath)) return false;
-  try {
-    const stat = fs.statSync(paths.workflowJsonPath);
-    const ageMs = Date.now() - stat.mtimeMs;
-    if (ageMs < 30_000) return true;
-  } catch {
-    /* ignore */
-  }
   return false;
 }
 
 /**
- * Worker: only fail orphan `running` jobs whose runner is gone. Leave `queued` for pickup.
+ * Mark running jobs whose runner.pid is missing or dead (worker + periodic tick).
  * @param {{ jobsRoot?: string }} [opts]
  */
-export function recoverForWorker(opts = {}) {
-  if (!isWorkerRunMode()) {
-    return { scanned: 0, recovered: 0, skipped: true };
-  }
+export function reconcileOrphanRunningJobs(opts = {}) {
   const jobsRoot = opts.jobsRoot || getJobsRoot();
   if (!fs.existsSync(jobsRoot)) {
     return { scanned: 0, recovered: 0 };
@@ -94,13 +83,24 @@ export function recoverForWorker(opts = {}) {
     if (
       markJobFailed(jobRoot, {
         error_code: "server_restarted_or_orphan",
-        message: "runner not alive after worker startup",
+        message: "runner not alive (orphan running job)",
       })
     ) {
       recovered += 1;
     }
   }
   return { scanned, recovered };
+}
+
+/**
+ * Worker: only fail orphan `running` jobs whose runner is gone. Leave `queued` for pickup.
+ * @param {{ jobsRoot?: string }} [opts]
+ */
+export function recoverForWorker(opts = {}) {
+  if (!isWorkerRunMode()) {
+    return { scanned: 0, recovered: 0, skipped: true };
+  }
+  return reconcileOrphanRunningJobs(opts);
 }
 
 /**

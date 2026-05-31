@@ -8,9 +8,11 @@ import { readWorkflowRecord } from "../services/jobs/jobProcess.js";
 import {
   getJobQueueSnapshot,
   isJobMarkedRunning,
-  releaseQueueSlot,
+  releaseQueueSlotAndClaim,
+  releaseQueueSlotOnly,
   tryAcquireQueueSlot,
 } from "../services/jobs/jobQueue.js";
+import { reconcileOrphanRunningJobs } from "./startupRecovery.js";
 import { scanAllJobsForSystem } from "../services/jobs/scanAllJobsForSystem.js";
 
 /** @type {ReturnType<typeof setInterval> | null} */
@@ -21,6 +23,8 @@ let workerInterval = null;
  */
 export function tickOnce(opts = {}) {
   const jobsRoot = opts.jobsRoot || getJobsRoot();
+  reconcileOrphanRunningJobs({ jobsRoot });
+
   const { running, maxRunning } = getJobQueueSnapshot();
   if (running.length >= maxRunning) return { picked: 0 };
 
@@ -57,11 +61,19 @@ export function tickOnce(opts = {}) {
     };
 
     if (!tryAcquireQueueSlot(prepared)) continue;
-    if (!claimAndSpawn(prepared)) {
-      releaseQueueSlot(prepared.jobId, prepared.jobRoot);
-      continue;
+    try {
+      if (!claimAndSpawn(prepared)) {
+        releaseQueueSlotOnly(prepared.jobId);
+        continue;
+      }
+      picked += 1;
+    } catch (err) {
+      releaseQueueSlotAndClaim(prepared.jobId, prepared.jobRoot);
+      console.error(
+        `[queueWorker] claimAndSpawn failed for ${prepared.jobId}`,
+        err
+      );
     }
-    picked += 1;
   }
   return { picked };
 }

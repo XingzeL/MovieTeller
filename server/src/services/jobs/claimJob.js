@@ -32,7 +32,7 @@ function isStaleLock(lockPath) {
   }
   if (!processAlive(Number(payload.pid))) return true;
 
-  const jobRoot = path.dirname(path.dirname(lockPath));
+  const jobRoot = path.dirname(lockPath);
   const paths = jobPathsFromRoot(jobRoot);
   const record = readWorkflowRecord(paths.workflowJsonPath);
   const claimedAt = Date.parse(String(payload.claimedAt || ""));
@@ -97,6 +97,23 @@ export function releaseClaim(jobRoot) {
 }
 
 /**
+ * Remove worker.lock only when this process wrote it (safe on failed claim paths).
+ * @param {string} jobRoot
+ */
+export function releaseClaimIfOwned(jobRoot) {
+  const paths = jobPathsFromRoot(jobRoot);
+  if (!fs.existsSync(paths.workerLockPath)) return;
+  try {
+    const payload = JSON.parse(fs.readFileSync(paths.workerLockPath, "utf8"));
+    if (Number(payload.pid) === process.pid) {
+      fs.unlinkSync(paths.workerLockPath);
+    }
+  } catch {
+    /* ignore corrupt lock */
+  }
+}
+
+/**
  * @param {{ jobId: string, jobRoot: string, jobsRoot: string, videoPath: string, userId?: string | null }} prepared
  */
 export function claimAndSpawn(prepared) {
@@ -107,7 +124,7 @@ export function claimAndSpawn(prepared) {
     spawnPreparedJob(prepared);
     return true;
   } catch (err) {
-    releaseClaim(prepared.jobRoot);
+    releaseClaimIfOwned(prepared.jobRoot);
     throw err;
   }
 }

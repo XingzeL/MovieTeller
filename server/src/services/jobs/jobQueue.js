@@ -6,7 +6,7 @@ import fs from "node:fs";
 
 import { getJobsRoot, jobPathsFromRoot, resolveJobRoot } from "../../config/jobs.js";
 import { isApiRunMode, isWorkerRunMode } from "../../runtime/runMode.js";
-import { releaseClaim } from "./claimJob.js";
+import { releaseClaimIfOwned } from "./claimJob.js";
 import { createJobFromUpload, spawnPreparedJob } from "./createJob.js";
 import {
   markCancelRequested,
@@ -66,7 +66,7 @@ function watchJobCompletion(jobId) {
       completionWatchers.delete(jobId);
       running.delete(jobId);
       try {
-        releaseClaim(jobRoot);
+        releaseClaimIfOwned(jobRoot);
       } catch {
         /* ignore */
       }
@@ -277,16 +277,35 @@ export function tryAcquireQueueSlot(prepared) {
 }
 
 /**
+ * Drop in-memory running slot and completion watcher only (no worker.lock).
+ * @param {string} jobId
+ */
+export function releaseQueueSlotOnly(jobId) {
+  running.delete(jobId);
+  const existing = completionWatchers.get(jobId);
+  if (existing) {
+    clearInterval(existing);
+    completionWatchers.delete(jobId);
+  }
+}
+
+/**
+ * Release running slot/watcher and this process's claim, if any.
  * @param {string} jobId
  * @param {string} [jobRoot]
  */
-export function releaseQueueSlot(jobId, jobRoot) {
-  running.delete(jobId);
+export function releaseQueueSlotAndClaim(jobId, jobRoot) {
+  releaseQueueSlotOnly(jobId);
   if (jobRoot) {
     try {
-      releaseClaim(jobRoot);
+      releaseClaimIfOwned(jobRoot);
     } catch {
       /* ignore */
     }
   }
+}
+
+/** @deprecated Prefer releaseQueueSlotOnly or releaseQueueSlotAndClaim */
+export function releaseQueueSlot(jobId, jobRoot) {
+  releaseQueueSlotAndClaim(jobId, jobRoot);
 }
