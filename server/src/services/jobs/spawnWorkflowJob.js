@@ -72,6 +72,11 @@ export function spawnWorkflowJob(opts) {
       pid: child.pid,
       spawnedAt: new Date().toISOString(),
     });
+    fs.writeFileSync(
+      paths.runnerPidPath,
+      `${JSON.stringify({ pid: child.pid, spawnedAt: new Date().toISOString() })}\n`,
+      "utf8"
+    );
   }
   return child;
 }

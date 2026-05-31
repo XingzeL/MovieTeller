@@ -1,3 +1,3 @@
-import { startCombinedRuntime } from "./runtime/combined.js";
+import { startBootstrapRuntime } from "./runtime/bootstrap.js";
 
-startCombinedRuntime();
+startBootstrapRuntime();

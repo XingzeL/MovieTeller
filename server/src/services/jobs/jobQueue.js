@@ -5,6 +5,8 @@
 import fs from "node:fs";
 
 import { getJobsRoot, jobPathsFromRoot, resolveJobRoot } from "../../config/jobs.js";
+import { isApiRunMode, isWorkerRunMode } from "../../runtime/runMode.js";
+import { releaseClaim } from "./claimJob.js";
 import { createJobFromUpload, spawnPreparedJob } from "./createJob.js";
 import {
   markCancelRequested,
@@ -48,7 +50,8 @@ export function isJobMarkedRunning(jobId) {
  */
 function watchJobCompletion(jobId) {
   const jobsRoot = getJobsRoot();
-  const paths = jobPathsFromRoot(resolveJobRoot(jobsRoot, jobId));
+  const jobRoot = resolveJobRoot(jobsRoot, jobId);
+  const paths = jobPathsFromRoot(jobRoot);
   const existing = completionWatchers.get(jobId);
   if (existing) {
     clearInterval(existing);
@@ -62,6 +65,11 @@ function watchJobCompletion(jobId) {
       clearInterval(interval);
       completionWatchers.delete(jobId);
       running.delete(jobId);
+      try {
+        releaseClaim(jobRoot);
+      } catch {
+        /* ignore */
+      }
       drainQueue();
     } catch {
       /* keep polling */
@@ -71,6 +79,7 @@ function watchJobCompletion(jobId) {
 }
 
 function drainQueue() {
+  if (isApiRunMode() || isWorkerRunMode()) return;
   while (running.size < maxRunningJobs() && waiting.length > 0) {
     const next = waiting.shift();
     if (!next) break;
@@ -90,6 +99,14 @@ export function enqueueJobUpload(input) {
     userId: input.userId,
     spawn: false,
   });
+  if (isApiRunMode() || isWorkerRunMode()) {
+    return {
+      jobId: prepared.jobId,
+      status: "queued",
+      createdAt: prepared.createdAt,
+      outputRoot: prepared.outputRoot,
+    };
+  }
   if (running.size < maxRunningJobs()) {
     running.add(prepared.jobId);
     spawnPreparedJob(prepared);
@@ -180,6 +197,10 @@ export function requeueExistingJob(jobId) {
     userId: record.user_id ?? null,
   };
 
+  if (isApiRunMode() || isWorkerRunMode()) {
+    return { jobId, status: "queued", retriedAt: now };
+  }
+
   if (running.size < maxRunningJobs()) {
     running.add(jobId);
     spawnPreparedJob(prepared);
@@ -241,4 +262,31 @@ export function markJobRunningForTests(jobId) {
 
 export function markJobWaitingForTests(prepared) {
   waiting.push(prepared);
+}
+
+/**
+ * Reserve a running slot (worker loop). Caller must spawn or release on failure.
+ * @param {{ jobId: string, jobRoot: string }} prepared
+ */
+export function tryAcquireQueueSlot(prepared) {
+  if (running.size >= maxRunningJobs()) return false;
+  if (running.has(prepared.jobId)) return false;
+  running.add(prepared.jobId);
+  watchJobCompletion(prepared.jobId);
+  return true;
+}
+
+/**
+ * @param {string} jobId
+ * @param {string} [jobRoot]
+ */
+export function releaseQueueSlot(jobId, jobRoot) {
+  running.delete(jobId);
+  if (jobRoot) {
+    try {
+      releaseClaim(jobRoot);
+    } catch {
+      /* ignore */
+    }
+  }
 }

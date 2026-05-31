@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/index.js",
+    "dev:api": "MOVIE_TELLER_RUN_MODE=api node --watch src/index.js",
+    "dev:worker": "MOVIE_TELLER_RUN_MODE=worker node --watch src/worker.js",
     "start": "node src/index.js",
+    "start:api": "MOVIE_TELLER_RUN_MODE=api node src/index.js",
+    "start:worker": "MOVIE_TELLER_RUN_MODE=worker node src/worker.js",
     "test": "node --test",
     "smoke": "node ../scripts/jobs-api-smoke.mjs --mode=api",
     "smoke:create": "node ../scripts/jobs-api-smoke.mjs --mode=create",

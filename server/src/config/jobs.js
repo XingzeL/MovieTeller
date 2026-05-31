@@ -70,6 +70,8 @@ export function jobPathsFromRoot(jobRoot) {
     cancelFlagPath: path.join(root, "cancel.flag"),
     runnerStdoutPath: path.join(root, "logs", "runner.stdout.log"),
     runnerStderrPath: path.join(root, "logs", "runner.stderr.log"),
+    runnerPidPath: path.join(root, "logs", "runner.pid"),
+    workerLockPath: path.join(root, "worker.lock"),
     artifactManifestPath: path.join(root, "artifacts", "manifest.json"),
   };
 }

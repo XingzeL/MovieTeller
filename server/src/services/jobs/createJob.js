@@ -7,6 +7,7 @@ import {
   jobPathsFromRoot,
   resolveJobRoot,
 } from "../../config/jobs.js";
+import { isApiRunMode } from "../../runtime/runMode.js";
 import { spawnWorkflowJob } from "./spawnWorkflowJob.js";
 import { workflowOptionsFromForm } from "./workflowOptions.js";
 
@@ -168,6 +169,9 @@ export function createJobFromUpload(input) {
  * @param {{ jobId: string, jobRoot: string, jobsRoot: string, videoPath: string, userId?: string | null }} prepared
  */
 export function spawnPreparedJob(prepared) {
+  if (isApiRunMode()) {
+    throw new Error("spawn is disabled in api run mode");
+  }
   const paths = jobPathsFromRoot(prepared.jobRoot);
   const now = utcNowIso();
   const record = JSON.parse(fs.readFileSync(paths.workflowJsonPath, "utf8"));
