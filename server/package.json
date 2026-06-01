@@ -18,6 +18,7 @@
     "smoke:unit": "node --test ../scripts/jobs-api-smoke.unit.test.mjs"
   },
   "dependencies": {
+    "@clerk/backend": "^2.33.5",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

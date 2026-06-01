@@ -1,47 +1,81 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 
+import { AuthProvider } from './auth/AuthProvider'
+import { ProtectedRoute } from './auth/ProtectedRoute'
 import { StartPage } from './components/StartPage'
 import { Dashboard } from './components/Dashboard'
 import { StudyCardPage } from './components/StudyCardPage'
+import { SignInPage } from './pages/SignInPage'
+import { SignUpPage } from './pages/SignUpPage'
 import { Workspace } from './Workspace'
+import { PricingPage } from './pages/PricingPage'
+import { UsageHistoryPage } from './pages/UsageHistoryPage'
 
-/**
- * App
- *
- * Top-level router configuration.
- * This is now a pure declarative routing layer — no more in-memory view state machine.
- *
- * Routes:
- *   /           → StartPage (public landing / marketing)
- *   /dashboard  → Dashboard (history, credits, create entry point)
- *   /create     → Workspace in "new job" mode (upload form)
- *   /jobs/:jobId → Workspace in "existing job" mode (progress + progressive previews + downloads)
- *   /study-cards/:jobId → Full-page study-card reader from history
- *
- * All navigation (browser back/forward, refresh, direct links, deep links) now works correctly.
- */
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Public landing / marketing page */}
-        <Route path="/" element={<StartPage />} />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<StartPage />} />
+          <Route path="/sign-in/*" element={<SignInPage />} />
+          <Route path="/sign-up/*" element={<SignUpPage />} />
 
-        {/* Main authenticated-style workspace hub */}
-        <Route path="/dashboard" element={<Dashboard />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/create"
+            element={
+              <ProtectedRoute>
+                <Workspace />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/jobs/:jobId"
+            element={
+              <ProtectedRoute>
+                <Workspace />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/study-cards/:jobId"
+            element={
+              <ProtectedRoute>
+                <StudyCardPage />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Create a brand new video + narration + study cards */}
-        <Route path="/create" element={<Workspace />} />
+          {/* 定价 / 购买 Credits 页面 */}
+          <Route
+            path="/pricing"
+            element={
+              <ProtectedRoute>
+                <PricingPage />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Deep link or continue an existing job (progress, previews, download) */}
-        <Route path="/jobs/:jobId" element={<Workspace />} />
+          {/* 使用记录 & 历史 */}
+          <Route
+            path="/usage"
+            element={
+              <ProtectedRoute>
+                <UsageHistoryPage />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Full-page study card reader for completed history items */}
-        <Route path="/study-cards/:jobId" element={<StudyCardPage />} />
-
-        {/* Unknown routes gracefully fall back to the dashboard */}
-        <Route path="*" element={<Dashboard />} />
-      </Routes>
-    </BrowserRouter>
+          <Route path="*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }

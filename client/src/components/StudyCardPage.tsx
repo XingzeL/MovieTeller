@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { apiFetch, ensureDevSession } from '../api/apiClient'
+import { downloadStudyCardsHtml } from '../api/downloadArtifact'
 
 type LoadState = 'loading' | 'ready' | 'forbidden' | 'not_found' | 'error'
 
@@ -12,6 +13,7 @@ export function StudyCardPage() {
 
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [message, setMessage] = useState<string | null>(null)
+  const [inlineHtml, setInlineHtml] = useState<string | null>(null)
 
   useEffect(() => {
     if (!safeJobId) {
@@ -36,6 +38,11 @@ export function StudyCardPage() {
           setMessage('任务不存在或您无权访问该学习卡')
           return
         }
+        if (res.status === 401) {
+          setLoadState('forbidden')
+          setMessage('请先登录')
+          return
+        }
         if (res.status === 403) {
           setLoadState('forbidden')
           setMessage(data.error ?? '无法打开该学习卡')
@@ -46,6 +53,19 @@ export function StudyCardPage() {
           setMessage(data.error ?? `无法加载学习卡 (${res.status})`)
           return
         }
+
+        const inlineRes = await apiFetch(
+          `/api/jobs/${encodeURIComponent(safeJobId)}/artifacts/studyCardsHtml?inline=1`,
+        )
+        if (cancelled) return
+        if (!inlineRes.ok) {
+          setLoadState('error')
+          setMessage(`无法加载学习卡内容 (${inlineRes.status})`)
+          return
+        }
+        const html = await inlineRes.text()
+        if (cancelled) return
+        setInlineHtml(html)
         setLoadState('ready')
       } catch (err) {
         if (cancelled) return
@@ -77,8 +97,15 @@ export function StudyCardPage() {
     )
   }
 
-  const artifactUrl = `/api/jobs/${encodeURIComponent(safeJobId)}/artifacts/studyCardsHtml`
-  const showIframe = loadState === 'ready'
+  const showIframe = loadState === 'ready' && inlineHtml
+
+  const handleDownloadStudyCards = async (id: string) => {
+    try {
+      await downloadStudyCardsHtml(id)
+    } catch {
+      /* ignore */
+    }
+  }
 
   return (
     <div className="flex min-h-dvh flex-col bg-[#f0fdf4] text-[#4a5568]">
@@ -91,13 +118,13 @@ export function StudyCardPage() {
         </div>
         <div className="flex items-center gap-2">
           {showIframe && (
-            <a
-              href={artifactUrl}
-              download
-              className="rounded-full border border-[#86efac] bg-white px-4 py-2 text-sm font-semibold text-[#166534] no-underline transition hover:bg-[#f0fdf4]"
+            <button
+              type="button"
+              onClick={() => void handleDownloadStudyCards(safeJobId)}
+              className="rounded-full border border-[#86efac] bg-white px-4 py-2 text-sm font-semibold text-[#166534] transition hover:bg-[#f0fdf4]"
             >
               下载学习卡
-            </a>
+            </button>
           )}
           <button
             type="button"
@@ -136,14 +163,10 @@ export function StudyCardPage() {
 
         {showIframe && (
           <iframe
-            src={`${artifactUrl}?inline=true`}
+            srcDoc={inlineHtml}
             title="完整学习卡"
             className="block h-full min-h-[calc(100dvh-65px)] w-full border-0 bg-white"
             sandbox="allow-scripts allow-same-origin"
-            onError={() => {
-              setLoadState('error')
-              setMessage('学习卡预览加载失败')
-            }}
           />
         )}
       </main>

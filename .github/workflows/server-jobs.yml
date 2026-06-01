@@ -30,6 +30,8 @@ jobs:
         run: node --test --test-force-exit test/retention.scan.test.js
       - name: auth.session.test.js
         run: node --test --test-force-exit test/auth.session.test.js
+      - name: auth.clerk.test.js
+        run: node --test --test-force-exit test/auth.clerk.test.js
       - name: jobs.acl.test.js
         run: node --test --test-force-exit test/jobs.acl.test.js
       - name: job.video-purge.test.js

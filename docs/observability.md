@@ -196,7 +196,7 @@ cat artifacts/jobs/<jobId>/workflow.json | jq '{status, cancel_requested_at, err
 
 ## 前端展示建议
 
-前端 `JobLogViewer` 应优先突出：
+若后续恢复前端日志面板，应优先突出：
 
 - `workflow.stage.failed`
 - `gateway.*.failed`

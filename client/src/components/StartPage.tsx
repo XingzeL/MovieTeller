@@ -23,7 +23,6 @@ const content = {
     ctaPrimary: '立即开始使用',
     ctaSecondary: '了解详情',
     langSupportTitle: '我们支持这些语言',
-    langSupportSubtitle: '自动识别 + 精准配音',
     beta: 'Beta',
     benefit1: '✓ 支持 8 种语言',
     benefit2: '✓ 语言与难度自由选择',
@@ -32,13 +31,12 @@ const content = {
   },
   en: {
     brand: 'NarraLingo',
-    title1: 'Turn any video',
-    title2: 'into your language learning teacher',
+    title1: 'Turn Any Video',
+    title2: 'Into Your Language Learning Teacher',
     desc: 'Upload local videos or links to generate narrated videos with audio tracks + language learning materials.',
     ctaPrimary: 'Get Started',
     ctaSecondary: 'Learn More',
     langSupportTitle: 'Languages We Support',
-    langSupportSubtitle: 'Auto-detect + Precise Voiceover',
     beta: 'Beta',
     benefit1: '✓ Supports 8 languages',
     benefit2: '✓ Flexible language & difficulty selection',
@@ -124,12 +122,8 @@ export function StartPage() {
       {/* 支持的语言 - 更紧凑优雅版（不再每个语言单独大框） */}
       <section className="border-t border-white/60 bg-white/40 py-14">
         <div className="max-w-5xl mx-auto px-8">
-          <div className="flex items-end justify-between mb-6">
-            <div>
-              <div className="uppercase text-xs tracking-[3px] font-semibold text-[#718096] mb-1">SUPPORTED LANGUAGES</div>
-              <div className="text-3xl font-semibold tracking-tight">{t.langSupportTitle}</div>
-            </div>
-            <div className="hidden md:block text-sm text-[#718096]">{t.langSupportSubtitle}</div>
+          <div className="mb-6">
+            <div className="text-3xl font-semibold tracking-tight">{t.langSupportTitle}</div>
           </div>
 
           {/* 纯横向流动排列，不用胶囊/pill 包裹 */}

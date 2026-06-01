@@ -1,12 +1,13 @@
 import express from "express";
 import cors from "cors";
 
-import { currentUserMiddleware } from "./middleware/currentUser.js";
+import { requireCurrentUser } from "./middleware/currentUser.js";
 import generateRouter from "./routes/generate.js";
 import extractRouter from "./routes/extract.js";
 import jobsRouter from "./routes/jobs.js";
 import healthRouter from "./routes/health.js";
 import devRouter from "./routes/dev.js";
+import { isProductionEnv } from "./middleware/userId.js";
 
 const CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
 
@@ -15,33 +16,49 @@ const CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"];
  */
 export function createApp(opts = {}) {
   const includeDevRoutes =
-    opts.includeDevRoutes ?? process.env.NODE_ENV !== "production";
+    opts.includeDevRoutes ?? !isProductionEnv();
 
   const app = express();
+
+  const allowedHeaders = isProductionEnv()
+    ? ["Content-Type", "Authorization"]
+    : ["Content-Type", "Authorization", "X-MovieTeller-User-Id"];
 
   app.use(
     cors({
       origin: CORS_ORIGINS,
       methods: ["GET", "POST"],
-      allowedHeaders: ["Content-Type", "X-MovieTeller-User-Id"],
+      allowedHeaders,
       credentials: true,
     })
   );
 
   app.use(express.json({ limit: "1mb" }));
 
+  app.get("/health", (_req, res) => {
+    res.json({ ok: true });
+  });
+
+  app.use("/api", healthRouter);
+
   if (includeDevRoutes) {
     app.use("/api", devRouter);
   }
 
-  app.use("/api", currentUserMiddleware);
-  app.use("/api", generateRouter);
-  app.use("/api", extractRouter);
-  app.use("/api", jobsRouter);
-  app.use("/api", healthRouter);
+  const protectedApi = express.Router();
+  protectedApi.use(requireCurrentUser);
+  protectedApi.use(generateRouter);
+  protectedApi.use(extractRouter);
+  protectedApi.use(jobsRouter);
 
-  app.get("/health", (_req, res) => {
-    res.json({ ok: true });
+  app.use("/api", (req, res, next) => {
+    if (req.path.startsWith("/healthz")) {
+      return next();
+    }
+    if (req.path.startsWith("/dev")) {
+      return next();
+    }
+    return protectedApi(req, res, next);
   });
 
   return app;

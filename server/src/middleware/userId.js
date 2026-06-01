@@ -24,3 +24,22 @@ export function getDemoUserId() {
   if (raw && isValidUserId(raw)) return raw;
   return "demo-user";
 }
+
+const AUTH_USER_ID_MAX_LEN = 128;
+
+/**
+ * Clerk / IdP user ids (e.g. user_abc). Looser than dev cookie pattern.
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+export function normalizeAuthUserId(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > AUTH_USER_ID_MAX_LEN) return null;
+  if (/[\s/\\]/.test(trimmed)) return null;
+  return trimmed;
+}
+
+export function isProductionEnv() {
+  return process.env.NODE_ENV === "production";
+}

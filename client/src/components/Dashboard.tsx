@@ -1,11 +1,16 @@
+import { useAuth, useUser } from '@clerk/clerk-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { apiFetch, ensureDevSession, getDevUserId } from '../api/apiClient'
+import { isClerkEnabled } from '../auth/clerkConfig'
 import {
   ArtifactDownloadError,
   downloadRenderedVideo,
+  downloadStudyCardsHtml,
 } from '../api/downloadArtifact'
+import { DashboardSidebarUser } from './DashboardSidebarUser'
+import { JobThumbnail } from './JobThumbnail'
 import { WorkflowProgressBar } from './WorkflowProgressBar'
 import { VideoStateBadge } from './VideoStateBadge'
 import type { JobListItem, JobListResponse, JobStatus } from '../types/job'
@@ -105,6 +110,31 @@ function SourceInfo({ job }: { job: JobListItem }) {
 }
 
 export function Dashboard() {
+  if (isClerkEnabled()) {
+    return <DashboardClerkGate />
+  }
+  return <DashboardContent clerkUserLabel={null} />
+}
+
+function DashboardClerkGate() {
+  const { isLoaded } = useAuth()
+  const { user } = useUser()
+  if (!isLoaded) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-[#f0fdf4] text-[#718096]">
+        加载中…
+      </div>
+    )
+  }
+  const label =
+    user?.fullName ??
+    user?.primaryEmailAddress?.emailAddress ??
+    user?.id ??
+    '…'
+  return <DashboardContent clerkUserLabel={label} />
+}
+
+function DashboardContent({ clerkUserLabel }: { clerkUserLabel: string | null }) {
   const navigate = useNavigate()
 
   const [jobs, setJobs] = useState<JobListItem[]>([])
@@ -114,23 +144,31 @@ export function Dashboard() {
   const [hiddenThumbnails, setHiddenThumbnails] = useState<Record<string, true>>({})
   const [videoDownloadErrors, setVideoDownloadErrors] = useState<Record<string, string>>({})
   const [downloadingJobId, setDownloadingJobId] = useState<string | null>(null)
+  const [downloadingStudyCardsJobId, setDownloadingStudyCardsJobId] = useState<string | null>(
+    null,
+  )
   const [sessionUserId, setSessionUserId] = useState<string | null>(null)
+
+  const sidebarUserLabel =
+    clerkUserLabel ?? sessionUserId ?? getDevUserId() ?? 'User Demo'
 
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        await ensureDevSession()
-        try {
-          const who = await apiFetch('/api/dev/whoami')
-          if (who.ok) {
-            const body = (await who.json()) as { userId?: string }
-            if (body.userId) setSessionUserId(body.userId)
+        if (!isClerkEnabled()) {
+          await ensureDevSession()
+          try {
+            const who = await apiFetch('/api/dev/whoami')
+            if (who.ok) {
+              const body = (await who.json()) as { userId?: string }
+              if (body.userId) setSessionUserId(body.userId)
+            }
+          } catch {
+            /* optional */
           }
-        } catch {
-          /* optional */
+          const devUser = getDevUserId()
+          if (devUser) setSessionUserId((prev) => prev ?? devUser)
         }
-        const devUser = getDevUserId()
-        if (devUser) setSessionUserId((prev) => prev ?? devUser)
         const res = await apiFetch(`/api/jobs?limit=1000`)
         const data = (await res.json()) as JobListResponse & { error?: string }
         if (!res.ok) {
@@ -208,6 +246,27 @@ export function Dashboard() {
     )
   }
 
+  const handleDownloadStudyCards = async (
+    jobId: string,
+    event: { stopPropagation: () => void },
+  ) => {
+    event.stopPropagation()
+    setDownloadingStudyCardsJobId(jobId)
+    try {
+      await downloadStudyCardsHtml(jobId)
+    } catch (err) {
+      const message =
+        err instanceof ArtifactDownloadError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : '下载失败'
+      setVideoDownloadErrors((prev) => ({ ...prev, [jobId]: message }))
+    } finally {
+      setDownloadingStudyCardsJobId(null)
+    }
+  }
+
   const handleDownloadVideo = async (
     jobId: string,
     event: { stopPropagation: () => void },
@@ -260,7 +319,11 @@ export function Dashboard() {
               <span className="text-lg">Home</span>
             </button>
 
-            <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium text-[#4b5563] transition hover:bg-[#f0fdf4]">
+            <button
+              type="button"
+              onClick={() => navigate('/pricing')}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium text-[#4b5563] transition hover:bg-[#f0fdf4]"
+            >
               <span>Buy Credits</span>
             </button>
 
@@ -268,9 +331,13 @@ export function Dashboard() {
               <div className="mb-1 px-3 text-[10px] font-semibold tracking-widest text-[#86efac]">
                 TOOLS
               </div>
-              <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium text-[#4b5563] transition hover:bg-[#f0fdf4]">
-                <span>Usage &amp; History</span>
-              </button>
+            <button
+              type="button"
+              onClick={() => navigate('/usage')}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium text-[#4b5563] transition hover:bg-[#f0fdf4]"
+            >
+              <span>Usage &amp; History</span>
+            </button>
               <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium text-[#4b5563] transition hover:bg-[#f0fdf4]">
                 <span>Contact Support</span>
               </button>
@@ -279,17 +346,7 @@ export function Dashboard() {
         </div>
 
         <div className="absolute bottom-0 left-0 w-56 border-t border-[#d1fae5] bg-white p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#86efac] to-[#4ade80] text-sm font-semibold text-white">
-              U
-            </div>
-            <div className="text-sm">
-              <div className="font-medium text-[#166534]">
-                {sessionUserId ?? getDevUserId() ?? 'User Demo'}
-              </div>
-              <div className="text-xs text-[#718096]">Free Plan</div>
-            </div>
-          </div>
+          <DashboardSidebarUser devLabel={sidebarUserLabel} />
         </div>
       </div>
 
@@ -373,7 +430,6 @@ export function Dashboard() {
                   job.updatedAt ?? job.createdAt ?? job.videoStateVersion ?? '',
                 )
                 const thumbnailKey = `${job.jobId}:${thumbnailVersion}`
-                const thumbnailUrl = `/api/jobs/${encodeURIComponent(job.jobId)}/thumbnail?v=${encodeURIComponent(thumbnailVersion)}`
                 const showThumbnail = !hiddenThumbnails[thumbnailKey]
 
                 return (
@@ -393,11 +449,10 @@ export function Dashboard() {
                       className="relative flex aspect-video w-full items-center justify-center overflow-hidden bg-gradient-to-br from-[#86efac]/30 to-[#4ade80]/30 text-left"
                     >
                       {showThumbnail ? (
-                        <img
-                          src={thumbnailUrl}
-                          alt=""
-                          loading="lazy"
-                          onError={() =>
+                        <JobThumbnail
+                          jobId={job.jobId}
+                          version={thumbnailVersion}
+                          onUnavailable={() =>
                             setHiddenThumbnails((prev) => ({ ...prev, [thumbnailKey]: true }))
                           }
                           className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
@@ -456,14 +511,16 @@ export function Dashboard() {
                         )}
 
                         {canOpenStudyCards && (
-                          <a
-                            href={`/api/jobs/${encodeURIComponent(job.jobId)}/artifacts/studyCardsHtml`}
-                            download
-                            onClick={(event) => event.stopPropagation()}
-                            className="rounded-lg border border-[#86efac] bg-white px-3 py-1.5 text-xs font-semibold text-[#166534] no-underline transition hover:bg-[#f0fdf4] active:scale-[0.985]"
+                          <button
+                            type="button"
+                            disabled={downloadingStudyCardsJobId === job.jobId}
+                            onClick={(event) => void handleDownloadStudyCards(job.jobId, event)}
+                            className="rounded-lg border border-[#86efac] bg-white px-3 py-1.5 text-xs font-semibold text-[#166534] transition hover:bg-[#f0fdf4] active:scale-[0.985] disabled:opacity-60"
                           >
-                            下载学习卡
-                          </a>
+                            {downloadingStudyCardsJobId === job.jobId
+                              ? '下载中…'
+                              : '下载学习卡'}
+                          </button>
                         )}
 
                         {(job.status === 'failed' || job.status === 'canceled') && (

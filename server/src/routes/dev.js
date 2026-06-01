@@ -1,7 +1,7 @@
 import express from "express";
 
 import { SESSION_COOKIE_NAME } from "../middleware/parseCookies.js";
-import { currentUserMiddleware } from "../middleware/currentUser.js";
+import { currentUserOptional } from "../middleware/currentUser.js";
 import { isValidUserId } from "../middleware/userId.js";
 
 const router = express.Router();
@@ -31,10 +31,25 @@ router.post("/dev/session", (req, res) => {
   return res.json({ userId });
 });
 
-router.use(currentUserMiddleware);
+router.delete("/dev/session", (_req, res) => {
+  const parts = [
+    `${SESSION_COOKIE_NAME}=`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Max-Age=0",
+  ];
+  if (process.env.NODE_ENV === "production") {
+    parts.push("Secure");
+  }
+  res.setHeader("Set-Cookie", parts.join("; "));
+  return res.json({ cleared: true });
+});
+
+router.use(currentUserOptional);
 
 router.get("/dev/whoami", (req, res) => {
-  return res.json({ userId: req.user.id });
+  return res.json({ userId: req.user?.id ?? null });
 });
 
 export default router;

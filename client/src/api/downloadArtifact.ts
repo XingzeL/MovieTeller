@@ -60,3 +60,28 @@ export async function downloadRenderedVideo(jobId: string): Promise<void> {
   )
   triggerBlobDownload(blob, name)
 }
+
+/**
+ * Download study cards HTML via authenticated fetch.
+ */
+export async function downloadStudyCardsHtml(jobId: string): Promise<void> {
+  const res = await apiFetch(
+    `/api/jobs/${encodeURIComponent(jobId)}/artifacts/studyCardsHtml`,
+  )
+  if (!res.ok) {
+    let message = `下载失败 (${res.status})`
+    try {
+      const body = (await res.json()) as { error?: string }
+      if (body.error) message = body.error
+    } catch {
+      /* ignore non-json */
+    }
+    throw new ArtifactDownloadError(message, res.status)
+  }
+  const blob = await res.blob()
+  const name = filenameFromDisposition(
+    res.headers.get('Content-Disposition'),
+    `study-cards-${jobId}.html`,
+  )
+  triggerBlobDownload(blob, name)
+}

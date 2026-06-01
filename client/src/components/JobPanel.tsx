@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { apiFetch, ensureDevSession } from '../api/apiClient'
+import { isClerkEnabled } from '../auth/clerkConfig'
 import {
   ArtifactDownloadError,
   downloadRenderedVideo,
+  downloadStudyCardsHtml,
 } from '../api/downloadArtifact'
 import { VideoStateBadge } from './VideoStateBadge'
 import type { JobArtifactItem, JobDto } from '../types/job'
@@ -21,6 +23,7 @@ export function JobPanel({ jobId, onClear }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [videoDownloadError, setVideoDownloadError] = useState<string | null>(null)
   const [downloadingVideo, setDownloadingVideo] = useState(false)
+  const [studyPreviewHtml, setStudyPreviewHtml] = useState<string | null>(null)
 
   const fetchJob = useCallback(async () => {
     const res = await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}`)
@@ -55,6 +58,18 @@ export function JobPanel({ jobId, onClear }: Props) {
         // (study cards can appear before the full render succeeds)
         const items = await fetchArtifacts()
         if (!cancelled) setArtifacts(items)
+
+        const study = items.find((a) => a.kind === 'studyCardsHtml')
+        if (study) {
+          const inlineRes = await apiFetch(
+            `/api/jobs/${encodeURIComponent(jobId)}/artifacts/studyCardsHtml?inline=1`,
+          )
+          if (!cancelled && inlineRes.ok) {
+            setStudyPreviewHtml(await inlineRes.text())
+          }
+        } else if (!cancelled) {
+          setStudyPreviewHtml(null)
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : '无法读取任务状态')
@@ -99,6 +114,14 @@ export function JobPanel({ jobId, onClear }: Props) {
   }
 
   const canRetry = job?.status === 'failed' || job?.status === 'canceled'
+
+  const downloadStudyCards = async () => {
+    try {
+      await downloadStudyCardsHtml(jobId)
+    } catch {
+      /* ignore — user can retry */
+    }
+  }
 
   const handleDownloadVideo = async () => {
     setDownloadingVideo(true)
@@ -192,17 +215,22 @@ export function JobPanel({ jobId, onClear }: Props) {
                     <div className="text-sm font-semibold text-[#166534]">学习卡已就绪</div>
                     <div className="text-xs text-[#4b5563]">预览 · 开头精彩部分（完整版可下载）</div>
                   </div>
-                  <a
-                    href={study.downloadUrl}
-                    download
+                  <button
+                    type="button"
+                    onClick={() => void downloadStudyCards()}
                     className="inline-flex items-center gap-2 rounded-xl bg-[#166534] px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-[#14532d]"
                   >
                     下载完整学习卡
-                  </a>
+                  </button>
                 </div>
                 <div className="p-3">
                   <StudyCardPreviewFrame
-                    src={`${study.downloadUrl}?inline=true`}
+                    htmlContent={studyPreviewHtml}
+                    src={
+                      isClerkEnabled()
+                        ? undefined
+                        : `${study.downloadUrl}?inline=true`
+                    }
                     title="学习卡预览"
                   />
                 </div>

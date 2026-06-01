@@ -9,7 +9,7 @@
 | 有 | 尚无 |
 |----|------|
 | 单机本地：上传、队列、后台 Python、进度/日志、取消、产物下载 | 生产级 Clerk / Postgres（见 Phase 2 设计文档） |
-| Cookie 会话 + 每用户 Job ACL（`user_id`） | 分布式多 Worker（Phase 2 队列） |
+| Cookie 会话 + 每用户 Job ACL（`user_id`）；可选 Clerk Bearer（见 [auth-plan.md](./auth-plan.md)） | 分布式多 Worker（Phase 2 队列） |
 | 文件态 Job：`artifacts/jobs/{jobId}/` | 服务重启后自动续跑（combined 下僵尸 Job 标 `failed`） |
 | 列表 `limit` 最大 **1000**；**3 天** retention 删除整 Job 目录 | UI 仅展示「最近 8 条」（已取消，见 [job-lifecycle.md](./job-lifecycle.md)） |
 | 视频下载一次 + 410；学习卡长期可访问 | 润色/字幕上下文无 UI 开关（默认开启） |
@@ -104,12 +104,14 @@ npm run dev
 
 浏览器打开 **http://localhost:5173**（以终端输出为准）。`/api` 由 [client/vite.config.ts](../client/vite.config.ts) 代理到 `localhost:3001`；改端口需前后端一致。
 
-### 多用户（Phase 1 demo 会话）
+### 多用户与登录（Phase 1）
 
-- 身份由 Cookie `mt_uid` 表示；未设置时使用 `DEMO_USER_ID`（默认 `demo-user`）。
-- 开发切换用户：`POST /api/dev/session`，body `{"userId":"user-a"}`（仅非 production）。
-- 前端 `fetch` 需 `credentials: 'include'`（见 `client/src/api/apiClient.ts`）；iframe / 下载链接依赖同一 Cookie。
-- 无 `user_id` 的历史 Job 不会出现在任何用户列表中。详见 [multi-user-storage-and-transport.md](./multi-user-storage-and-transport.md)。
+- 真实登录主路径使用 Clerk：前端 `VITE_CLERK_PUBLISHABLE_KEY` + 后端 `CLERK_SECRET_KEY`，`apiFetch` 发送 `Authorization: Bearer <Clerk token>`。
+- Job owner 写入 `workflow.json.user_id`，取值来自后端验证后的 Clerk user id；创建 Job 不信任 body/frontend 传入的 `userId`。
+- 生产环境只接受 Clerk Bearer；`mt_uid`、`X-MovieTeller-User-Id`、`demo-user` fallback 都不生效，`/api/dev/*` 不注册。
+- 非生产未配置 Clerk 时，可继续用 demo cookie 联调：`POST /api/dev/session`，body `{"userId":"user-a"}`；也可使用 `?asUser=user-a`。
+- 受保护 Job 资源必须通过 `apiFetch`/Blob/`srcDoc` 获取，避免裸 `<a href="/api/jobs/...">` 或 `<img src="/api/jobs/...">` 绕过 Bearer。
+- 无 `user_id` 的历史 Job 不会出现在任何用户列表中。详见 [auth-plan.md](./auth-plan.md) 与 [multi-user-storage-and-transport.md](./multi-user-storage-and-transport.md)。
 
 ### 前端能做什么
 
