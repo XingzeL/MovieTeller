@@ -119,7 +119,7 @@ test("worker tickOnce picks a queued job", async (t) => {
     else process.env.MOVIE_TELLER_RUN_MODE = prevMode;
   });
 
-  const result = tickOnce({ jobsRoot: root });
+  const result = await tickOnce({ jobsRoot: root });
   assert.ok(result.picked >= 1);
   assert.equal(fs.existsSync(paths.workerLockPath), true);
 });

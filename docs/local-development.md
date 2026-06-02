@@ -8,14 +8,16 @@
 
 | 有 | 尚无 |
 |----|------|
-| 单机本地：上传、队列、后台 Python、进度/日志、取消、产物下载 | 生产级 Clerk / Postgres（见 Phase 2 设计文档） |
-| Cookie 会话 + 每用户 Job ACL（`user_id`）；可选 Clerk Bearer（见 [auth-plan.md](./auth-plan.md)） | 分布式多 Worker（Phase 2 队列） |
-| 文件态 Job：`artifacts/jobs/{jobId}/` | 服务重启后自动续跑（combined 下僵尸 Job 标 `failed`） |
+| 单机本地：上传、队列、后台 Python、进度/日志、取消、产物下载 | S3 / presigned / 多 Worker 竞争（Full Phase 2） |
+| Cookie 会话 + 每用户 Job ACL；可选 Clerk Bearer（见 [auth-plan.md](./auth-plan.md)） | 自动 retry（仅手动 retry） |
+| 文件态 Job：`artifacts/jobs/{jobId}/` | combined 无 DB 时重启把 queued/running 标 `failed` |
+| **Phase 2 Lite**：Postgres 控制面 + `dev:api` + `dev:worker`（见下） | M4b 强制取消（进程组信号，可分期） |
 | 列表 `limit` 最大 **1000**；**3 天** retention 删除整 Job 目录 | UI 仅展示「最近 8 条」（已取消，见 [job-lifecycle.md](./job-lifecycle.md)） |
 | 视频下载一次 + 410；学习卡长期可访问 | 润色/字幕上下文无 UI 开关（默认开启） |
 | 对外产物：**旁白成片** + **学习卡片**（manifest-only） | 仓库内固定 E2E 样例视频（可自备 mp4 跑 smoke） |
 
 产品化阶段规划见 [productization-roadmap.md](./productization-roadmap.md)。
+Phase 2 Lite（Postgres 控制面 + 单 Worker）的本地启动方式见 [phase2-lite.md](./phase2-lite.md#本地开发入口)。
 
 ## 架构一览
 
@@ -72,6 +74,33 @@ Node 启动 Job 时优先使用 **`.venv/bin/python3`**（可通过环境变量 
 
 ## 3. 启动后端
 
+### 3a. Phase 2 Lite（推荐验收路径）
+
+需要 Docker（Postgres）与根目录 `.env` 中的 `DATABASE_URL`（见 `.env.example`）。
+
+```bash
+# 仓库根
+docker compose up -d postgres
+
+cd server
+npm install
+npm run db:migrate
+
+# 终端 A — 仅 API，不 spawn
+npm run dev:api
+
+# 终端 B — 单 Worker，从 DB claim
+npm run dev:worker
+```
+
+- `MOVIE_TELLER_RUN_MODE=api|worker` 时 **必须** 配置 `DATABASE_URL`；未配置或 DB 不可用时 Job API 返回 **503**。
+- API 重启后 DB 中 `queued` Job **保留**；由 Worker 继续 claim。
+- 验收清单见 [phase2-lite.md](./phase2-lite.md#验收标准)。
+- Postgres 集成测试（需 `DATABASE_URL`）：`cd server && npm run test:db`
+- 历史 Job 迁入 DB（可选）：`npm run db:backfill -- --dry-run` 后去掉 `--dry-run`
+
+### 3b. Combined 快速调试（Phase 1 兼容）
+
 ```bash
 cd server
 npm install
@@ -81,15 +110,18 @@ npm run dev
 - 默认：**http://localhost:3001**
 - 浅健康检查：`GET /health`
 - 深度检查（ffmpeg、jobs 目录、job_runner）：`GET /api/healthz/deep`
-- 启动时会扫描 `JOBS_ROOT`，将仍为 `queued`/`running` 的旧 Job 标为 `failed`（`server_restarted`）
+- **无** `DATABASE_URL` 时：内存队列 + API 内 spawn；启动 recovery 将磁盘 `queued`/`running` 标为 `failed`（`server_restarted`）
 
 常用环境变量：
 
 | 变量 | 说明 |
 |------|------|
 | `PORT` | 默认 `3001` |
+| `DATABASE_URL` | 设置后启用 Postgres 控制面（api/worker 必填） |
+| `MOVIE_TELLER_RUN_MODE` | `combined`（默认）\| `api` \| `worker` |
 | `JOBS_ROOT` | 默认 `<repo>/artifacts/jobs` |
-| `MAX_RUNNING_JOBS` | 同时运行数，默认 `1` |
+| `MAX_RUNNING_JOBS` | Worker/combined 并发，默认 `1` |
+| `STALE_HEARTBEAT_SEC` | heartbeat 超时秒数，默认 `90` |
 | `MOVIE_TELLER_PYTHON` | 指定解释器 |
 
 ## 4. 启动前端

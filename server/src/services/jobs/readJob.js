@@ -6,13 +6,45 @@ import {
   jobPathsFromRoot,
   resolveJobRoot,
 } from "../../config/jobs.js";
+import { isDbEnabled } from "../../db/database.js";
+import { getJobById } from "../../db/jobsRepository.js";
 import { resolveOriginalSourceForDto } from "./jobDisplaySource.js";
 import { buildJobAvailability } from "./jobAvailability.js";
+import { readWorkflowRecord } from "./jobProcess.js";
+
+/**
+ * @param {Record<string, unknown>} record
+ * @param {string} jobRoot
+ */
+function mergeWorkflowRuntimeFields(record, jobRoot) {
+  const paths = jobPathsFromRoot(jobRoot);
+  const workflow = readWorkflowRecord(paths.workflowJsonPath);
+  if (!workflow) return record;
+  return {
+    ...record,
+    current_stage: workflow.current_stage ?? record.current_stage,
+    progress: workflow.progress ?? record.progress,
+    error: workflow.error ?? record.error,
+  };
+}
 
 /**
  * @param {string} jobId
  */
-export function readJobRecord(jobId) {
+export async function readJobRecord(jobId) {
+  if (isDbEnabled()) {
+    const record = await getJobById(jobId);
+    if (!record) {
+      const err = new Error("job not found");
+      err.statusCode = 404;
+      throw err;
+    }
+    const jobRoot = String(record.output_root);
+    const paths = jobPathsFromRoot(jobRoot);
+    const merged = mergeWorkflowRuntimeFields(record, jobRoot);
+    return { record: merged, paths, jobsRoot: getJobsRoot() };
+  }
+
   const jobsRoot = getJobsRoot();
   const jobRoot = resolveJobRoot(jobsRoot, jobId);
   const paths = jobPathsFromRoot(jobRoot);

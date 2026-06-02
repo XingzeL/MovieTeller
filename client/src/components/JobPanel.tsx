@@ -93,6 +93,9 @@ export function JobPanel({ jobId, onClear }: Props) {
     job?.status === 'failed' ||
     job?.status === 'canceled'
 
+  const cancelInFlight =
+    job?.status === 'canceling' || cancelRequested
+
   const handleCancel = async () => {
     await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' })
     const nextJob = await fetchJob()
@@ -151,7 +154,7 @@ export function JobPanel({ jobId, onClear }: Props) {
           <p className="font-mono text-sm text-zinc-800 dark:text-zinc-100">{jobId}</p>
         </div>
         <div className="flex gap-2">
-          {!terminal && (
+          {!terminal && !cancelInFlight && (
             <button
               type="button"
               onClick={() => void handleCancel()}
@@ -184,8 +187,11 @@ export function JobPanel({ jobId, onClear }: Props) {
       {job && (
         <p className="flex flex-wrap items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
           <span>
-            状态：<span className="font-medium">{job.status}</span>
-            {cancelRequested && job.status !== 'canceled'
+            状态：
+            <span className="font-medium">
+              {job.status === 'canceling' ? '取消中' : job.status}
+            </span>
+            {cancelRequested && job.status !== 'canceled' && job.status !== 'canceling'
               ? ' · 取消已请求'
               : null}
             {job.currentStage ? ` · 阶段 ${job.currentStage}` : null}

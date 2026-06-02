@@ -7,7 +7,9 @@ import {
   jobPathsFromRoot,
   resolveJobRoot,
 } from "../../config/jobs.js";
-import { isApiRunMode } from "../../runtime/runMode.js";
+import { isDbEnabled } from "../../db/database.js";
+import { insertJobQueued } from "../../db/jobsRepository.js";
+import { isApiRunMode, isWorkerRunMode } from "../../runtime/runMode.js";
 import { spawnWorkflowJob } from "./spawnWorkflowJob.js";
 import { workflowOptionsFromForm } from "./workflowOptions.js";
 
@@ -65,7 +67,7 @@ function buildOriginalSourceFromRequest(req, destVideoPath) {
 /**
  * @param {{ file: { path: string, originalname?: string }, body: Record<string, unknown>, userId: string, spawn?: boolean }} input
  */
-export function createJobFromUpload(input) {
+export async function createJobFromUpload(input) {
   const userId =
     typeof input.userId === "string" && input.userId.trim()
       ? input.userId.trim()
@@ -143,7 +145,19 @@ export function createJobFromUpload(input) {
     "utf8"
   );
 
-  if (shouldSpawn) {
+  if (isDbEnabled()) {
+    await insertJobQueued({
+      jobId,
+      userId,
+      outputRoot: paths.root,
+      inputVideoPath: destVideo,
+      originalSource,
+    });
+  }
+
+  const maySpawnInline =
+    shouldSpawn && !isApiRunMode() && !isWorkerRunMode();
+  if (maySpawnInline) {
     spawnWorkflowJob({
       jobsRoot,
       jobId,

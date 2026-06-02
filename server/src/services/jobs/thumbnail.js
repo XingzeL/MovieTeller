@@ -24,8 +24,8 @@ function assertPathInside(root, candidate) {
 /**
  * @param {string} jobId
  */
-export function resolveJobThumbnail(jobId) {
-  const { paths } = readJobRecord(jobId);
+export async function resolveJobThumbnail(jobId) {
+  const { paths } = await readJobRecord(jobId);
   const framePoolRoot = path.join(paths.root, "frame_pool");
   const manifestPath = path.join(framePoolRoot, "manifest.jsonl");
 

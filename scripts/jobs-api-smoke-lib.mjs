@@ -84,7 +84,17 @@ export async function readJson(res) {
 
 export async function request(baseUrl, pathname, init = {}) {
   const url = `${baseUrl}${pathname}`;
-  const res = await fetch(url, init);
+  const headers = new Headers(init.headers);
+  if (
+    !headers.has("Authorization") &&
+    !headers.has("Cookie") &&
+    process.env.MOVIE_TELLER_SMOKE_COOKIE
+  ) {
+    headers.set("Cookie", process.env.MOVIE_TELLER_SMOKE_COOKIE);
+  } else if (!headers.has("Authorization") && !headers.has("Cookie")) {
+    headers.set("Cookie", "mt_uid=smoke-user");
+  }
+  const res = await fetch(url, { ...init, headers });
   const body = await readJson(res);
   return { res, body, url };
 }
@@ -334,7 +344,7 @@ export async function testCancel(baseUrl, videoPath, timeoutSec, hooks = {}) {
     failFn(`POST cancel ${canceled.res.status}: ${JSON.stringify(canceled.body)}`);
   }
   const cancelStatus = canceled.body.status;
-  if (!["cancel_requested", "canceled"].includes(cancelStatus)) {
+  if (!["cancel_requested", "canceled", "canceling"].includes(cancelStatus)) {
     failFn(`unexpected cancel response status: ${cancelStatus}`);
   }
   okFn(`POST cancel → ${cancelStatus}`);

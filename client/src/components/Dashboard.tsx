@@ -23,6 +23,8 @@ function statusLabel(status: JobStatus) {
       return '已完成'
     case 'running':
       return '生成中'
+    case 'canceling':
+      return '取消中'
     case 'queued':
       return '排队中'
     case 'failed':
@@ -41,7 +43,7 @@ function StatusBadge({ status }: { status: JobStatus }) {
     )
   }
 
-  if (status === 'running' || status === 'queued') {
+  if (status === 'running' || status === 'queued' || status === 'canceling') {
     return (
       <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
         {statusLabel(status)}
@@ -190,7 +192,10 @@ function DashboardContent({ clerkUserLabel }: { clerkUserLabel: string | null })
   // Lightweight auto-refresh of the job list while any job is active.
   // This lets completed jobs "graduate" from progress view → succeeded view with download buttons.
   useEffect(() => {
-    const hasActive = jobs.some((j) => j.status === 'running' || j.status === 'queued')
+    const hasActive = jobs.some(
+      (j) =>
+        j.status === 'running' || j.status === 'queued' || j.status === 'canceling',
+    )
     if (!hasActive) return
 
     const id = window.setInterval(() => {
@@ -413,7 +418,10 @@ function DashboardContent({ clerkUserLabel }: { clerkUserLabel: string | null })
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filteredJobs.map((job) => {
                 const isSucceeded = job.status === 'succeeded'
-                const isActive = job.status === 'running' || job.status === 'queued'
+                const isActive =
+                  job.status === 'running' ||
+                  job.status === 'queued' ||
+                  job.status === 'canceling'
                 const videoUnavailable =
                   job.videoState === 'downloaded' ||
                   job.videoState === 'purged' ||

@@ -11,6 +11,9 @@
     "start:api": "MOVIE_TELLER_RUN_MODE=api node src/index.js",
     "start:worker": "MOVIE_TELLER_RUN_MODE=worker node src/worker.js",
     "test": "node --test",
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "db:backfill": "node scripts/jobs-backfill.mjs",
+    "test:db": "node --test --test-force-exit test/phase2-lite.db.test.js",
     "smoke": "node ../scripts/jobs-api-smoke.mjs --mode=api",
     "smoke:create": "node ../scripts/jobs-api-smoke.mjs --mode=create",
     "smoke:cancel": "node ../scripts/jobs-api-smoke.mjs --mode=cancel --timeout-sec=180",
@@ -23,6 +26,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "js-yaml": "^4.1.0",
-    "multer": "^1.4.5-lts.2"
+    "multer": "^1.4.5-lts.2",
+    "pg": "^8.13.1"
   }
 }

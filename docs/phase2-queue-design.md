@@ -1,6 +1,8 @@
 # Phase 2 队列设计（设计-only）
 
 > 本文档不实施代码；供 Postgres / BullMQ 选型与运维模型对齐。
+>
+> 当前小并发实施方案见 [phase2-lite.md](./phase2-lite.md)。本文保留为完整分布式 Phase 2 参考。
 
 ## 目标
 

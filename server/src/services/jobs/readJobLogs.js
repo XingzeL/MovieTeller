@@ -32,8 +32,8 @@ function parseLine(line) {
  * @param {string} jobId
  * @param {{ limit?: number, after?: number }} [opts]
  */
-export function readJobLogs(jobId, opts = {}) {
-  const { paths } = readJobRecord(jobId);
+export async function readJobLogs(jobId, opts = {}) {
+  const { paths } = await readJobRecord(jobId);
   if (!fs.existsSync(paths.workflowLogPath)) {
     return { lines: [], truncated: false, nextOffset: 0, bytesRead: 0 };
   }

@@ -81,6 +81,39 @@ export function markJobCanceledByNode(jobRoot) {
 /**
  * @param {string} jobRoot
  */
+/**
+ * @param {string} jobRoot
+ * @param {{ errorCode: string, errorMessage: string, retryable?: boolean }} err
+ */
+export function markWorkflowFailed(jobRoot, err) {
+  const paths = jobPathsFromRoot(jobRoot);
+  const record = readWorkflowRecord(paths.workflowJsonPath);
+  if (record && isTerminalJobStatus(record.status)) {
+    return false;
+  }
+  const now = new Date().toISOString();
+  const next = {
+    ...(record || {}),
+    status: "failed",
+    error: {
+      error_code: err.errorCode,
+      error_message: err.errorMessage,
+      retryable: err.retryable !== false,
+    },
+    updated_at: now,
+    created_at: record?.created_at || now,
+  };
+  fs.writeFileSync(
+    paths.workflowJsonPath,
+    `${JSON.stringify(next, null, 2)}\n`,
+    "utf8"
+  );
+  return true;
+}
+
+/**
+ * @param {string} jobRoot
+ */
 export function markCancelRequested(jobRoot) {
   const paths = jobPathsFromRoot(jobRoot);
   const record = readWorkflowRecord(paths.workflowJsonPath);

@@ -29,8 +29,8 @@ function readManifestFile(jobRoot) {
 /**
  * @param {string} jobId
  */
-export function listJobArtifacts(jobId) {
-  const { paths } = readJobRecord(jobId);
+export async function listJobArtifacts(jobId) {
+  const { paths } = await readJobRecord(jobId);
   const request = readJobRequestOptions(paths.root);
   const manifestEntries = readManifestFile(paths.root);
   if (!manifestEntries) return [];
@@ -53,8 +53,8 @@ export function listJobArtifacts(jobId) {
  * @param {string} jobId
  * @param {string} kind
  */
-export function resolveArtifactDownload(jobId, kind) {
-  const { record, paths } = readJobRecord(jobId);
+export async function resolveArtifactDownload(jobId, kind) {
+  const { record, paths } = await readJobRecord(jobId);
   const request = readJobRequestOptions(paths.root);
   if (kind === "renderedVideo" && !request.enableSpeech) {
     const err = new Error("artifact not available");

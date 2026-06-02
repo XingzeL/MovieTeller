@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { getJobsRoot, isSafeJobId, jobPathsFromRoot } from "../../config/jobs.js";
+import { isDbEnabled } from "../../db/database.js";
+import { listJobsForUserFromDb } from "../../db/jobsRepository.js";
 import { readWorkflowRecord } from "./jobProcess.js";
 import { readJobRequestMetadata } from "./readJobRequest.js";
 import { jobRecordToListItemDto } from "./readJob.js";
@@ -111,7 +113,28 @@ export function listJobs(opts = {}) {
  * @param {string} userId
  * @param {{ jobsRoot?: string, limit?: number, offset?: number }} [opts]
  */
-export function listJobsForUser(userId, opts = {}) {
+export async function listJobsForUser(userId, opts = {}) {
+  if (isDbEnabled()) {
+    const limit = parsePositiveInt(opts.limit, DEFAULT_LIMIT, MAX_LIMIT);
+    const offset = parseNonNegativeInt(opts.offset, 0);
+    const { rows, total } = await listJobsForUserFromDb(userId, {
+      limit,
+      offset,
+    });
+    return {
+      jobs: rows.map((record) =>
+        jobRecordToListItemDto(
+          record,
+          readJobRequestMetadata(String(record.output_root)),
+          String(record.output_root)
+        )
+      ),
+      total,
+      limit,
+      offset,
+    };
+  }
+
   const jobsRoot = opts.jobsRoot || getJobsRoot();
   const sorted = collectJobRecords(jobsRoot)
     .filter(({ record }) => record.user_id === userId)

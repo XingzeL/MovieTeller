@@ -1,5 +1,6 @@
 import fs from "node:fs";
 
+import { isDbEnabled } from "../../db/database.js";
 import { listJobsForUser as listJobsForUserRecords } from "./listJobs.js";
 import { readJobRecord } from "./readJob.js";
 import { listJobArtifacts, resolveArtifactDownload } from "./artifactManifest.js";
@@ -7,6 +8,7 @@ import { readJobLogs } from "./readJobLogs.js";
 import { resolveJobThumbnail } from "./thumbnail.js";
 import { cancelJob, requeueExistingJob } from "./jobQueue.js";
 import { purgeVideoForJob } from "./purgeVideo.js";
+import { syncVideoFieldsToDb } from "./dbJobSync.js";
 
 /**
  * @param {string} userId
@@ -25,8 +27,8 @@ export function assertJobOwned(userId, record) {
  * @param {string} userId
  * @param {string} jobId
  */
-export function readJobForUser(userId, jobId) {
-  const ctx = readJobRecord(jobId);
+export async function readJobForUser(userId, jobId) {
+  const ctx = await readJobRecord(jobId);
   assertJobOwned(userId, ctx.record);
   return ctx;
 }
@@ -35,7 +37,7 @@ export function readJobForUser(userId, jobId) {
  * @param {string} userId
  * @param {{ limit?: number, offset?: number, jobsRoot?: string }} [opts]
  */
-export function listJobsForUser(userId, opts = {}) {
+export async function listJobsForUser(userId, opts = {}) {
   return listJobsForUserRecords(userId, opts);
 }
 
@@ -44,8 +46,8 @@ export function listJobsForUser(userId, opts = {}) {
  * @param {string} jobId
  * @param {{ limit?: number, after?: number }} [opts]
  */
-export function readJobLogsForUser(userId, jobId, opts = {}) {
-  readJobForUser(userId, jobId);
+export async function readJobLogsForUser(userId, jobId, opts = {}) {
+  await readJobForUser(userId, jobId);
   return readJobLogs(jobId, opts);
 }
 
@@ -53,8 +55,8 @@ export function readJobLogsForUser(userId, jobId, opts = {}) {
  * @param {string} userId
  * @param {string} jobId
  */
-export function listArtifactsForUser(userId, jobId) {
-  readJobForUser(userId, jobId);
+export async function listArtifactsForUser(userId, jobId) {
+  await readJobForUser(userId, jobId);
   return listJobArtifacts(jobId);
 }
 
@@ -63,8 +65,8 @@ export function listArtifactsForUser(userId, jobId) {
  * @param {string} jobId
  * @param {string} kind
  */
-export function resolveArtifactForUser(userId, jobId, kind) {
-  const { record } = readJobForUser(userId, jobId);
+export async function resolveArtifactForUser(userId, jobId, kind) {
+  const { record } = await readJobForUser(userId, jobId);
   if (
     kind === "renderedVideo" &&
     (record.video_downloaded_at || record.video_purged_at)
@@ -80,8 +82,8 @@ export function resolveArtifactForUser(userId, jobId, kind) {
  * @param {string} userId
  * @param {string} jobId
  */
-export function resolveThumbnailForUser(userId, jobId) {
-  readJobForUser(userId, jobId);
+export async function resolveThumbnailForUser(userId, jobId) {
+  await readJobForUser(userId, jobId);
   return resolveJobThumbnail(jobId);
 }
 
@@ -89,26 +91,26 @@ export function resolveThumbnailForUser(userId, jobId) {
  * @param {string} userId
  * @param {string} jobId
  */
-export function cancelJobForUser(userId, jobId) {
-  readJobForUser(userId, jobId);
-  return cancelJob(jobId);
+export async function cancelJobForUser(userId, jobId) {
+  await readJobForUser(userId, jobId);
+  return cancelJob(jobId, userId);
 }
 
 /**
  * @param {string} userId
  * @param {string} jobId
  */
-export function retryJobForUser(userId, jobId) {
-  readJobForUser(userId, jobId);
-  return requeueExistingJob(jobId);
+export async function retryJobForUser(userId, jobId) {
+  await readJobForUser(userId, jobId);
+  return requeueExistingJob(jobId, userId);
 }
 
 /**
  * @param {string} userId
  * @param {string} jobId
  */
-export function markVideoDownloadedForUser(userId, jobId) {
-  const { record, paths } = readJobForUser(userId, jobId);
+export async function markVideoDownloadedForUser(userId, jobId) {
+  const { record, paths } = await readJobForUser(userId, jobId);
 
   if (!record.video_downloaded_at) {
     const previousVersion = record.video_state_version || 0;
@@ -120,6 +122,8 @@ export function markVideoDownloadedForUser(userId, jobId) {
       `${JSON.stringify(record, null, 2)}\n`,
       "utf8"
     );
+
+    await syncVideoFieldsToDb(jobId, record);
 
     console.log(
       `[Storage] video_downloaded_at marked for job ${jobId} (version ${record.video_state_version})`

@@ -2,15 +2,16 @@ import fs from "node:fs";
 
 import { readJobRecord } from "./readJob.js";
 import { resolveArtifactDownload } from "./artifactManifest.js";
+import { syncVideoFieldsToDb } from "./dbJobSync.js";
 
 /**
  * 尝试清理某个 Job 的视频文件（仅当 video_downloaded_at 已标记时）
  * 这个函数设计为可被安全多次调用（幂等）
  * @param {string} jobId
  */
-export function purgeVideoForJob(jobId) {
+export async function purgeVideoForJob(jobId) {
   try {
-    const { record, paths } = readJobRecord(jobId);
+    const { record, paths } = await readJobRecord(jobId);
 
     // 安全检查：必须先被标记为已下载
     if (!record.video_downloaded_at) {
@@ -25,7 +26,7 @@ export function purgeVideoForJob(jobId) {
 
     let videoFilePath = null;
     try {
-      const resolved = resolveArtifactDownload(jobId, "renderedVideo");
+      const resolved = await resolveArtifactDownload(jobId, "renderedVideo");
       videoFilePath = resolved.filePath;
     } catch (e) {
       videoFilePath = null;
@@ -36,12 +37,14 @@ export function purgeVideoForJob(jobId) {
       record.video_purged_at = new Date().toISOString();
 
       fs.writeFileSync(paths.workflowJsonPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+      await syncVideoFieldsToDb(jobId, record);
 
       console.log(`[Storage Purge] Video file deleted for job ${jobId}`);
     } else {
       // 文件已经不存在，也标记为已清理，避免重复尝试
       record.video_purged_at = new Date().toISOString();
       fs.writeFileSync(paths.workflowJsonPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+      await syncVideoFieldsToDb(jobId, record);
       console.log(`[Storage Purge] Video already gone for job ${jobId}, marked as purged.`);
     }
   } catch (err) {

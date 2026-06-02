@@ -77,12 +77,12 @@ test.afterEach(() => {
   delete process.env.MAX_RUNNING_JOBS;
 });
 
-test("canceling a running job requests cancellation without releasing queue slot", () => {
+test("canceling a running job requests cancellation without releasing queue slot", async () => {
   const root = tempJobsRoot();
   writeJob(root, "running-job", { status: "running" });
   markJobRunningForTests("running-job");
 
-  const result = cancelJob("running-job");
+  const result = await cancelJob("running-job");
 
   assert.equal(result.status, "cancel_requested");
   assert.deepEqual(getJobQueueSnapshot().running, ["running-job"]);
@@ -94,7 +94,7 @@ test("canceling a running job requests cancellation without releasing queue slot
   assert.ok(record.cancel_requested_at);
 });
 
-test("canceling a waiting job marks it canceled and removes it from waiting", () => {
+test("canceling a waiting job marks it canceled and removes it from waiting", async () => {
   const root = tempJobsRoot();
   const { jobRoot } = writeJob(root, "waiting-job", { status: "queued" });
   markJobWaitingForTests({
@@ -105,7 +105,7 @@ test("canceling a waiting job marks it canceled and removes it from waiting", ()
     userId: null,
   });
 
-  const result = cancelJob("waiting-job");
+  const result = await cancelJob("waiting-job");
 
   assert.equal(result.status, "canceled");
   assert.deepEqual(getJobQueueSnapshot().waiting, []);
@@ -132,7 +132,7 @@ test("startup recovery fails stale queued and running jobs only", () => {
   assert.equal(done.status, "succeeded");
 });
 
-test("readJobLogs supports limit, malformed lines, and cursor metadata", () => {
+test("readJobLogs supports limit, malformed lines, and cursor metadata", async () => {
   const root = tempJobsRoot();
   const { paths } = writeJob(root, "logs-job");
   const first = `${JSON.stringify({ event: "one" })}\n`;
@@ -140,17 +140,23 @@ test("readJobLogs supports limit, malformed lines, and cursor metadata", () => {
   const third = `${JSON.stringify({ event: "three" })}\n`;
   fs.writeFileSync(paths.workflowLogPath, first + second + third);
 
-  const limited = readJobLogs("logs-job", { limit: 2 });
+  const limited = await readJobLogs("logs-job", { limit: 2 });
   assert.equal(limited.truncated, true);
   assert.deepEqual(limited.lines, [{ raw: "not-json" }, { event: "three" }]);
   assert.equal(limited.nextOffset, Buffer.byteLength(first + second + third));
 
-  const cursor = readJobLogs("logs-job", { after: Buffer.byteLength(first), limit: 1 });
+  const cursor = await readJobLogs("logs-job", {
+    after: Buffer.byteLength(first),
+    limit: 1,
+  });
   assert.deepEqual(cursor.lines, [{ raw: "not-json" }]);
   assert.equal(cursor.truncated, true);
   assert.equal(cursor.nextOffset, Buffer.byteLength(first + second));
 
-  const nextCursor = readJobLogs("logs-job", { after: cursor.nextOffset, limit: 10 });
+  const nextCursor = await readJobLogs("logs-job", {
+    after: cursor.nextOffset,
+    limit: 10,
+  });
   assert.deepEqual(nextCursor.lines, [{ event: "three" }]);
   assert.equal(nextCursor.truncated, false);
   assert.equal(nextCursor.nextOffset, Buffer.byteLength(first + second + third));
@@ -210,7 +216,7 @@ test("validateJobUploadFile rejects unsupported formats", () => {
   assert.equal(good.ok, true);
 });
 
-test("requeueExistingJob resets failed job to queued and clears cancel flag", () => {
+test("requeueExistingJob resets failed job to queued and clears cancel flag", async () => {
   const root = tempJobsRoot();
   const { jobRoot, paths } = writeJob(root, "retry-job", {
     status: "failed",
@@ -221,7 +227,7 @@ test("requeueExistingJob resets failed job to queued and clears cancel flag", ()
   fs.mkdirSync(path.dirname(videoPath), { recursive: true });
   fs.writeFileSync(videoPath, "vid");
 
-  const result = requeueExistingJob("retry-job");
+  const result = await requeueExistingJob("retry-job");
 
   assert.equal(result.status, "queued");
   assert.equal(fs.existsSync(paths.cancelFlagPath), false);
@@ -303,13 +309,13 @@ test("applyRunnerSpawnError honors cancel.flag", () => {
   assert.equal(record.status, "canceled");
 });
 
-test("requeueExistingJob rejects non-terminal status", () => {
+test("requeueExistingJob rejects non-terminal status", async () => {
   const root = tempJobsRoot();
   writeJob(root, "running-job", { status: "running" });
-  assert.throws(() => requeueExistingJob("running-job"), /cannot retry/);
+  await assert.rejects(async () => requeueExistingJob("running-job"), /cannot retry/);
 });
 
-test("artifact manifest is the only product artifact source and rejects traversal", () => {
+test("artifact manifest is the only product artifact source and rejects traversal", async () => {
   const root = tempJobsRoot();
   const { jobRoot, paths } = writeJob(root, "artifact-job", {
     status: "succeeded",
@@ -328,13 +334,16 @@ test("artifact manifest is the only product artifact source and rejects traversa
     },
   ]));
 
-  const artifacts = listJobArtifacts("artifact-job");
+  const artifacts = await listJobArtifacts("artifact-job");
   assert.equal(artifacts.length, 1);
   assert.equal(artifacts[0].kind, "renderedVideo");
-  assert.equal(resolveArtifactDownload("artifact-job", "renderedVideo").filePath, artifactPath);
+  assert.equal(
+    (await resolveArtifactDownload("artifact-job", "renderedVideo")).filePath,
+    artifactPath
+  );
 
-  assert.throws(
-    () => resolveArtifactDownload("artifact-job", "sourceVideo"),
+  await assert.rejects(
+    async () => resolveArtifactDownload("artifact-job", "sourceVideo"),
     /unknown artifact kind/
   );
 
@@ -345,13 +354,13 @@ test("artifact manifest is the only product artifact source and rejects traversa
       path: path.join(os.tmpdir(), "outside.mp4"),
     },
   ]));
-  assert.throws(
-    () => resolveArtifactDownload("artifact-job", "renderedVideo"),
+  await assert.rejects(
+    async () => resolveArtifactDownload("artifact-job", "renderedVideo"),
     /artifact path not allowed/
   );
 });
 
-test("workflow artifact fields are not used as product artifact fallback", () => {
+test("workflow artifact fields are not used as product artifact fallback", async () => {
   const root = tempJobsRoot();
   const artifactPath = path.join(root, "legacy-only-job", "render", "narrated.mp4");
   fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
@@ -363,9 +372,9 @@ test("workflow artifact fields are not used as product artifact fallback", () =>
     },
   });
 
-  assert.deepEqual(listJobArtifacts("legacy-only-job"), []);
-  assert.throws(
-    () => resolveArtifactDownload("legacy-only-job", "renderedVideo"),
+  assert.deepEqual(await listJobArtifacts("legacy-only-job"), []);
+  await assert.rejects(
+    async () => resolveArtifactDownload("legacy-only-job", "renderedVideo"),
     /artifact not available/
   );
 
@@ -377,7 +386,7 @@ test("workflow artifact fields are not used as product artifact fallback", () =>
   assert.equal(listed.canDownloadVideo, false);
 });
 
-test("resolveJobThumbnail serves first frame-pool image and rejects traversal", () => {
+test("resolveJobThumbnail serves first frame-pool image and rejects traversal", async () => {
   const root = tempJobsRoot();
   const { jobRoot } = writeJob(root, "thumb-job", { status: "succeeded" });
   const framePool = path.join(jobRoot, "frame_pool");
@@ -396,7 +405,7 @@ test("resolveJobThumbnail serves first frame-pool image and rejects traversal", 
     })}\n`
   );
 
-  assert.equal(resolveJobThumbnail("thumb-job").filePath, imagePath);
+  assert.equal((await resolveJobThumbnail("thumb-job")).filePath, imagePath);
 
   fs.writeFileSync(
     path.join(framePool, "manifest.jsonl"),
@@ -408,7 +417,10 @@ test("resolveJobThumbnail serves first frame-pool image and rejects traversal", 
       embeddingIndex: null,
     })}\n`
   );
-  assert.throws(() => resolveJobThumbnail("thumb-job"), /thumbnail path not allowed/);
+  await assert.rejects(
+    async () => resolveJobThumbnail("thumb-job"),
+    /thumbnail path not allowed/
+  );
 });
 
 test("list jobs resolve display title from request.json when workflow lacks original_source", () => {
@@ -433,7 +445,7 @@ test("list jobs resolve display title from request.json when workflow lacks orig
   assert.equal(listed.inputFileName, "source.mp4");
 });
 
-test("jobs without enableSpeech omit rendered video from list API and artifacts", () => {
+test("jobs without enableSpeech omit rendered video from list API and artifacts", async () => {
   const root = tempJobsRoot();
   const { jobRoot, paths } = writeJob(root, "no-speech-job", {
     status: "succeeded",
@@ -471,10 +483,10 @@ test("jobs without enableSpeech omit rendered video from list API and artifacts"
   assert.ok(listed);
   assert.equal(listed.enableSpeech, false);
 
-  const artifacts = listJobArtifacts("no-speech-job");
+  const artifacts = await listJobArtifacts("no-speech-job");
   assert.ok(artifacts.every((item) => item.kind !== "renderedVideo"));
-  assert.throws(
-    () => resolveArtifactDownload("no-speech-job", "renderedVideo"),
+  await assert.rejects(
+    async () => resolveArtifactDownload("no-speech-job", "renderedVideo"),
     /artifact not available/
   );
 });

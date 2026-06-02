@@ -1,0 +1,20 @@
+# Phase 2 Lite local stack (Postgres only). API + Worker run on the host.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: movieteller
+      POSTGRES_PASSWORD: movieteller
+      POSTGRES_DB: movieteller
+    ports:
+      - "5432:5432"
+    volumes:
+      - movieteller_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U movieteller -d movieteller"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  movieteller_pgdata:

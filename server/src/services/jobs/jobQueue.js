@@ -5,9 +5,17 @@
 import fs from "node:fs";
 
 import { getJobsRoot, jobPathsFromRoot, resolveJobRoot } from "../../config/jobs.js";
+import { isDbEnabled } from "../../db/database.js";
+import {
+  getJobById,
+  markJobCanceledQueued,
+  markJobCanceling,
+  retryJobInDb,
+} from "../../db/jobsRepository.js";
 import { isApiRunMode, isWorkerRunMode } from "../../runtime/runMode.js";
 import { releaseClaimIfOwned } from "./claimJob.js";
 import { createJobFromUpload, spawnPreparedJob } from "./createJob.js";
+import { syncWorkflowTerminalToDb } from "./dbJobSync.js";
 import {
   markCancelRequested,
   markJobCanceledByNode,
@@ -24,6 +32,28 @@ const waiting = [];
 
 /** @type {Map<string, NodeJS.Timeout>} */
 const completionWatchers = new Map();
+
+/** @type {Map<string, { attemptId: number, claimedBy: string, heartbeatTimer?: NodeJS.Timeout }>} */
+const dbJobContexts = new Map();
+
+/**
+ * @param {string} jobId
+ * @param {{ attemptId: number, claimedBy: string, heartbeatTimer?: NodeJS.Timeout }} ctx
+ */
+export function registerDbJobContext(jobId, ctx) {
+  dbJobContexts.set(jobId, ctx);
+}
+
+/**
+ * @param {string} jobId
+ */
+export function unregisterDbJobContext(jobId) {
+  const ctx = dbJobContexts.get(jobId);
+  if (ctx?.heartbeatTimer) {
+    clearInterval(ctx.heartbeatTimer);
+  }
+  dbJobContexts.delete(jobId);
+}
 
 function maxRunningJobs() {
   const raw = process.env.MAX_RUNNING_JOBS;
@@ -65,6 +95,13 @@ function watchJobCompletion(jobId) {
       clearInterval(interval);
       completionWatchers.delete(jobId);
       running.delete(jobId);
+      const dbCtx = dbJobContexts.get(jobId);
+      if (dbCtx && isDbEnabled()) {
+        syncWorkflowTerminalToDb(jobRoot, dbCtx).catch((err) => {
+          console.error(`[jobQueue] db reconcile failed for ${jobId}`, err);
+        });
+        unregisterDbJobContext(jobId);
+      }
       try {
         releaseClaimIfOwned(jobRoot);
       } catch {
@@ -92,8 +129,8 @@ function drainQueue() {
 /**
  * @param {{ file: import('multer').File, body: Record<string, unknown>, userId: string }} input
  */
-export function enqueueJobUpload(input) {
-  const prepared = createJobFromUpload({
+export async function enqueueJobUpload(input) {
+  const prepared = await createJobFromUpload({
     file: input.file,
     body: input.body,
     userId: input.userId,
@@ -138,8 +175,9 @@ const RETRYABLE_STATUSES = new Set(["failed", "canceled"]);
 /**
  * Re-queue an existing job directory (failed/canceled) without re-uploading.
  * @param {string} jobId
+ * @param {string | null} [authUserId] authenticated owner (DB mode)
  */
-export function requeueExistingJob(jobId) {
+export async function requeueExistingJob(jobId, authUserId = null) {
   const jobsRoot = getJobsRoot();
   const jobRoot = resolveJobRoot(jobsRoot, jobId);
   const paths = jobPathsFromRoot(jobRoot);
@@ -150,9 +188,8 @@ export function requeueExistingJob(jobId) {
     throw err;
   }
 
-  const status = String(record.status || "");
-  if (!RETRYABLE_STATUSES.has(status)) {
-    const err = new Error(`cannot retry job in status "${status}"`);
+  if (isJobMarkedRunning(jobId) || isJobWaitingInQueue(jobId)) {
+    const err = new Error("job is already queued or running");
     err.statusCode = 409;
     throw err;
   }
@@ -164,17 +201,32 @@ export function requeueExistingJob(jobId) {
     throw err;
   }
 
-  if (isJobMarkedRunning(jobId) || isJobWaitingInQueue(jobId)) {
-    const err = new Error("job is already queued or running");
-    err.statusCode = 409;
-    throw err;
-  }
-
   if (fs.existsSync(paths.cancelFlagPath)) {
     fs.unlinkSync(paths.cancelFlagPath);
   }
 
   const now = new Date().toISOString();
+
+  if (isDbEnabled()) {
+    const userId =
+      typeof authUserId === "string" && authUserId.trim()
+        ? authUserId.trim()
+        : record.user_id;
+    if (typeof userId !== "string" || !userId) {
+      const err = new Error("job not found");
+      err.statusCode = 404;
+      throw err;
+    }
+    await retryJobInDb(userId, jobId);
+  } else {
+    const status = String(record.status || "");
+    if (!RETRYABLE_STATUSES.has(status)) {
+      const err = new Error(`cannot retry job in status "${status}"`);
+      err.statusCode = 409;
+      throw err;
+    }
+  }
+
   const next = {
     ...record,
     status: "queued",
@@ -215,7 +267,7 @@ export function requeueExistingJob(jobId) {
 /**
  * @param {string} jobId
  */
-export function cancelJob(jobId) {
+export async function cancelJob(jobId, userId = null) {
   const jobsRoot = getJobsRoot();
   const jobRoot = resolveJobRoot(jobsRoot, jobId);
   const paths = jobPathsFromRoot(jobRoot);
@@ -230,12 +282,36 @@ export function cancelJob(jobId) {
 
   if (inWaiting && !wasSpawned) {
     markJobCanceledByNode(jobRoot);
+    if (isDbEnabled() && userId) {
+      await markJobCanceledQueued(userId, jobId);
+    }
     drainQueue();
     return { jobId, status: "canceled" };
   }
 
+  if (isDbEnabled() && userId) {
+    const dbRow = await getJobById(jobId);
+    if (dbRow && String(dbRow.status) === "queued") {
+      markJobCanceledByNode(jobRoot);
+      await markJobCanceledQueued(userId, jobId);
+      drainQueue();
+      return { jobId, status: "canceled" };
+    }
+    if (dbRow && String(dbRow.status) === "running") {
+      const updated = await markJobCanceling(userId, jobId);
+      if (updated) {
+        markCancelRequested(jobRoot);
+        return { jobId, status: "canceling" };
+      }
+    }
+    if (dbRow && String(dbRow.status) === "canceling") {
+      return { jobId, status: "canceling" };
+    }
+  }
+
   fs.writeFileSync(paths.cancelFlagPath, `${new Date().toISOString()}\n`, "utf8");
   markCancelRequested(jobRoot);
+
   return { jobId, status: "cancel_requested" };
 }
 

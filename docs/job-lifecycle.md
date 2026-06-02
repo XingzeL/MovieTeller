@@ -120,6 +120,63 @@ Each line: `{ schema_version, ts, user_id, job_id, event, detail? }`.
 
 Default development/production single-process: API + in-memory queue + spawn + scheduler ([`bootstrap.js`](../server/src/runtime/bootstrap.js)). Optional split API/worker documented in [`worker-runtime.md`](./worker-runtime.md).
 
+## Appendix: Phase 2 Lite (Postgres control plane)
+
+When `DATABASE_URL` is set and `MOVIE_TELLER_RUN_MODE` is `api` or `worker`, behavior extends as follows. Full contract: [`phase2-lite.md`](./phase2-lite.md).
+
+### Status machine (user-facing)
+
+```text
+queued → running → succeeded | failed | canceled
+running → canceling → canceled
+queued  → canceled   (API cancel before claim)
+```
+
+| Status | User-visible meaning | Primary writer |
+|--------|----------------------|----------------|
+| `queued` | Waiting for Worker | API on create |
+| `running` | Pipeline executing | Worker on DB claim (before/at spawn) |
+| `canceling` | Cancel requested; runner winding down | API on cancel; Worker writes `cancel.flag` |
+| Terminal | Same as Phase 1 | Worker reconcile from `workflow.json` → Postgres |
+
+**Truth source:** Dashboard list/detail, ACL, `retryable`, and video download-once fields come from Postgres `jobs`. `workflow.json` remains the pipeline artifact for stages, logs, and manifest paths.
+
+### Transitions (Phase 2 Lite)
+
+| Transition | Writer | Notes |
+|--------------|--------|-------|
+| → `queued` | API | `INSERT jobs` + disk layout; API does **not** spawn Python |
+| → `running` | Worker | `FOR UPDATE SKIP LOCKED` claim; conditional `UPDATE` with `attempt_id` |
+| → `canceling` | API | Running job cancel; sets `cancel_requested_at`, `cancel_deadline_at` |
+| → `canceled` (queued) | API | Direct DB + disk when never claimed |
+| → terminal | Worker | After child exit, read `workflow.json`, reconcile with `WHERE job_id AND attempt_id AND claimed_by` |
+| Manual retry | API | `canceled` → `queued` always; `failed` → `queued` only when `retryable=true`; `attempt_id` incremented |
+
+### Cancel (M4a)
+
+1. API sets DB `status=canceling` for running jobs (and `cancel_requested_at`).
+2. Worker heartbeat path writes `cancel.flag` and `cancel_acknowledged_at`.
+3. Python checkpoints read `cancel.flag` and exit as `canceled` in `workflow.json`.
+4. Worker reconcile writes DB `canceled` with `cancel_mode=cooperative`.
+
+**M4b (deferred):** `cancel_deadline_at` + process-group SIGTERM/SIGKILL if cooperative cancel stalls.
+
+### Stale / heartbeat
+
+Worker updates `last_heartbeat_at` while `running` or `canceling`. If heartbeat age exceeds `STALE_HEARTBEAT_SEC` (default 90), stale sweep sets `failed`, `retryable=true`, `error_code=stale_heartbeat`.
+
+### Recovery on restart
+
+| Mode | `queued` on disk/DB | `running` |
+|------|---------------------|-----------|
+| `combined` (no DB) | Mark `failed` (`server_restarted`) | Mark `failed` |
+| `api` + Postgres | **Kept** in DB | Reconciled via stale heartbeat or Worker reconcile |
+| `worker` | Claims from DB only | Same |
+
+### DB unavailable
+
+Protected Job APIs return **503** (fail fast). No fallback to filesystem scan or in-memory `waiting[]`.
+
 ---
 
 See also: [`multi-user-storage-and-transport.md`](./multi-user-storage-and-transport.md), [`jobs-api.md`](./jobs-api.md), [`job-queue-limitations.md`](./job-queue-limitations.md).

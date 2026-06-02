@@ -3,6 +3,7 @@ import multer from "multer";
 import os from "node:os";
 import path from "node:path";
 
+import { respondDatabaseError } from "../db/errors.js";
 import { appendAuditEvent } from "../services/audit/auditLog.js";
 import {
   listArtifactsForUser,
@@ -38,7 +39,7 @@ const upload = multer({
 
 const router = express.Router();
 
-router.get("/jobs", (req, res) => {
+router.get("/jobs", async (req, res) => {
   try {
     const limitRaw = req.query.limit;
     const offsetRaw = req.query.offset;
@@ -50,18 +51,17 @@ router.get("/jobs", (req, res) => {
       offsetRaw !== undefined && String(offsetRaw).trim() !== ""
         ? Number(offsetRaw)
         : undefined;
-    const payload = listJobsForUser(req.user.id, {
+    const payload = await listJobsForUser(req.user.id, {
       limit: Number.isNaN(limit) ? undefined : limit,
       offset: Number.isNaN(offset) ? undefined : offset,
     });
     return res.json(payload);
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: String(err?.message || err) });
+    return respondDatabaseError(res, err);
   }
 });
 
-router.post("/jobs", upload.single("file"), (req, res) => {
+router.post("/jobs", upload.single("file"), async (req, res) => {
   if (!req.file?.path) {
     return res.status(400).json({ error: 'multipart field "file" is required' });
   }
@@ -71,7 +71,7 @@ router.post("/jobs", upload.single("file"), (req, res) => {
     return res.status(400).json({ error: validation.message });
   }
   try {
-    const created = enqueueJobUpload({
+    const created = await enqueueJobUpload({
       file: req.file,
       body: req.body ?? {},
       userId: req.user.id,
@@ -83,14 +83,13 @@ router.post("/jobs", upload.single("file"), (req, res) => {
     });
     return res.status(201).json(created);
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: String(err?.message || err) });
+    return respondDatabaseError(res, err);
   }
 });
 
-router.get("/jobs/:jobId", (req, res) => {
+router.get("/jobs/:jobId", async (req, res) => {
   try {
-    const { record, paths } = readJobForUser(req.user.id, req.params.jobId);
+    const { record, paths } = await readJobForUser(req.user.id, req.params.jobId);
     return res.json({
       job: jobRecordToDto(
         record,
@@ -99,23 +98,29 @@ router.get("/jobs/:jobId", (req, res) => {
       ),
     });
   } catch (err) {
-    const status = err.statusCode === 404 ? 404 : 500;
-    return res.status(status).json({ error: String(err?.message || err) });
+    const status = err.statusCode === 404 ? 404 : undefined;
+    if (status) {
+      return res.status(404).json({ error: String(err?.message || err) });
+    }
+    return respondDatabaseError(res, err);
   }
 });
 
 router.get("/jobs/:jobId/progress", async (req, res) => {
   try {
-    const { paths } = readJobForUser(req.user.id, req.params.jobId);
+    const { paths } = await readJobForUser(req.user.id, req.params.jobId);
     const progress = await readWorkflowProgressFromLog(paths.workflowLogPath);
     return res.json({ progress });
   } catch (err) {
-    const status = err.statusCode === 404 ? 404 : 500;
-    return res.status(status).json({ error: String(err?.message || err) });
+    const status = err.statusCode === 404 ? 404 : undefined;
+    if (status) {
+      return res.status(404).json({ error: String(err?.message || err) });
+    }
+    return respondDatabaseError(res, err);
   }
 });
 
-router.get("/jobs/:jobId/logs", (req, res) => {
+router.get("/jobs/:jobId/logs", async (req, res) => {
   try {
     const limitRaw = req.query.limit;
     const limit =
@@ -127,30 +132,39 @@ router.get("/jobs/:jobId/logs", (req, res) => {
       afterRaw !== undefined && String(afterRaw).trim() !== ""
         ? Number(afterRaw)
         : undefined;
-    const payload = readJobLogsForUser(req.user.id, req.params.jobId, {
+    const payload = await readJobLogsForUser(req.user.id, req.params.jobId, {
       limit: Number.isNaN(limit) ? undefined : limit,
       after: Number.isNaN(after) ? undefined : after,
     });
     return res.json(payload);
   } catch (err) {
-    const status = err.statusCode === 404 ? 404 : 500;
-    return res.status(status).json({ error: String(err?.message || err) });
+    const status = err.statusCode === 404 ? 404 : undefined;
+    if (status) {
+      return res.status(404).json({ error: String(err?.message || err) });
+    }
+    return respondDatabaseError(res, err);
   }
 });
 
-router.get("/jobs/:jobId/artifacts", (req, res) => {
+router.get("/jobs/:jobId/artifacts", async (req, res) => {
   try {
-    const artifacts = listArtifactsForUser(req.user.id, req.params.jobId);
+    const artifacts = await listArtifactsForUser(req.user.id, req.params.jobId);
     return res.json({ artifacts });
   } catch (err) {
-    const status = err.statusCode === 404 ? 404 : 500;
-    return res.status(status).json({ error: String(err?.message || err) });
+    const status = err.statusCode === 404 ? 404 : undefined;
+    if (status) {
+      return res.status(404).json({ error: String(err?.message || err) });
+    }
+    return respondDatabaseError(res, err);
   }
 });
 
-router.get("/jobs/:jobId/thumbnail", (req, res) => {
+router.get("/jobs/:jobId/thumbnail", async (req, res) => {
   try {
-    const { filePath } = resolveThumbnailForUser(req.user.id, req.params.jobId);
+    const { filePath } = await resolveThumbnailForUser(
+      req.user.id,
+      req.params.jobId
+    );
     res.type(
       path.extname(filePath).toLowerCase() === ".jpg" ? "image/jpeg" : "image/png"
     );
@@ -161,14 +175,17 @@ router.get("/jobs/:jobId/thumbnail", (req, res) => {
       }
     });
   } catch (err) {
-    const status = err.statusCode === 403 || err.statusCode === 404 ? err.statusCode : 500;
-    return res.status(status).json({ error: String(err?.message || err) });
+    const status = err.statusCode === 403 || err.statusCode === 404 ? err.statusCode : undefined;
+    if (status) {
+      return res.status(status).json({ error: String(err?.message || err) });
+    }
+    return respondDatabaseError(res, err);
   }
 });
 
-router.get("/jobs/:jobId/artifacts/:kind", (req, res) => {
+router.get("/jobs/:jobId/artifacts/:kind", async (req, res) => {
   try {
-    const { filePath, label } = resolveArtifactForUser(
+    const { filePath, label } = await resolveArtifactForUser(
       req.user.id,
       req.params.jobId,
       req.params.kind
@@ -206,16 +223,17 @@ router.get("/jobs/:jobId/artifacts/:kind", (req, res) => {
       }
 
       if (isVideoDownload) {
-        try {
-          markVideoDownloadedForUser(req.user.id, req.params.jobId);
-          appendAuditEvent({
-            jobId: req.params.jobId,
-            userId: req.user.id,
-            event: "job.video_downloaded",
+        void markVideoDownloadedForUser(req.user.id, req.params.jobId)
+          .then(() => {
+            appendAuditEvent({
+              jobId: req.params.jobId,
+              userId: req.user.id,
+              event: "job.video_downloaded",
+            });
+          })
+          .catch((e) => {
+            console.error("Failed to mark video_downloaded_at", e);
           });
-        } catch (e) {
-          console.error("Failed to mark video_downloaded_at", e);
-        }
       } else {
         appendAuditEvent({
           jobId: req.params.jobId,
@@ -229,14 +247,17 @@ router.get("/jobs/:jobId/artifacts/:kind", (req, res) => {
     const status =
       err.statusCode === 404 || err.statusCode === 403 || err.statusCode === 410
         ? err.statusCode
-        : 500;
-    return res.status(status).json({ error: String(err?.message || err) });
+        : undefined;
+    if (status) {
+      return res.status(status).json({ error: String(err?.message || err) });
+    }
+    return respondDatabaseError(res, err);
   }
 });
 
-router.post("/jobs/:jobId/cancel", (req, res) => {
+router.post("/jobs/:jobId/cancel", async (req, res) => {
   try {
-    const payload = cancelJobForUser(req.user.id, req.params.jobId);
+    const payload = await cancelJobForUser(req.user.id, req.params.jobId);
     appendAuditEvent({
       jobId: req.params.jobId,
       userId: req.user.id,
@@ -245,14 +266,17 @@ router.post("/jobs/:jobId/cancel", (req, res) => {
     });
     return res.json(payload);
   } catch (err) {
-    const status = err.statusCode === 404 ? 404 : 500;
-    return res.status(status).json({ error: String(err?.message || err) });
+    const status = err.statusCode === 404 ? 404 : undefined;
+    if (status) {
+      return res.status(404).json({ error: String(err?.message || err) });
+    }
+    return respondDatabaseError(res, err);
   }
 });
 
-router.post("/jobs/:jobId/retry", (req, res) => {
+router.post("/jobs/:jobId/retry", async (req, res) => {
   try {
-    const payload = retryJobForUser(req.user.id, req.params.jobId);
+    const payload = await retryJobForUser(req.user.id, req.params.jobId);
     appendAuditEvent({
       jobId: req.params.jobId,
       userId: req.user.id,
@@ -265,8 +289,11 @@ router.post("/jobs/:jobId/retry", (req, res) => {
       err.statusCode === 409 ||
       err.statusCode === 400
         ? err.statusCode
-        : 500;
-    return res.status(status).json({ error: String(err?.message || err) });
+        : undefined;
+    if (status) {
+      return res.status(status).json({ error: String(err?.message || err) });
+    }
+    return respondDatabaseError(res, err);
   }
 });
 
