@@ -144,7 +144,9 @@ describeDb("Phase 2 Lite jobs repository (Postgres)", async (t) => {
   await t.test("DB running cancel writes cancel.flag immediately in API path", async () => {
     const jobId = crypto.randomUUID();
     const userId = "phase2-api-cancel-flag";
-    const jobsRoot = fs.mkdtempSync(path.join(repoRoot, "artifacts", "test-jobs-"));
+    const artifactsDir = path.join(repoRoot, "artifacts");
+    fs.mkdirSync(artifactsDir, { recursive: true });
+    const jobsRoot = fs.mkdtempSync(path.join(artifactsDir, "test-jobs-"));
     const jobRoot = path.join(jobsRoot, jobId);
     const videoPath = path.join(jobRoot, "input", "source.mp4");
     fs.mkdirSync(path.dirname(videoPath), { recursive: true });
