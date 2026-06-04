@@ -4,6 +4,7 @@ import { getPool } from "./pool.js";
 import { jobRowToRecord } from "./jobRow.js";
 import { readWorkflowRecord } from "../services/jobs/jobProcess.js";
 import { jobPathsFromRoot } from "../config/jobs.js";
+import { resolveCancelDeadlineAt } from "../services/jobs/cancelDeadline.js";
 
 function utcNowIso() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -198,8 +199,7 @@ export async function reconcileJobFromWorkflow(jobRoot, ctx) {
  * @param {string} jobId
  */
 export async function markJobCanceling(userId, jobId) {
-  const deadlineMinutes = Number(process.env.CANCEL_DEADLINE_MINUTES || 30);
-  const deadline = new Date(Date.now() + deadlineMinutes * 60 * 1000);
+  const deadline = resolveCancelDeadlineAt();
   const result = await getPool().query(
     `UPDATE jobs SET
        status = 'canceling',
@@ -376,6 +376,90 @@ export async function acknowledgeCancel(jobId, attemptId, claimedBy) {
  *   retryable?: boolean,
  * }} input
  */
+/**
+ * @returns {Promise<import('./jobRow.js').JobRecord[]>}
+ */
+export async function listExpiredCancelingJobs() {
+  const result = await getPool().query(
+    `SELECT * FROM jobs
+     WHERE status = 'canceling'
+       AND cancel_deadline_at IS NOT NULL
+       AND cancel_deadline_at < now()
+     ORDER BY cancel_deadline_at`
+  );
+  return result.rows.map(rowToRecord);
+}
+
+/**
+ * Eligibility only — does not change status (used before kill).
+ * @param {{ jobId: string, attemptId: number, claimedBy: string }} input
+ * @returns {Promise<boolean>}
+ */
+export async function isForcedCancelEligible(input) {
+  const result = await getPool().query(
+    `SELECT 1 FROM jobs
+     WHERE job_id = $1 AND attempt_id = $2 AND claimed_by = $3
+       AND status = 'canceling'
+       AND cancel_deadline_at IS NOT NULL
+       AND cancel_deadline_at < now()
+     LIMIT 1`,
+    [input.jobId, input.attemptId, input.claimedBy]
+  );
+  return result.rowCount > 0;
+}
+
+/**
+ * Kill failed after deadline; keep canceling and record error for ops.
+ * @param {{
+ *   jobId: string,
+ *   attemptId: number,
+ *   claimedBy: string,
+ *   detail: string,
+ * }} input
+ * @returns {Promise<boolean>}
+ */
+export async function recordForcedCancelKillFailed(input) {
+  const result = await getPool().query(
+    `UPDATE jobs SET
+       error_code = 'forced_cancel_kill_failed',
+       error_message = $4,
+       updated_at = now()
+     WHERE job_id = $1 AND attempt_id = $2 AND claimed_by = $3
+       AND status = 'canceling'
+       AND cancel_deadline_at IS NOT NULL
+       AND cancel_deadline_at < now()
+     RETURNING job_id`,
+    [input.jobId, input.attemptId, input.claimedBy, input.detail]
+  );
+  return result.rowCount > 0;
+}
+
+/**
+ * Finalize forced cancel after runner is gone (or was already gone).
+ * @param {{ jobId: string, attemptId: number, claimedBy: string }} input
+ * @returns {Promise<boolean>}
+ */
+export async function markJobForcedCanceledByWorker(input) {
+  const result = await getPool().query(
+    `UPDATE jobs SET
+       status = 'canceled',
+       cancel_mode = 'forced',
+       canceled_at = now(),
+       completed_at = now(),
+       retryable = false,
+       error_code = NULL,
+       error_message = NULL,
+       updated_at = now()
+     WHERE job_id = $1 AND attempt_id = $2 AND claimed_by = $3
+       AND status = 'canceling'
+       AND cancel_deadline_at IS NOT NULL
+       AND cancel_deadline_at < now()
+     RETURNING job_id`,
+    [input.jobId, input.attemptId, input.claimedBy]
+  );
+  return result.rowCount > 0;
+}
+
 export async function failJobByWorker(input) {
   const result = await getPool().query(
     `UPDATE jobs SET

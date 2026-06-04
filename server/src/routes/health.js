@@ -8,9 +8,17 @@ import { resolvePythonRuntime } from "../services/pythonRuntime.js";
 
 const router = express.Router();
 
-function runCommand(cmd, args) {
+/**
+ * @param {string} cmd
+ * @param {string[]} args
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+function runCommand(cmd, args, env) {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(cmd, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: env ?? process.env,
+    });
     let stderr = "";
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
@@ -48,8 +56,12 @@ router.get("/healthz/deep", async (_req, res) => {
     detail: ffmpeg.code === 0 ? "available" : ffmpeg.stderr.slice(0, 200),
   });
 
-  const { python } = resolvePythonRuntime();
-  const py = await runCommand(python, ["-m", "movie_pipeline.job_runner", "--help"]);
+  const { python, env } = resolvePythonRuntime();
+  const py = await runCommand(
+    python,
+    ["-m", "movie_pipeline.job_runner", "--help"],
+    env
+  );
   checks.push({
     name: "python_job_runner",
     ok: py.code === 0,

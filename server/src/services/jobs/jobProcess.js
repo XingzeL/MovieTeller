@@ -55,17 +55,21 @@ export function markJobFailed(jobRoot, error) {
 
 /**
  * @param {string} jobRoot
+ * @param {{ cancelMode?: 'cooperative' | 'forced' }} [opts]
  */
-export function markJobCanceledByNode(jobRoot) {
+export function markJobCanceledByNode(jobRoot, opts = {}) {
   const paths = jobPathsFromRoot(jobRoot);
   const record = readWorkflowRecord(paths.workflowJsonPath);
   if (record && isTerminalJobStatus(record.status)) {
     return false;
   }
   const now = new Date().toISOString();
+  const cancelMode = opts.cancelMode === "forced" ? "forced" : "cooperative";
   const next = {
     ...(record || {}),
     status: "canceled",
+    cancel_mode: cancelMode,
+    canceled_at: now,
     error: null,
     updated_at: now,
     created_at: record?.created_at || now,

@@ -1,10 +1,25 @@
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 import { jobPathsFromRoot } from "../../config/jobs.js";
 import { getRepoRoot } from "../../config/index.js";
 import { buildPythonEnv, resolveProjectPython } from "../pythonRuntime.js";
 import { applyRunnerExit, applyRunnerSpawnError } from "./runnerExit.js";
+
+const fakeRunnerScript = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../scripts/fake-hanging-runner.mjs"
+);
+
+function shouldUseFakeHangingRunner() {
+  if (process.env.MOVIE_TELLER_FAKE_HANGING_RUNNER !== "1") return false;
+  return (
+    process.env.NODE_ENV === "test" ||
+    process.env.MOVIE_TELLER_ALLOW_FAKE_RUNNER === "1"
+  );
+}
 
 /** @type {Map<string, { pid: number, spawnedAt: string }>} */
 export const spawnedJobs = new Map();
@@ -18,11 +33,10 @@ export function spawnWorkflowJob(opts) {
   fs.mkdirSync(paths.logsDir, { recursive: true });
 
   const repoRoot = getRepoRoot();
-  const python = resolveProjectPython(repoRoot);
-  const env = buildPythonEnv(repoRoot);
-  const args = [
-    "-m",
-    "movie_pipeline.job_runner",
+  const stdoutFd = fs.openSync(paths.runnerStdoutPath, "a");
+  const stderrFd = fs.openSync(paths.runnerStderrPath, "a");
+
+  const runnerArgs = [
     "--job-id",
     jobId,
     "--jobs-root",
@@ -33,18 +47,31 @@ export function spawnWorkflowJob(opts) {
     paths.requestJsonPath,
   ];
   if (userId) {
-    args.push("--user-id", userId);
+    runnerArgs.push("--user-id", userId);
   }
 
-  const stdoutFd = fs.openSync(paths.runnerStdoutPath, "a");
-  const stderrFd = fs.openSync(paths.runnerStderrPath, "a");
-
-  const child = spawn(python, args, {
-    cwd: repoRoot,
-    env,
-    detached: true,
-    stdio: ["ignore", stdoutFd, stderrFd],
-  });
+  /** @type {import('node:child_process').ChildProcess} */
+  let child;
+  if (shouldUseFakeHangingRunner()) {
+    child = spawn(process.execPath, [fakeRunnerScript, ...runnerArgs], {
+      cwd: repoRoot,
+      detached: true,
+      stdio: ["ignore", stdoutFd, stderrFd],
+    });
+  } else {
+    const python = resolveProjectPython(repoRoot);
+    const env = buildPythonEnv(repoRoot);
+    child = spawn(
+      python,
+      ["-m", "movie_pipeline.job_runner", ...runnerArgs],
+      {
+        cwd: repoRoot,
+        env,
+        detached: true,
+        stdio: ["ignore", stdoutFd, stderrFd],
+      }
+    );
+  }
 
   child.on("error", (err) => {
     applyRunnerSpawnError(jobRoot, err);

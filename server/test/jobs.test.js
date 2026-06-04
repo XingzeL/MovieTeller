@@ -31,6 +31,7 @@ import {
   removeUploadedTempFile,
   validateJobUploadFile,
 } from "../src/services/jobs/uploadValidation.js";
+import { jobRecordToDto, jobRecordToListItemDto } from "../src/services/jobs/readJob.js";
 
 const repoRoot = path.resolve(process.cwd(), "..");
 const tempJobRoots = new Set();
@@ -235,6 +236,32 @@ test("requeueExistingJob resets failed job to queued and clears cancel flag", as
   assert.equal(record.status, "queued");
   assert.equal(record.error, null);
   assert.equal(record.cancel_requested_at, undefined);
+});
+
+test("markJobCanceledByNode records cancel_mode forced when requested", () => {
+  const root = tempJobsRoot();
+  const { jobRoot } = writeJob(root, "forced-cancel-wf", { status: "running" });
+  assert.equal(markJobCanceledByNode(jobRoot, { cancelMode: "forced" }), true);
+  const record = JSON.parse(
+    fs.readFileSync(jobPathsFromRoot(jobRoot).workflowJsonPath, "utf8")
+  );
+  assert.equal(record.status, "canceled");
+  assert.equal(record.cancel_mode, "forced");
+  assert.equal(record.error, null);
+});
+
+test("job DTO exposes cancel_mode as cancelMode", () => {
+  const record = {
+    job_id: "forced-cancel-dto",
+    status: "canceled",
+    cancel_mode: "forced",
+    cancel_requested_at: "2026-01-01T00:00:00Z",
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:01Z",
+  };
+
+  assert.equal(jobRecordToDto(record).cancelMode, "forced");
+  assert.equal(jobRecordToListItemDto(record).cancelMode, "forced");
 });
 
 test("runner exit with cancel flag should mark canceled not failed", () => {

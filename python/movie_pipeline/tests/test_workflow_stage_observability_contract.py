@@ -16,6 +16,19 @@ x
 """
 _SINGLE_GAP_VIDEO_DUR = 2.3
 
+# docs/observability.md — first-version skip_reason enum
+_ALLOWED_SKIP_REASONS = frozenset(
+    {
+        "disabled_by_request",
+        "artifact_reused",
+        "checkpoint_valid",
+        "not_requested",
+        "no_segments",
+        "no_output_requested",
+        "not_implemented_as_separate_stage",
+    }
+)
+
 
 def _settings(**overrides):
     base = {
@@ -139,17 +152,19 @@ def test_full_workflow_emits_standard_stage_lifecycle_contract(tmp_path: Path) -
     for stage in log_events.FIXED_WORKFLOW_STAGES:
         assert stage in by_stage, stage
         stage_events = by_stage[stage]
-        disabled_skip_only = not any(
+        has_start = any(
             row["event"] == log_events.WORKFLOW_STAGE_START for row in stage_events
-        ) and any(
-            row["event"] == log_events.WORKFLOW_STAGE_SKIPPED
-            and row.get("skip_reason") == "disabled_by_request"
-            for row in stage_events
         )
-        if not disabled_skip_only:
-            assert any(
-                row["event"] == log_events.WORKFLOW_STAGE_START for row in stage_events
-            ), stage
+        if not has_start:
+            skipped = [
+                row
+                for row in stage_events
+                if row["event"] == log_events.WORKFLOW_STAGE_SKIPPED
+            ]
+            assert skipped, f"{stage}: stages without start must emit skipped"
+            for row in skipped:
+                reason = row.get("skip_reason")
+                assert reason in _ALLOWED_SKIP_REASONS, row
         terminal = [
             row for row in by_stage[stage]
             if row["event"] in {
@@ -162,8 +177,31 @@ def test_full_workflow_emits_standard_stage_lifecycle_contract(tmp_path: Path) -
         for row in terminal:
             assert "duration_ms" in row, row
             if row["event"] == log_events.WORKFLOW_STAGE_SKIPPED:
-                assert row.get("skip_reason"), row
+                reason = row.get("skip_reason")
+                assert reason, row
+                assert reason in _ALLOWED_SKIP_REASONS, row
             if row["event"] == log_events.WORKFLOW_STAGE_FAILED:
                 assert row.get("error_code"), row
                 assert row.get("error_message"), row
                 assert "fatal" in row, row
+
+    # enable_polish=False / enable_speech=False: dependent vs user-disabled stages
+    polish_events = by_stage["polish"]
+    assert any(
+        row["event"] == log_events.WORKFLOW_STAGE_SKIPPED
+        and row.get("skip_reason") == "disabled_by_request"
+        for row in polish_events
+    )
+    study_events = by_stage["study_enrichment"]
+    assert not any(row["event"] == log_events.WORKFLOW_STAGE_START for row in study_events)
+    assert any(
+        row["event"] == log_events.WORKFLOW_STAGE_SKIPPED
+        and row.get("skip_reason") == "not_requested"
+        for row in study_events
+    )
+    tts_events = by_stage["tts"]
+    assert any(
+        row["event"] == log_events.WORKFLOW_STAGE_SKIPPED
+        and row.get("skip_reason") == "disabled_by_request"
+        for row in tts_events
+    )

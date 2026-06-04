@@ -5,9 +5,13 @@ import { isDbEnabled } from "../db/database.js";
 import {
   claimNextQueuedJob,
   failJobByWorker,
+  getJobById,
+  listExpiredCancelingJobs,
   sweepStaleJobs,
   touchJobHeartbeat,
 } from "../db/jobsRepository.js";
+import { isCancelDeadlinePassed } from "../services/jobs/cancelDeadline.js";
+import { applyForcedCancel } from "../services/jobs/forcedCancel.js";
 import { claimAndSpawn } from "../services/jobs/claimJob.js";
 import { releaseClaim } from "../services/jobs/claimJob.js";
 import { markWorkflowFailed, readWorkflowRecord } from "../services/jobs/jobProcess.js";
@@ -17,6 +21,7 @@ import {
   registerDbJobContext,
   releaseQueueSlotAndClaim,
   releaseQueueSlotOnly,
+  startDbJobCompletionWatch,
   tryAcquireQueueSlot,
   unregisterDbJobContext,
 } from "../services/jobs/jobQueue.js";
@@ -54,18 +59,59 @@ function markWorkflowRunningOnDisk(jobRoot) {
 function startDbHeartbeat(ctx) {
   const intervalMs = Number(process.env.HEARTBEAT_INTERVAL_MS || 30_000);
   const timer = setInterval(() => {
-    touchJobHeartbeat({
-      jobId: ctx.jobId,
-      attemptId: ctx.attemptId,
-      claimedBy: ctx.claimedBy,
-    }).catch((err) => {
+    void (async () => {
+      try {
+        const row = await getJobById(ctx.jobId);
+        if (
+          row &&
+          String(row.status) === "canceling" &&
+          isCancelDeadlinePassed(row.cancel_deadline_at)
+        ) {
+          const applied = await applyForcedCancel({
+            jobId: ctx.jobId,
+            jobRoot: ctx.jobRoot,
+            attemptId: ctx.attemptId,
+            claimedBy: ctx.claimedBy,
+          });
+          if (applied) return;
+        }
+      } catch (err) {
+        console.error(`[queueWorker] forced cancel check failed for ${ctx.jobId}`, err);
+      }
+
+      await touchJobHeartbeat({
+        jobId: ctx.jobId,
+        attemptId: ctx.attemptId,
+        claimedBy: ctx.claimedBy,
+      });
+      await ensureCancelFlagForDbJob(ctx.jobId, ctx.jobRoot, ctx);
+    })().catch((err) => {
       console.error(`[queueWorker] heartbeat failed for ${ctx.jobId}`, err);
-    });
-    ensureCancelFlagForDbJob(ctx.jobId, ctx.jobRoot, ctx).catch((err) => {
-      console.error(`[queueWorker] cancel ack failed for ${ctx.jobId}`, err);
     });
   }, intervalMs);
   registerDbJobContext(ctx.jobId, { ...ctx, heartbeatTimer: timer });
+}
+
+/**
+ * Force-cancel jobs past cancel_deadline_at (orphan runners after worker restart).
+ */
+async function sweepExpiredCancelingJobs() {
+  const expired = await listExpiredCancelingJobs();
+  for (const row of expired) {
+    const jobId = String(row.job_id);
+    const jobRoot = String(row.output_root || "");
+    if (!jobRoot) continue;
+    try {
+      await applyForcedCancel({
+        jobId,
+        jobRoot,
+        attemptId: Number(row.attempt_id ?? 1),
+        claimedBy: String(row.claimed_by || ""),
+      });
+    } catch (err) {
+      console.error(`[queueWorker] expired cancel sweep failed for ${jobId}`, err);
+    }
+  }
 }
 
 /**
@@ -73,6 +119,7 @@ function startDbHeartbeat(ctx) {
  */
 async function tickOnceFromDatabase(opts = {}) {
   const jobsRoot = opts.jobsRoot || getJobsRoot();
+  await sweepExpiredCancelingJobs();
   await sweepStaleJobs();
 
   const { running, maxRunning } = getJobQueueSnapshot();
@@ -139,6 +186,7 @@ async function tickOnceFromDatabase(opts = {}) {
       attemptId: prepared.attemptId,
       claimedBy: prepared.claimedBy,
     });
+    startDbJobCompletionWatch(prepared.jobId);
     return { picked: 1 };
   } catch (err) {
     releaseQueueSlotAndClaim(prepared.jobId, prepared.jobRoot);

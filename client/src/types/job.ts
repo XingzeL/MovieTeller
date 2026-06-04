@@ -13,6 +13,8 @@ export type VideoState =
   | 'downloaded'
   | 'purged'
 
+export type CancelMode = 'cooperative' | 'forced'
+
 export type JobDto = {
   jobId: string
   status: JobStatus
@@ -23,6 +25,7 @@ export type JobDto = {
   createdAt?: string
   updatedAt?: string
   cancelRequestedAt?: string | null
+  cancelMode?: CancelMode | null
   originalSource?: JobOriginalSource | null
   videoDownloadedAt?: string | null
   videoPurgedAt?: string | null
@@ -61,6 +64,7 @@ export type JobListItem = {
   createdAt?: string
   updatedAt?: string
   cancelRequestedAt?: string | null
+  cancelMode?: CancelMode | null
   inputFileName?: string | null
   originalSource?: JobOriginalSource | null
   videoDownloadedAt?: string | null

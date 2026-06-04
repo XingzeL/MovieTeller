@@ -160,15 +160,22 @@ DB 写 canceled, cancel_mode=forced
 实现要求：
 
 - spawn Python 时避免 `shell: true`。
-- POSIX 下建议 `detached: true`，对进程组发信号，减少 ffmpeg / VideoCaptioner 子进程残留。
+- POSIX 下 `detached: true`，对进程组发信号（`kill(-pid)`），减少 ffmpeg / VideoCaptioner 子进程残留。
 - 用户主动取消最终显示 `canceled`，不显示 `failed`。
+- **顺序**：`isForcedCancelEligible`（仅校验）→ 杀进程组 → outcome 为 `killed` / `already_exited` / `no_pid` 时 `markJobForcedCanceledByWorker` → 写 `workflow.json`；kill 失败则保持 `canceling` 并写 `error_code=forced_cancel_kill_failed`。stale `attempt_id` / `claimed_by` 全程不会误伤磁盘或误杀。
 
-可分期：
+| 环境变量 | 说明 |
+|----------|------|
+| `CANCEL_DEADLINE_MINUTES` | 生产默认（如 30） |
+| `CANCEL_DEADLINE_SECONDS` | 测试用秒级 deadline |
+| `FORCED_CANCEL_KILL_GRACE_MS` | SIGTERM 后等待（默认 30000） |
+| `FORCED_CANCEL_POST_KILL_POLL_MS` | SIGKILL 后回收轮询（默认 1000） |
+| `MOVIE_TELLER_FAKE_HANGING_RUNNER` | `1` + test/allow 时装假 runner |
 
 | 阶段 | 内容 |
 |------|------|
 | M4a | DB `canceling` + `cancel.flag` + 手动 retry |
-| M4b | `cancel_deadline_at` + 进程组 SIGTERM/SIGKILL |
+| M4b | deadline + 进程组信号 + `cancel_mode=forced`（已实现，POSIX） |
 
 ## Retry
 
@@ -286,6 +293,27 @@ npm run dev
 11. retry 后 `attempt_id` 递增，旧 attempt reconcile 不能覆盖新 attempt。
 12. DB down 时 protected Job API fail fast，返回 503，不 fallback 扫盘。
 13. forced cancel 用户态仍显示 `canceled`，audit/detail 标明 `cancel_mode=forced`。
+
+### 当前验收记录
+
+**Phase 2 Lite 验收状态：通过**（生产拓扑 `api` + `worker` + Postgres；M6 代码侧 `waiting[]` 清理与公网 runbook 不阻塞部署）。
+
+#### 2026-06-02（自动化 / smoke）
+
+- `cd server && npm test`：通过（53 pass / 1 skip）。
+- `DATABASE_URL=postgresql://movieteller:movieteller@127.0.0.1:5432/movieteller npm run test:db`：通过（15 pass）。
+- `MOVIE_TELLER_BASE_URL=http://localhost:3101 npm run smoke:create`：Postgres + `start:api` + `start:worker` 下通过。
+
+#### 2026-06-04（人工 / 生产拓扑）
+
+- `MOVIE_TELLER_BASE_URL=http://localhost:3001 npm run smoke:cancel`：通过；示例 Job `524c0a2b-af7d-4cd2-a4af-c030a7a4d002` 终态 `canceled`（`start:api` + `start:worker` + Postgres）。
+- **DB down → 503（验收 #12）**：`docker compose stop postgres` 后 `curl -H "Cookie: mt_uid=smoke-user" http://localhost:3001/api/jobs` → `HTTP/1.1 503`，body `{"error":"database unavailable"}`；未 fallback 扫盘。`docker compose start postgres` 后 API 恢复；Worker 在 DB 断开期间可能退出，已用 `npm run start:worker` 重启并见 `[runtime] worker loop started`。
+- **前端真实 workflow**：浏览器上传 → Job 跑通 → 终态 `succeeded`（完整 Python/API 环境，非 `smoke:workflow --strict` 脚本）。
+
+#### 可选 / 非 Lite 阻塞
+
+- `smoke:workflow --strict`：发版前可用固定短视频 + API key 再跑一轮 CLI 回归；前端 succeeded 已覆盖端到端成片路径。
+- M6 工程收尾：`combined` 路径下 `waiting[]` 代码删除、单机公网 runbook 文档化（见里程碑 M6）。
 
 ## 暂缓
 

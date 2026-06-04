@@ -13,14 +13,22 @@ import {
   insertJobQueued,
   markJobCanceling,
   markJobCanceledQueued,
+  markJobForcedCanceledByWorker,
   reconcileJobFromWorkflow,
   retryJobInDb,
   syncVideoStateToDb,
 } from "../src/db/jobsRepository.js";
 import { ensureCancelFlagForDbJob } from "../src/services/jobs/dbJobSync.js";
 import { jobPathsFromRoot } from "../src/config/jobs.js";
-import { markWorkflowFailed, readWorkflowRecord } from "../src/services/jobs/jobProcess.js";
+import {
+  markJobCanceledByNode,
+  markWorkflowFailed,
+  readWorkflowRecord,
+} from "../src/services/jobs/jobProcess.js";
+import { applyForcedCancel } from "../src/services/jobs/forcedCancel.js";
+import { cancelJob } from "../src/services/jobs/jobQueue.js";
 
+const repoRoot = path.resolve(process.cwd(), "..");
 const hasDb = Boolean(process.env.DATABASE_URL?.trim());
 const describeDb = hasDb ? test : test.skip;
 
@@ -131,6 +139,45 @@ describeDb("Phase 2 Lite jobs repository (Postgres)", async (t) => {
 
     const row = await getJobById(jobId);
     assert.ok(row?.cancel_acknowledged_at);
+  });
+
+  await t.test("DB running cancel writes cancel.flag immediately in API path", async () => {
+    const jobId = crypto.randomUUID();
+    const userId = "phase2-api-cancel-flag";
+    const jobsRoot = fs.mkdtempSync(path.join(repoRoot, "artifacts", "test-jobs-"));
+    const jobRoot = path.join(jobsRoot, jobId);
+    const videoPath = path.join(jobRoot, "input", "source.mp4");
+    fs.mkdirSync(path.dirname(videoPath), { recursive: true });
+    fs.writeFileSync(videoPath, "fake");
+    writeMinimalWorkflow(jobRoot, jobId, userId, videoPath, "running");
+
+    t.after(async () => {
+      await deleteJob(jobId);
+      fs.rmSync(jobsRoot, { recursive: true, force: true });
+    });
+
+    await insertJobQueued({ jobId, userId, outputRoot: jobRoot, inputVideoPath: videoPath });
+    await claimJobByIdForTest("worker-api-cancel", jobId);
+
+    const prevJobsRoot = process.env.JOBS_ROOT;
+    process.env.JOBS_ROOT = jobsRoot;
+    try {
+      const result = await cancelJob(jobId, userId);
+      assert.equal(result.status, "canceling");
+    } finally {
+      if (prevJobsRoot === undefined) delete process.env.JOBS_ROOT;
+      else process.env.JOBS_ROOT = prevJobsRoot;
+    }
+
+    const paths = jobPathsFromRoot(jobRoot);
+    assert.equal(fs.existsSync(paths.cancelFlagPath), true);
+    const wf = readWorkflowRecord(paths.workflowJsonPath);
+    assert.equal(wf?.status, "running");
+    assert.ok(wf?.cancel_requested_at);
+
+    const row = await getJobById(jobId);
+    assert.equal(row?.status, "canceling");
+    assert.ok(row?.cancel_requested_at);
   });
 
   await t.test("stale worker ctx does not write cancel.flag", async () => {
@@ -255,6 +302,222 @@ describeDb("Phase 2 Lite jobs repository (Postgres)", async (t) => {
     const row = await getJobById(jobId);
     assert.equal(row?.video_purged_at, purgedAt);
     assert.equal(row?.video_state_version, 2);
+  });
+
+  await t.test("forced cancel updates DB with cancel_mode forced", async () => {
+    const jobId = crypto.randomUUID();
+    const userId = "phase2-forced-cancel";
+    const jobRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mt-phase2-"));
+    const videoPath = path.join(jobRoot, "input", "source.mp4");
+    fs.mkdirSync(path.dirname(videoPath), { recursive: true });
+    fs.writeFileSync(videoPath, "fake-video");
+    writeMinimalWorkflow(jobRoot, jobId, userId, videoPath, "running");
+
+    t.after(async () => {
+      await deleteJob(jobId);
+      fs.rmSync(jobRoot, { recursive: true, force: true });
+    });
+
+    await insertJobQueued({
+      jobId,
+      userId,
+      outputRoot: jobRoot,
+      inputVideoPath: videoPath,
+    });
+    await claimJobByIdForTest("worker-forced-a", jobId);
+    await markJobCanceling(userId, jobId);
+
+    const pool = (await import("../src/db/pool.js")).getPool();
+    await pool.query(
+      `UPDATE jobs SET cancel_deadline_at = now() - interval '1 second' WHERE job_id = $1`,
+      [jobId]
+    );
+
+    markJobCanceledByNode(jobRoot, { cancelMode: "forced" });
+    const updated = await markJobForcedCanceledByWorker({
+      jobId,
+      attemptId: 1,
+      claimedBy: "worker-forced-a",
+    });
+    assert.equal(updated, true);
+
+    const row = await getJobById(jobId);
+    assert.equal(row?.status, "canceled");
+    assert.equal(row?.cancel_mode, "forced");
+    assert.equal(row?.error, null);
+    assert.ok(row?.completed_at);
+  });
+
+  await t.test("forced cancel does not apply for stale attempt_id", async () => {
+    const jobId = crypto.randomUUID();
+    const userId = "phase2-forced-stale";
+    const jobRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mt-phase2-"));
+    const videoPath = path.join(jobRoot, "input", "source.mp4");
+    fs.mkdirSync(path.dirname(videoPath), { recursive: true });
+    fs.writeFileSync(videoPath, "fake");
+
+    t.after(async () => {
+      await deleteJob(jobId);
+      fs.rmSync(jobRoot, { recursive: true, force: true });
+    });
+
+    await insertJobQueued({ jobId, userId, outputRoot: jobRoot, inputVideoPath: videoPath });
+    await claimJobByIdForTest("worker-new", jobId);
+    const pool = (await import("../src/db/pool.js")).getPool();
+    await pool.query(
+      `UPDATE jobs SET status = 'canceling', cancel_deadline_at = now() - interval '1 second',
+       attempt_id = 2, claimed_by = 'worker-new' WHERE job_id = $1`,
+      [jobId]
+    );
+
+    const updated = await markJobForcedCanceledByWorker({
+      jobId,
+      attemptId: 1,
+      claimedBy: "worker-old",
+    });
+    assert.equal(updated, false);
+
+    const row = await getJobById(jobId);
+    assert.equal(row?.status, "canceling");
+  });
+
+  await t.test("applyForcedCancel with stale attempt does not touch workflow or kill", async () => {
+    const jobId = crypto.randomUUID();
+    const userId = "phase2-forced-stale-apply";
+    const jobRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mt-phase2-"));
+    const videoPath = path.join(jobRoot, "input", "source.mp4");
+    fs.mkdirSync(path.dirname(videoPath), { recursive: true });
+    fs.writeFileSync(videoPath, "fake");
+    writeMinimalWorkflow(jobRoot, jobId, userId, videoPath, "running");
+
+    t.after(async () => {
+      await deleteJob(jobId);
+      fs.rmSync(jobRoot, { recursive: true, force: true });
+    });
+
+    await insertJobQueued({ jobId, userId, outputRoot: jobRoot, inputVideoPath: videoPath });
+    await claimJobByIdForTest("worker-new", jobId);
+    await markJobCanceling(userId, jobId);
+    const pool = (await import("../src/db/pool.js")).getPool();
+    await pool.query(
+      `UPDATE jobs SET cancel_deadline_at = now() - interval '1 second',
+       attempt_id = 2, claimed_by = 'worker-new' WHERE job_id = $1`,
+      [jobId]
+    );
+
+    let killCalled = false;
+    const ok = await applyForcedCancel({
+      jobId,
+      jobRoot,
+      attemptId: 1,
+      claimedBy: "worker-old",
+      killFn: () => {
+        killCalled = true;
+      },
+    });
+    assert.equal(ok, false);
+    assert.equal(killCalled, false);
+
+    const wf = readWorkflowRecord(jobPathsFromRoot(jobRoot).workflowJsonPath);
+    assert.equal(wf?.status, "running");
+    assert.equal(wf?.cancel_mode, undefined);
+
+    const row = await getJobById(jobId);
+    assert.equal(row?.status, "canceling");
+    assert.equal(Number(row?.attempt_id), 2);
+  });
+
+  await t.test("applyForcedCancel writes workflow cancel_mode forced", async () => {
+    const jobId = crypto.randomUUID();
+    const userId = "phase2-forced-wf";
+    const jobRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mt-phase2-"));
+    const videoPath = path.join(jobRoot, "input", "source.mp4");
+    fs.mkdirSync(path.dirname(videoPath), { recursive: true });
+    fs.writeFileSync(videoPath, "fake");
+    writeMinimalWorkflow(jobRoot, jobId, userId, videoPath, "running");
+
+    t.after(async () => {
+      await deleteJob(jobId);
+      fs.rmSync(jobRoot, { recursive: true, force: true });
+    });
+
+    await insertJobQueued({ jobId, userId, outputRoot: jobRoot, inputVideoPath: videoPath });
+    await claimJobByIdForTest("worker-fc", jobId);
+    await markJobCanceling(userId, jobId);
+    const pool = (await import("../src/db/pool.js")).getPool();
+    await pool.query(
+      `UPDATE jobs SET cancel_deadline_at = now() - interval '1 second' WHERE job_id = $1`,
+      [jobId]
+    );
+
+    const ok = await applyForcedCancel({
+      jobId,
+      jobRoot,
+      attemptId: 1,
+      claimedBy: "worker-fc",
+      killFn: () => {},
+    });
+    assert.equal(ok, true);
+
+    const wf = readWorkflowRecord(jobPathsFromRoot(jobRoot).workflowJsonPath);
+    assert.equal(wf?.status, "canceled");
+    assert.equal(wf?.cancel_mode, "forced");
+    assert.equal(wf?.error, null);
+  });
+
+  await t.test("applyForcedCancel when killFn throws keeps canceling and records error", async () => {
+    const jobId = crypto.randomUUID();
+    const userId = "phase2-forced-kill-fail";
+    const jobRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mt-phase2-"));
+    const paths = jobPathsFromRoot(jobRoot);
+    const videoPath = path.join(jobRoot, "input", "source.mp4");
+    fs.mkdirSync(path.dirname(videoPath), { recursive: true });
+    fs.writeFileSync(videoPath, "fake");
+    writeMinimalWorkflow(jobRoot, jobId, userId, videoPath, "running");
+
+    t.after(async () => {
+      await deleteJob(jobId);
+      fs.rmSync(jobRoot, { recursive: true, force: true });
+    });
+
+    await insertJobQueued({ jobId, userId, outputRoot: jobRoot, inputVideoPath: videoPath });
+    await claimJobByIdForTest("worker-kill-fail", jobId);
+    await markJobCanceling(userId, jobId);
+    const pool = (await import("../src/db/pool.js")).getPool();
+    await pool.query(
+      `UPDATE jobs SET cancel_deadline_at = now() - interval '1 second' WHERE job_id = $1`,
+      [jobId]
+    );
+
+    fs.mkdirSync(paths.logsDir, { recursive: true });
+    fs.writeFileSync(
+      paths.runnerPidPath,
+      `${JSON.stringify({ pid: process.pid, spawnedAt: new Date().toISOString() })}\n`,
+      "utf8"
+    );
+
+    const ok = await applyForcedCancel({
+      jobId,
+      jobRoot,
+      attemptId: 1,
+      claimedBy: "worker-kill-fail",
+      killFn: () => {
+        const err = new Error("simulated kill failure");
+        // @ts-expect-error test-only
+        err.code = "EPERM";
+        throw err;
+      },
+    });
+    assert.equal(ok, false);
+
+    const row = await getJobById(jobId);
+    assert.equal(row?.status, "canceling");
+    assert.equal(row?.error?.error_code, "forced_cancel_kill_failed");
+    assert.match(String(row?.error?.error_message || ""), /kill outcome: failed/);
+
+    const wf = readWorkflowRecord(paths.workflowJsonPath);
+    assert.equal(wf?.status, "running");
+    assert.equal(wf?.cancel_mode, undefined);
   });
 
   await t.test("reconcile with stale attempt_id does not overwrite new attempt", async () => {

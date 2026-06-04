@@ -152,14 +152,16 @@ queued  → canceled   (API cancel before claim)
 | → terminal | Worker | After child exit, read `workflow.json`, reconcile with `WHERE job_id AND attempt_id AND claimed_by` |
 | Manual retry | API | `canceled` → `queued` always; `failed` → `queued` only when `retryable=true`; `attempt_id` incremented |
 
-### Cancel (M4a)
+### Cancel (M4a + M4b)
 
-1. API sets DB `status=canceling` for running jobs (and `cancel_requested_at`).
-2. Worker heartbeat path writes `cancel.flag` and `cancel_acknowledged_at`.
+1. API sets DB `status=canceling` for running jobs (`cancel_requested_at`, `cancel_deadline_at`) and writes `cancel.flag` immediately.
+2. Worker heartbeat path acknowledges the cancel (`cancel_acknowledged_at`) and keeps the flag present for the claimed attempt.
 3. Python checkpoints read `cancel.flag` and exit as `canceled` in `workflow.json`.
 4. Worker reconcile writes DB `canceled` with `cancel_mode=cooperative`.
 
-**M4b (deferred):** `cancel_deadline_at` + process-group SIGTERM/SIGKILL if cooperative cancel stalls.
+**M4b (forced, past deadline):** Worker checks `cancel_deadline_at` on heartbeat and sweeps expired `canceling` rows each tick. `applyForcedCancel`: (1) `isForcedCancelEligible` — no status change; (2) SIGTERM/SIGKILL process group (POSIX); (3) only if kill outcome is acceptable, finalize DB `canceled` + `cancel_mode=forced` and write `workflow.json`; otherwise stay `canceling` with `forced_cancel_kill_failed`. Stale attempt/worker never mutates disk or kills PIDs.
+
+Env (see [phase2-lite.md](./phase2-lite.md)): `CANCEL_DEADLINE_MINUTES` (prod), `CANCEL_DEADLINE_SECONDS` (tests), `FORCED_CANCEL_KILL_GRACE_MS`, `FORCED_CANCEL_POST_KILL_POLL_MS`. Test-only hanging runner: `MOVIE_TELLER_FAKE_HANGING_RUNNER=1` with `MOVIE_TELLER_ALLOW_FAKE_RUNNER=1` or `NODE_ENV=test`.
 
 ### Stale / heartbeat
 

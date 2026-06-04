@@ -12,6 +12,8 @@ fi
 
 export PYTHONPATH="${ROOT}/python/movieteller_config/src:${ROOT}/python/movieteller_logging/src:${ROOT}/python/pipeline_types/src:${ROOT}/python/media_utils/src:${ROOT}/python/model_gateway/src:${ROOT}/python/subtitle_extraction/src:${ROOT}/python/subtitle_analysis/src:${ROOT}/python/frame_source/src:${ROOT}/python/narration/src:${ROOT}/python/narration_polish/src:${ROOT}/python/narration_speech/src:${ROOT}/python/narration_video/src:${ROOT}/python/pipeline_transcript/src:${ROOT}/python/rerank/src:${ROOT}/python/subtitle_context/src:${ROOT}/python/video_frame_pool/src:${ROOT}/python/movie_pipeline/src${PYTHONPATH:+:$PYTHONPATH}"
 
+"$PYTHON" -m pip install -q -e "$ROOT/python/movieteller_config"
+
 echo "== observability pytest =="
 "$PYTHON" -m pytest \
   python/movieteller_logging/tests/test_progress.py \

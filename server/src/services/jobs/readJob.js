@@ -89,6 +89,7 @@ export function jobRecordToDto(record, request = {}, jobRoot = "") {
     createdAt: record.created_at,
     updatedAt: record.updated_at,
     cancelRequestedAt: record.cancel_requested_at ?? null,
+    cancelMode: record.cancel_mode ?? null,
 
     originalSource: resolveOriginalSourceForDto(record, request),
     videoDownloadedAt: record.video_downloaded_at ?? null,
@@ -130,6 +131,7 @@ export function jobRecordToListItemDto(record, request = {}, jobRoot = "") {
     createdAt: record.created_at,
     updatedAt: record.updated_at,
     cancelRequestedAt: record.cancel_requested_at ?? null,
+    cancelMode: record.cancel_mode ?? null,
     inputFileName: inputPath ? path.basename(inputPath) : null,
     userId: record.user_id ?? null,
 

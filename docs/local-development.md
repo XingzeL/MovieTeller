@@ -11,7 +11,8 @@
 | 单机本地：上传、队列、后台 Python、进度/日志、取消、产物下载 | S3 / presigned / 多 Worker 竞争（Full Phase 2） |
 | Cookie 会话 + 每用户 Job ACL；可选 Clerk Bearer（见 [auth-plan.md](./auth-plan.md)） | 自动 retry（仅手动 retry） |
 | 文件态 Job：`artifacts/jobs/{jobId}/` | combined 无 DB 时重启把 queued/running 标 `failed` |
-| **Phase 2 Lite**：Postgres 控制面 + `dev:api` + `dev:worker`（见下） | M4b 强制取消（进程组信号，可分期） |
+| **Phase 2 Lite**：Postgres 控制面 + `dev:api` + `dev:worker`（见下） | — |
+| M4b 强制取消（deadline 后进程组 SIGTERM/SIGKILL） | Windows 进程组 kill 未验收 |
 | 列表 `limit` 最大 **1000**；**3 天** retention 删除整 Job 目录 | UI 仅展示「最近 8 条」（已取消，见 [job-lifecycle.md](./job-lifecycle.md)） |
 | 视频下载一次 + 410；学习卡长期可访问 | 润色/字幕上下文无 UI 开关（默认开启） |
 | 对外产物：**旁白成片** + **学习卡片**（manifest-only） | 仓库内固定 E2E 样例视频（可自备 mp4 跑 smoke） |
@@ -232,7 +233,7 @@ python -m movie_pipeline.job_runner \
 
 ## 10. 取消语义与信号生效
 
-取消是**协作式**的：Node 写 `cancel.flag`（及 `cancel_requested_at`），Python 在**检查点**读取后抛出 `JobCanceledError` 并写终态 `canceled`。**当前不会**对 detached 的 runner 进程发 `SIGKILL`。
+取消以**协作式**为主：API 将 running Job 标为 `canceling` 后立即写 `cancel.flag`，Python 在检查点退出并写 `canceled`（`cancel_mode=cooperative`），Worker heartbeat 负责确认 `cancel_acknowledged_at`。若超过 `cancel_deadline_at` 仍未退出，Worker 在 **POSIX** 上对 detached runner **进程组**先发 SIGTERM、等待 `FORCED_CANCEL_KILL_GRACE_MS`、再 SIGKILL；kill outcome 可接受后才将 DB/workflow 标为 `cancel_mode=forced`，kill 失败则保持 `canceling` 并记录 `forced_cancel_kill_failed`。详见 [job-lifecycle.md](./job-lifecycle.md) 与 [phase2-lite.md](./phase2-lite.md#cancel)。
 
 状态 ownership 详见 [jobs-api.md](./jobs-api.md) 中「Job 状态 ownership」。
 

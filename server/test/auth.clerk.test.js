@@ -30,6 +30,8 @@ test("unauthenticated GET /api/jobs returns 401", async (t) => {
 
 test("mock Clerk bearer creates job with auth user_id as owner", async (t) => {
   const root = fs.mkdtempSync(path.join(repoRoot, "artifacts", "test-jobs-"));
+  const prevMode = process.env.MOVIE_TELLER_RUN_MODE;
+  process.env.MOVIE_TELLER_RUN_MODE = "api";
   process.env.JOBS_ROOT = root;
   clearJobQueueForTests();
 
@@ -44,10 +46,13 @@ test("mock Clerk bearer creates job with auth user_id as owner", async (t) => {
   const { baseUrl, close } = await startTestServer(app);
   t.after(async () => {
     await close();
+    clearJobQueueForTests();
     setClerkVerifyHookForTests(null);
+    if (prevMode === undefined) delete process.env.MOVIE_TELLER_RUN_MODE;
+    else process.env.MOVIE_TELLER_RUN_MODE = prevMode;
+    await new Promise((resolve) => setTimeout(resolve, 50));
     fs.rmSync(root, { recursive: true, force: true });
     delete process.env.JOBS_ROOT;
-    clearJobQueueForTests();
   });
 
   const videoPath = path.join(root, "_upload.mp4");

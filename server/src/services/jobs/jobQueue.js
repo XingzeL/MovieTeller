@@ -78,6 +78,14 @@ export function isJobMarkedRunning(jobId) {
 /**
  * @param {string} jobId
  */
+/**
+ * Poll workflow.json until terminal; reconcile DB when registered via registerDbJobContext.
+ * @param {string} jobId
+ */
+export function startDbJobCompletionWatch(jobId) {
+  watchJobCompletion(jobId);
+}
+
 function watchJobCompletion(jobId) {
   const jobsRoot = getJobsRoot();
   const jobRoot = resolveJobRoot(jobsRoot, jobId);
@@ -300,6 +308,7 @@ export async function cancelJob(jobId, userId = null) {
     if (dbRow && String(dbRow.status) === "running") {
       const updated = await markJobCanceling(userId, jobId);
       if (updated) {
+        fs.writeFileSync(paths.cancelFlagPath, `${new Date().toISOString()}\n`, "utf8");
         markCancelRequested(jobRoot);
         return { jobId, status: "canceling" };
       }
