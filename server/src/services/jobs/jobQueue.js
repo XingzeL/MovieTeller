@@ -1,6 +1,6 @@
 /**
  * In-process memory queue (single Node process only).
- * Multi-instance deployments need Postgres SKIP LOCKED or BullMQ — see docs/job-queue-limitations.md.
+ * Multi-instance deployments need Postgres SKIP LOCKED or BullMQ — see docs/reference/job-queue-limitations.md.
  */
 import fs from "node:fs";
 

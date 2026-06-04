@@ -12,7 +12,7 @@
 | **B1** | `workflow_stages` / `workflow_exports` 仅 `StageLogger` → `workflow.stage.*` | 已落地 |
 | **B2.1** | `progress.py` 宏 `current_stage` 只读 `workflow.stage.*` | 已落地 |
 | **B2.2** | 保留 `WORKFLOW_*`、`STAGE_GROUP_*`、`SEGMENT_*`、gateway、study_card warning | 已落地 |
-| **B2.3** | `test_progress` / README / `docs/observability.md` | 已落地 |
+| **B2.3** | `test_progress` / README / `docs/reference/observability.md` | 已落地 |
 | **B4** | 扫尾：`legacy_stage` 字段移除；`run-observability-tests.sh` 禁止 src 内 legacy 字面量 | 已落地 |
 
 ## 本地验证（步骤 0）

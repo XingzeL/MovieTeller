@@ -2,7 +2,7 @@
 
 本文档是当前 Phase 2 的实施合同。它面向小并发场景（约 3 人同时使用）：用 Postgres 接管 Job 控制面，但继续保留本地 `artifacts/jobs/`、Python `job_runner` 与 API 代理下载。
 
-完整分布式方案见 [phase2-queue-design.md](./phase2-queue-design.md)。本期不是 Full Phase 2。
+完整分布式方案见 [phase2-queue-design.md](../planning/phase2-queue-design.md)。本期不是 Full Phase 2。
 
 ## 目标
 

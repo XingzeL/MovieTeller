@@ -43,4 +43,4 @@ npm run dev:worker       # worker loop only
 - `queued` + `cancel.flag`：worker **不拾取**
 - API 模式 `cancelJob`：与 combined 相同语义，但不 spawn
 
-详见 [job-lifecycle.md](./job-lifecycle.md)、[job-queue-limitations.md](./job-queue-limitations.md)。
+详见 [job-lifecycle.md](job-lifecycle.md)、[job-queue-limitations.md](job-queue-limitations.md)。

@@ -16,7 +16,7 @@ x
 """
 _SINGLE_GAP_VIDEO_DUR = 2.3
 
-# docs/observability.md — first-version skip_reason enum
+# docs/reference/observability.md — first-version skip_reason enum
 _ALLOWED_SKIP_REASONS = frozenset(
     {
         "disabled_by_request",

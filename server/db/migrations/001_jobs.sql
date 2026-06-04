@@ -1,4 +1,4 @@
--- Phase 2 Lite: jobs control plane (see docs/phase2-lite.md)
+-- Phase 2 Lite: jobs control plane (see docs/reference/phase2-lite.md)
 
 CREATE TABLE IF NOT EXISTS jobs (
   job_id UUID PRIMARY KEY,

@@ -1,6 +1,6 @@
 # Multi-User Storage and Transport (Phase 1)
 
-See also [multi-user-readiness-work-items.md](./multi-user-readiness-work-items.md) and [job-lifecycle.md](./job-lifecycle.md).
+See also [multi-user-readiness-work-items.md](../planning/multi-user-readiness-work-items.md) and [job-lifecycle.md](job-lifecycle.md).
 
 ## Storage
 

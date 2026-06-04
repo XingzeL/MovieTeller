@@ -1,6 +1,6 @@
 # Observability
 
-落地步骤与验收见 [observability-95-landing.md](./observability-95-landing.md)。本地回归：`./scripts/run-observability-tests.sh`。
+落地步骤与验收见 [observability-95-landing.md](../planning/observability-95-landing.md)。本地回归：`./scripts/run-observability-tests.sh`。
 
 MovieTeller 的产品化主链路以 **Job** 为观测单元。一次浏览器上传会创建一个 `jobId`，后续状态、日志、进度、取消、重试与产物都围绕 `artifacts/jobs/{jobId}` 组织。
 

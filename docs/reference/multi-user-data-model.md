@@ -1,6 +1,6 @@
 # Multi-User Data Model
 
-Phase 1 以文件系统为存储；Phase 2 引入 Postgres。合同行为见 [job-lifecycle.md](./job-lifecycle.md)。
+Phase 1 以文件系统为存储；Phase 2 引入 Postgres。合同行为见 [job-lifecycle.md](job-lifecycle.md)。
 
 ## ER（逻辑）
 
@@ -70,4 +70,4 @@ Browser Cookie (mt_uid)
 
 ## 与队列
 
-Phase 1 队列为进程内内存；Phase 2 见 [phase2-queue-design.md](./phase2-queue-design.md)。
+Phase 1 队列为进程内内存；Phase 2 见 [phase2-queue-design.md](../planning/phase2-queue-design.md)。

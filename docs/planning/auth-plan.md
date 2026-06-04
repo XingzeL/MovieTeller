@@ -2,9 +2,9 @@
 
 本文档是 **PR-F 的执行合同**：用真实、后端可验证的身份替换 demo Cookie，**不改变** Job 文件存储、`jobAccess` ACL、manifest、下载一次策略或队列/runtime 形态。
 
-与 [job-lifecycle.md](./job-lifecycle.md)、[multi-user-storage-and-transport.md](./multi-user-storage-and-transport.md) 配套阅读。
+与 [job-lifecycle.md](../reference/job-lifecycle.md)、[multi-user-storage-and-transport.md](../reference/multi-user-storage-and-transport.md) 配套阅读。
 
-Clerk 本地注册/登录排障记录见 [clerk-signup-troubleshooting.md](./clerk-signup-troubleshooting.md)。
+Clerk 本地注册/登录排障记录见 [clerk-signup-troubleshooting.md](../reference/clerk-signup-troubleshooting.md)。
 
 ---
 
@@ -261,7 +261,7 @@ dev 且已登录 Clerk → no-op
 
 ## 阶段 3：数据库化（后置）
 
-`users`、`jobs`、audit、credits — 见 [phase2-queue-design.md](./phase2-queue-design.md)、[multi-user-data-model.md](./multi-user-data-model.md)。
+`users`、`jobs`、audit、credits — 见 [phase2-queue-design.md](phase2-queue-design.md)、[multi-user-data-model.md](../reference/multi-user-data-model.md)。
 
 ---
 

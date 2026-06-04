@@ -46,7 +46,7 @@
 | **edge_tts** | ✅ | ✅ **已加**：`asyncio.wait_for` |
 | **dashscope_tts** | ✅ | ❌ 仍未传超时（SDK 调用无 timeout 参数） |
 
-重试过滤见 [gateway-retryable-retry.md](./gateway-retryable-retry.md)（仅 `retryable` 错误）。
+重试过滤见 [gateway-retryable-retry.md](gateway-retryable-retry.md)（仅 `retryable` 错误）。
 
 ---
 

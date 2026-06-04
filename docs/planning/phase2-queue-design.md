@@ -2,7 +2,7 @@
 
 > 本文档不实施代码；供 Postgres / BullMQ 选型与运维模型对齐。
 >
-> 当前小并发实施方案见 [phase2-lite.md](./phase2-lite.md)。本文保留为完整分布式 Phase 2 参考。
+> 当前小并发实施方案见 [phase2-lite.md](../reference/phase2-lite.md)。本文保留为完整分布式 Phase 2 参考。
 
 ## 目标
 
@@ -59,4 +59,4 @@
 - Clerk `sub` 作为 `user_id` 或内部 UUID 映射表
 - 是否保留 filesystem 为 sole artifact store（推荐短期保留）
 
-参见 [multi-user-data-model.md](./multi-user-data-model.md)、[job-queue-limitations.md](./job-queue-limitations.md)。
+参见 [multi-user-data-model.md](../reference/multi-user-data-model.md)、[job-queue-limitations.md](../reference/job-queue-limitations.md)。

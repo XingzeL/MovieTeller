@@ -54,5 +54,5 @@ Use `run_pipeline_ctx(..., ctx=RunContext(settings=..., pipeline=...))` only whe
 you intentionally want the lower-level narration pipeline entry and are supplying
 the subtitle/frame artifacts yourself.
 
-See [docs/archive/runtime-config-architecture.md](../docs/archive/runtime-config-architecture.md)
+See [docs/planning/archive/runtime-config-architecture.md](../../docs/planning/archive/runtime-config-architecture.md)
 for diagrams and payload helpers.

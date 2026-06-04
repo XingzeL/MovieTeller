@@ -2,23 +2,23 @@
 
 本文档描述当前 **产品化 Alpha** 的推荐运行方式：浏览器上传视频 → Job API → Python workflow → 轮询状态与下载产物。
 
-> **已不是 Mock MVP**：早期 `POST /api/generate` 仅返回假旁白，**请勿**再把它当作主流程。真实处理走 **Job API**（见 [jobs-api.md](./jobs-api.md)）。
+> **已不是 Mock MVP**：早期 `POST /api/generate` 仅返回假旁白，**请勿**再把它当作主流程。真实处理走 **Job API**（见 [jobs-api.md](jobs-api.md)）。
 
 ## 能力边界（当前版本）
 
 | 有 | 尚无 |
 |----|------|
 | 单机本地：上传、队列、后台 Python、进度/日志、取消、产物下载 | S3 / presigned / 多 Worker 竞争（Full Phase 2） |
-| Cookie 会话 + 每用户 Job ACL；可选 Clerk Bearer（见 [auth-plan.md](./auth-plan.md)） | 自动 retry（仅手动 retry） |
+| Cookie 会话 + 每用户 Job ACL；可选 Clerk Bearer（见 [auth-plan.md](../planning/auth-plan.md)） | 自动 retry（仅手动 retry） |
 | 文件态 Job：`artifacts/jobs/{jobId}/` | combined 无 DB 时重启把 queued/running 标 `failed` |
 | **Phase 2 Lite**：Postgres 控制面 + `dev:api` + `dev:worker`（见下） | — |
 | M4b 强制取消（deadline 后进程组 SIGTERM/SIGKILL） | Windows 进程组 kill 未验收 |
-| 列表 `limit` 最大 **1000**；**3 天** retention 删除整 Job 目录 | UI 仅展示「最近 8 条」（已取消，见 [job-lifecycle.md](./job-lifecycle.md)） |
+| 列表 `limit` 最大 **1000**；**3 天** retention 删除整 Job 目录 | UI 仅展示「最近 8 条」（已取消，见 [job-lifecycle.md](job-lifecycle.md)） |
 | 视频下载一次 + 410；学习卡长期可访问 | 润色/字幕上下文无 UI 开关（默认开启） |
 | 对外产物：**旁白成片** + **学习卡片**（manifest-only） | 仓库内固定 E2E 样例视频（可自备 mp4 跑 smoke） |
 
-产品化阶段规划见 [productization-roadmap.md](./productization-roadmap.md)。
-Phase 2 Lite（Postgres 控制面 + 单 Worker）的本地启动方式见 [phase2-lite.md](./phase2-lite.md#本地开发入口)。
+产品化阶段规划见 [productization-roadmap.md](../planning/productization-roadmap.md)。
+Phase 2 Lite（Postgres 控制面 + 单 Worker）的本地启动方式见 [phase2-lite.md](phase2-lite.md#本地开发入口)。
 
 ## 架构一览
 
@@ -96,7 +96,7 @@ npm run dev:worker
 
 - `MOVIE_TELLER_RUN_MODE=api|worker` 时 **必须** 配置 `DATABASE_URL`；未配置或 DB 不可用时 Job API 返回 **503**。
 - API 重启后 DB 中 `queued` Job **保留**；由 Worker 继续 claim。
-- 验收清单见 [phase2-lite.md](./phase2-lite.md#验收标准)。
+- 验收清单见 [phase2-lite.md](phase2-lite.md#验收标准)。
 - Postgres 集成测试（需 `DATABASE_URL`）：`cd server && npm run test:db`
 - 历史 Job 迁入 DB（可选）：`npm run db:backfill -- --dry-run` 后去掉 `--dry-run`
 
@@ -144,7 +144,7 @@ npm run dev
 - 生产环境只接受 Clerk Bearer；`mt_uid`、`X-MovieTeller-User-Id`、`demo-user` fallback 都不生效，`/api/dev/*` 不注册。
 - 非生产未配置 Clerk 时，可继续用 demo cookie 联调：`POST /api/dev/session`，body `{"userId":"user-a"}`；也可使用 `?asUser=user-a`。
 - 受保护 Job 资源必须通过 `apiFetch`/Blob/`srcDoc` 获取，避免裸 `<a href="/api/jobs/...">` 或 `<img src="/api/jobs/...">` 绕过 Bearer。
-- 无 `user_id` 的历史 Job 不会出现在任何用户列表中。详见 [auth-plan.md](./auth-plan.md) 与 [multi-user-storage-and-transport.md](./multi-user-storage-and-transport.md)。
+- 无 `user_id` 的历史 Job 不会出现在任何用户列表中。详见 [auth-plan.md](../planning/auth-plan.md) 与 [multi-user-storage-and-transport.md](multi-user-storage-and-transport.md)。
 
 ### 前端能做什么
 
@@ -208,7 +208,7 @@ npm run smoke:workflow     # 轮询至终态（耗时长，需完整 Python/API 
 npm run smoke:unit         # 冒烟脚本单测（无需 server）
 ```
 
-详见 [jobs-api-smoke.md](./jobs-api-smoke.md) 与 [jobs-api.md](./jobs-api.md) 中 Smoke 一节。
+详见 [jobs-api-smoke.md](jobs-api-smoke.md) 与 [jobs-api.md](jobs-api.md) 中 Smoke 一节。
 
 ## 8. 手动跑 Python Job Runner（排障）
 
@@ -233,9 +233,9 @@ python -m movie_pipeline.job_runner \
 
 ## 10. 取消语义与信号生效
 
-取消以**协作式**为主：API 将 running Job 标为 `canceling` 后立即写 `cancel.flag`，Python 在检查点退出并写 `canceled`（`cancel_mode=cooperative`），Worker heartbeat 负责确认 `cancel_acknowledged_at`。若超过 `cancel_deadline_at` 仍未退出，Worker 在 **POSIX** 上对 detached runner **进程组**先发 SIGTERM、等待 `FORCED_CANCEL_KILL_GRACE_MS`、再 SIGKILL；kill outcome 可接受后才将 DB/workflow 标为 `cancel_mode=forced`，kill 失败则保持 `canceling` 并记录 `forced_cancel_kill_failed`。详见 [job-lifecycle.md](./job-lifecycle.md) 与 [phase2-lite.md](./phase2-lite.md#cancel)。
+取消以**协作式**为主：API 将 running Job 标为 `canceling` 后立即写 `cancel.flag`，Python 在检查点退出并写 `canceled`（`cancel_mode=cooperative`），Worker heartbeat 负责确认 `cancel_acknowledged_at`。若超过 `cancel_deadline_at` 仍未退出，Worker 在 **POSIX** 上对 detached runner **进程组**先发 SIGTERM、等待 `FORCED_CANCEL_KILL_GRACE_MS`、再 SIGKILL；kill outcome 可接受后才将 DB/workflow 标为 `cancel_mode=forced`，kill 失败则保持 `canceling` 并记录 `forced_cancel_kill_failed`。详见 [job-lifecycle.md](job-lifecycle.md) 与 [phase2-lite.md](phase2-lite.md#cancel)。
 
-状态 ownership 详见 [jobs-api.md](./jobs-api.md) 中「Job 状态 ownership」。
+状态 ownership 详见 [jobs-api.md](jobs-api.md) 中「Job 状态 ownership」。
 
 ### 两条取消路径
 
@@ -350,14 +350,14 @@ flowchart TB
 
 单测：`server/test/jobs.test.js`（`applyRunnerExit` / `applyRunnerSpawnError`）；`python/movie_pipeline/tests/test_job_runner_cli.py`（取消不覆盖为 failed）。
 
-完整调研与修复过程见 **[runner-exit-cancel-fix.md](./runner-exit-cancel-fix.md)**。
+完整调研与修复过程见 **[runner-exit-cancel-fix.md](../planning/runner-exit-cancel-fix.md)**。
 
 ## 11. 稳定性（超时 / 重试 / 重跑）
 
 | 能力 | 说明 |
 |------|------|
-| **Gateway 超时/重试** | `capability_timeouts` / `capability_retries`（见 `config/local.yaml.example`）；TTS / embedding 与 chat 一致；仅 `retryable` 错误自动重试（[gateway-retryable-retry.md](./gateway-retryable-retry.md)、[capability-timeout-retries.md](./capability-timeout-retries.md)） |
-| **取消长调用** | 每次 gateway 调用前读日志上下文 `x_output_root` 下的 `cancel.flag`（`movieteller_logging.cancel_signal`）；详见 [cancel-signal-gateway-check.md](./cancel-signal-gateway-check.md) |
+| **Gateway 超时/重试** | `capability_timeouts` / `capability_retries`（见 `config/local.yaml.example`）；TTS / embedding 与 chat 一致；仅 `retryable` 错误自动重试（[gateway-retryable-retry.md](../planning/gateway-retryable-retry.md)、[capability-timeout-retries.md](../planning/capability-timeout-retries.md)） |
+| **取消长调用** | 每次 gateway 调用前读日志上下文 `x_output_root` 下的 `cancel.flag`（`movieteller_logging.cancel_signal`）；详见 [cancel-signal-gateway-check.md](../planning/cancel-signal-gateway-check.md) |
 | **Job 重试** | `POST /api/jobs/:jobId/retry` 或前端 Job 面板「重试」；在同一目录续跑，已产出 stage 由 Python resume 跳过 |
 | **配置示例** | `capability_timeouts.tts: 180`、`capability_retries.tts: 2` |
 
@@ -380,6 +380,6 @@ flowchart TB
 
 ## 相关文档
 
-- [jobs-api.md](./jobs-api.md) — HTTP 契约、状态 ownership、产物 kind
-- [productization-roadmap.md](./productization-roadmap.md) — 阶段规划
+- [jobs-api.md](jobs-api.md) — HTTP 契约、状态 ownership、产物 kind
+- [productization-roadmap.md](../planning/productization-roadmap.md) — 阶段规划
 - [python/movie_pipeline/README.md](../python/movie_pipeline/README.md) — 编排包与 CLI

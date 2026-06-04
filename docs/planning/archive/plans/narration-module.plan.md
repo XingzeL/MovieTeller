@@ -94,7 +94,7 @@ stdout 输出 JSON：`{ "text": "...", "duration_sec": 32.5 }`（字段可实现
 ## 7. 与 Node / 总计划衔接
 
 - Node `NarrationProvider` 后续可通过 **子进程调用 CLI** 或 **HTTP 包装**（本计划不包含 HTTP，可在 Phase 2 追加）；Node 侧使用 **`server/src/config`**（见 [config-module.plan.md](config-module.plan.md) §5）读取同类键，避免与 Python 行为不一致。
-- **总计划**：与 Cursor「三模块需求与开发计划」§14（Python 视频理解）、§14.3（区间解码）保持一致；必要时在本仓库新增 `docs/archive/plans/pipeline-overview.plan.md` 做入库快照。
+- **总计划**：与 Cursor「三模块需求与开发计划」§14（Python 视频理解）、§14.3（区间解码）保持一致；必要时在本仓库新增 `docs/planning/archive/plans/pipeline-overview.plan.md` 做入库快照。
 
 ## 8. 实现顺序（本子计划内）
 

@@ -1,6 +1,6 @@
 # Job Lifecycle Contract
 
-This document is the **authoritative contract** for Job behavior in Phase 1 (filesystem storage, Cookie session, per-user ACL). Implementation must match; tests and [`jobs-api.md`](./jobs-api.md) cross-reference this file.
+This document is the **authoritative contract** for Job behavior in Phase 1 (filesystem storage, Cookie session, per-user ACL). Implementation must match; tests and [`jobs-api.md`](jobs-api.md) cross-reference this file.
 
 ## Status machine
 
@@ -118,11 +118,11 @@ Each line: `{ schema_version, ts, user_id, job_id, event, detail? }`.
 
 ## Runtime modes (reference)
 
-Default development/production single-process: API + in-memory queue + spawn + scheduler ([`bootstrap.js`](../server/src/runtime/bootstrap.js)). Optional split API/worker documented in [`worker-runtime.md`](./worker-runtime.md).
+Default development/production single-process: API + in-memory queue + spawn + scheduler ([`bootstrap.js`](../server/src/runtime/bootstrap.js)). Optional split API/worker documented in [`worker-runtime.md`](worker-runtime.md).
 
 ## Appendix: Phase 2 Lite (Postgres control plane)
 
-When `DATABASE_URL` is set and `MOVIE_TELLER_RUN_MODE` is `api` or `worker`, behavior extends as follows. Full contract: [`phase2-lite.md`](./phase2-lite.md).
+When `DATABASE_URL` is set and `MOVIE_TELLER_RUN_MODE` is `api` or `worker`, behavior extends as follows. Full contract: [`phase2-lite.md`](phase2-lite.md).
 
 ### Status machine (user-facing)
 
@@ -161,7 +161,7 @@ queued  → canceled   (API cancel before claim)
 
 **M4b (forced, past deadline):** Worker checks `cancel_deadline_at` on heartbeat and sweeps expired `canceling` rows each tick. `applyForcedCancel`: (1) `isForcedCancelEligible` — no status change; (2) SIGTERM/SIGKILL process group (POSIX); (3) only if kill outcome is acceptable, finalize DB `canceled` + `cancel_mode=forced` and write `workflow.json`; otherwise stay `canceling` with `forced_cancel_kill_failed`. Stale attempt/worker never mutates disk or kills PIDs.
 
-Env (see [phase2-lite.md](./phase2-lite.md)): `CANCEL_DEADLINE_MINUTES` (prod), `CANCEL_DEADLINE_SECONDS` (tests), `FORCED_CANCEL_KILL_GRACE_MS`, `FORCED_CANCEL_POST_KILL_POLL_MS`. Test-only hanging runner: `MOVIE_TELLER_FAKE_HANGING_RUNNER=1` with `MOVIE_TELLER_ALLOW_FAKE_RUNNER=1` or `NODE_ENV=test`.
+Env (see [phase2-lite.md](phase2-lite.md)): `CANCEL_DEADLINE_MINUTES` (prod), `CANCEL_DEADLINE_SECONDS` (tests), `FORCED_CANCEL_KILL_GRACE_MS`, `FORCED_CANCEL_POST_KILL_POLL_MS`. Test-only hanging runner: `MOVIE_TELLER_FAKE_HANGING_RUNNER=1` with `MOVIE_TELLER_ALLOW_FAKE_RUNNER=1` or `NODE_ENV=test`.
 
 ### Stale / heartbeat
 
@@ -181,4 +181,4 @@ Protected Job APIs return **503** (fail fast). No fallback to filesystem scan or
 
 ---
 
-See also: [`multi-user-storage-and-transport.md`](./multi-user-storage-and-transport.md), [`jobs-api.md`](./jobs-api.md), [`job-queue-limitations.md`](./job-queue-limitations.md).
+See also: [`multi-user-storage-and-transport.md`](multi-user-storage-and-transport.md), [`jobs-api.md`](jobs-api.md), [`job-queue-limitations.md`](job-queue-limitations.md).

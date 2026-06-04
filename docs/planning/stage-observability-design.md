@@ -1,6 +1,6 @@
 # Stage Observability Design
 
-> **落地状态（2026-05）**：已按 [observability-95-landing.md](./observability-95-landing.md) 完成 B1–B4。宏阶段**仅** `workflow.stage.*`；`progress` / `overall_progress` 只读这些事件推进宏阶段；legacy 宏事件（`subtitle_extraction.start` 等）已从代码与 `events.py` 删除。
+> **落地状态（2026-05）**：已按 [observability-95-landing.md](observability-95-landing.md) 完成 B1–B4。宏阶段**仅** `workflow.stage.*`；`progress` / `overall_progress` 只读这些事件推进宏阶段；legacy 宏事件（`subtitle_extraction.start` 等）已从代码与 `events.py` 删除。
 
 目标：把产品化路线图「阶段一：日志与可观测性」中固定 stage 的生命周期日志覆盖率提升到 90% 以上，并降低实现「所有固定 stage 都有 start/done/failed/skipped」的不确定性。
 

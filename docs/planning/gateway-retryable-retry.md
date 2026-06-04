@@ -2,7 +2,7 @@
 
 本文说明 **model_gateway** 中 `execute_with_retry` + `is_retryable_exception` 的设计、为何曾评估为约 **75** 置信度、调研中发现的问题，以及修复与测试后的提升。
 
-日常配置见 [local-development.md §11](./local-development.md#11-稳定性超时--重试--重跑) 与 `config/local.yaml.example` 中的 `capability_retries`。
+日常配置见 [local-development.md §11](../reference/local-development.md#11-稳定性超时--重试--重跑) 与 `config/local.yaml.example` 中的 `capability_retries`。
 
 ---
 

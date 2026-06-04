@@ -2,7 +2,7 @@
 
 ## Purpose
 
-这份清单把 [video-pipeline-module-boundaries.md](/Users/zhuanz0000/WorkSpace/MovieTeller/docs/archive/video-pipeline-module-boundaries.md) 中的目标边界落成可执行任务。
+这份清单把 [video-pipeline-module-boundaries.md](/Users/zhuanz0000/WorkSpace/MovieTeller/docs/planning/archive/video-pipeline-module-boundaries.md) 中的目标边界落成可执行任务。
 
 目标：
 
@@ -55,7 +55,7 @@
 
 ### File Targets
 
-- [docs/archive/video-pipeline-module-boundaries.md](/Users/zhuanz0000/WorkSpace/MovieTeller/docs/archive/video-pipeline-module-boundaries.md)
+- [docs/planning/archive/video-pipeline-module-boundaries.md](/Users/zhuanz0000/WorkSpace/MovieTeller/docs/planning/archive/video-pipeline-module-boundaries.md)
 - 可新增：
   - `docs/video-pipeline-current-behavior.md`
 

@@ -25,4 +25,4 @@ Phase 1 使用 **单 Node 进程内的内存队列**（[`jobQueue.js`](../server
 | `api` | 无 | 仅写 `queued` | 可选 `RUN_SCHEDULER=0` |
 | `worker` | 仅孤儿 `running` | `queueWorker` 拾取 | 关闭 |
 
-详见 [`worker-runtime.md`](./worker-runtime.md) 与 [`job-lifecycle.md`](./job-lifecycle.md)。
+详见 [`worker-runtime.md`](worker-runtime.md) 与 [`job-lifecycle.md`](job-lifecycle.md)。

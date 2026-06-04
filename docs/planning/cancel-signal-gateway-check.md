@@ -2,7 +2,7 @@
 
 本文记录 `movieteller_logging.cancel_signal` + `model_gateway.facade` 入口取消检查的调研、**72 分**成因、修复与测试，以及复评置信度。
 
-相关：[local-development.md §10](./local-development.md#10-取消语义与信号生效)、[runner-exit-cancel-fix.md](./runner-exit-cancel-fix.md)。
+相关：[local-development.md §10](../reference/local-development.md#10-取消语义与信号生效)、[runner-exit-cancel-fix.md](runner-exit-cancel-fix.md)。
 
 ---
 

@@ -2,7 +2,7 @@
 
 本文档描述 MovieTeller 从当前手动脚本/本地管线，演进到可由前端调用、可观测、可恢复、可运营的产品化视频处理系统的阶段计划。
 
-**当前已可用的本地主链路**（上传 → Job API → Python runner）见 [local-development.md](./local-development.md) 与 [jobs-api.md](./jobs-api.md)。**Smoke 分层、`--strict` 与 CI 常态化**见下文 [质量门禁、Smoke 测试与 CI](#质量门禁smoke-测试与-ci)。
+**当前已可用的本地主链路**（上传 → Job API → Python runner）见 [local-development.md](../reference/local-development.md) 与 [jobs-api.md](../reference/jobs-api.md)。**Smoke 分层、`--strict` 与 CI 常态化**见下文 [质量门禁、Smoke 测试与 CI](#质量门禁smoke-测试与-ci)。
 
 核心原则：
 
@@ -62,7 +62,7 @@ WorkflowRequest
 
 ### 可观测性 95% 收口（已落地）
 
-实现说明见 [observability-95-landing.md](./observability-95-landing.md)、[observability.md](./observability.md)。
+实现说明见 [observability-95-landing.md](observability-95-landing.md)、[observability.md](../reference/observability.md)。
 
 | 能力 | 说明 |
 |------|------|
@@ -199,7 +199,7 @@ WorkflowRequest
 
 目标：**TTS 按 segment 断点续跑**；TTS 失败时**先交付学习卡**，再允许用户重试补语音。
 
-详细说明见 [tts-centric-resume.md](./tts-centric-resume.md)。
+详细说明见 [tts-centric-resume.md](tts-centric-resume.md)。
 
 ### 产品范围（做）
 
@@ -480,7 +480,7 @@ GET /jobs/{job_id}/logs
 
 ## 质量门禁、Smoke 测试与 CI
 
-产品化不仅要「能跑通一次」，还要能**反复证明**主链路仍可用。仓库内用 HTTP 冒烟脚本 `scripts/jobs-api-smoke.mjs`（逻辑在 `scripts/jobs-api-smoke-lib.mjs`）分层验证；详见 [jobs-api.md](./jobs-api.md) 与 [jobs-api-smoke.md](./jobs-api-smoke.md)。
+产品化不仅要「能跑通一次」，还要能**反复证明**主链路仍可用。仓库内用 HTTP 冒烟脚本 `scripts/jobs-api-smoke.mjs`（逻辑在 `scripts/jobs-api-smoke-lib.mjs`）分层验证；详见 [jobs-api.md](../reference/jobs-api.md) 与 [jobs-api-smoke.md](../reference/jobs-api-smoke.md)。
 
 ### 当前已具备的 Smoke 分层
 
@@ -503,7 +503,7 @@ GET /jobs/{job_id}/logs
 - **默认（非 strict）**：Job 终态为 `failed` 时脚本仍 **exit 0**，并提示检查 API Key / Python 环境——适合本机尚未配齐密钥、不想误报红。
 - **`--strict`**（或 `MOVIE_TELLER_SMOKE_STRICT=1`）：终态必须为 **`succeeded`**，否则脚本 **非 0 退出**，适合当作**合并门禁**。
 
-示例（使用本机已跑通样例的源片，路径见 [jobs-api-smoke.md §4.1](./jobs-api-smoke.md#41-本地已验证的端到端样例2026-05-28)）：
+示例（使用本机已跑通样例的源片，路径见 [jobs-api-smoke.md §4.1](../reference/jobs-api-smoke.md#41-本地已验证的端到端样例2026-05-28)）：
 
 ```bash
 node scripts/jobs-api-smoke.mjs --mode=workflow --strict \
@@ -515,10 +515,10 @@ node scripts/jobs-api-smoke.mjs --mode=workflow --strict \
 
 | 能力 | 专题文档 |
 |------|----------|
-| Runner 退出 + `cancel.flag` → `canceled` | [runner-exit-cancel-fix.md](./runner-exit-cancel-fix.md) |
-| Gateway retryable 重试 | [gateway-retryable-retry.md](./gateway-retryable-retry.md) |
-| `cancel_signal` + Gateway 入口检查 | [cancel-signal-gateway-check.md](./cancel-signal-gateway-check.md) |
-| TTS/embedding `capability_timeouts` / `capability_retries` | [capability-timeout-retries.md](./capability-timeout-retries.md) |
+| Runner 退出 + `cancel.flag` → `canceled` | [runner-exit-cancel-fix.md](runner-exit-cancel-fix.md) |
+| Gateway retryable 重试 | [gateway-retryable-retry.md](gateway-retryable-retry.md) |
+| `cancel_signal` + Gateway 入口检查 | [cancel-signal-gateway-check.md](cancel-signal-gateway-check.md) |
+| TTS/embedding `capability_timeouts` / `capability_retries` | [capability-timeout-retries.md](capability-timeout-retries.md) |
 
 ### 「CI / smoke --strict 常态化」指什么
 
@@ -526,7 +526,7 @@ node scripts/jobs-api-smoke.mjs --mode=workflow --strict \
 
 典型流水线步骤：
 
-1. 安装 Node 依赖、配置仓库根 `.venv` 并按 [local-development.md §1](./local-development.md#1-python-环境仓库根-venv) editable 安装各 Python 包。
+1. 安装 Node 依赖、配置仓库根 `.venv` 并按 [local-development.md §1](../reference/local-development.md#1-python-环境仓库根-venv) editable 安装各 Python 包。
 2. 从 CI Secrets 注入 API Key（勿写入仓库）；准备 `config/local.yaml` 或环境变量。
 3. 后台启动 `server`（或指向固定测试环境）。
 4. 由轻到重：`npm run smoke:unit` → `npm run smoke` →（可选）`npm run smoke:cancel`。
@@ -562,7 +562,7 @@ node scripts/jobs-api-smoke.mjs --mode=workflow --strict \
 
 - `npm run smoke` 在配置齐全环境下通过（含 `GET /api/healthz/deep`）。
 - 至少一次 `smoke:workflow` 对本机真实短视频 `succeeded`（或 CI strict 通过）。
-- `POST /jobs/:id/retry`、取消与终态语义与 [runner-exit-cancel-fix.md](./runner-exit-cancel-fix.md) 一致。
+- `POST /jobs/:id/retry`、取消与终态语义与 [runner-exit-cancel-fix.md](runner-exit-cancel-fix.md) 一致。
 
 ## 非目标
 

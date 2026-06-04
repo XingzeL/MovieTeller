@@ -1,6 +1,6 @@
 # Runner 退出与取消终态修复记录
 
-本文档记录「用户取消 Job 后，终态应为 `canceled`，却常被标成 `failed`（`runner_exited`）」的调研、根因与修复过程。日常开发中的取消语义仍以 [local-development.md §10](./local-development.md#10-取消语义与信号生效) 为准；本文侧重**问题如何被发现**与**改了什么**。
+本文档记录「用户取消 Job 后，终态应为 `canceled`，却常被标成 `failed`（`runner_exited`）」的调研、根因与修复过程。日常开发中的取消语义仍以 [local-development.md §10](../reference/local-development.md#10-取消语义与信号生效) 为准；本文侧重**问题如何被发现**与**改了什么**。
 
 ---
 
@@ -274,7 +274,7 @@ if existing.status in ("canceled", "succeeded"):
 
 ### 5.4 文档
 
-- [local-development.md §10](./local-development.md#10-取消语义与信号生效) — Node 决策表与 Python 前提（简要）
+- [local-development.md §10](../reference/local-development.md#10-取消语义与信号生效) — Node 决策表与 Python 前提（简要）
 - 本文档 — 完整修复过程（详细）
 
 ---
@@ -358,7 +358,7 @@ export PYTHONPATH="python/movieteller_config/src:python/movieteller_logging/src:
 # 预期：3 passed
 ```
 
-完整 editable 安装见 [local-development.md §1](./local-development.md#1-python-环境仓库根-venv)。
+完整 editable 安装见 [local-development.md §1](../reference/local-development.md#1-python-环境仓库根-venv)。
 
 ### 7.3 尚未自动化
 

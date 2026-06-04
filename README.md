@@ -10,7 +10,7 @@
 前置：**Node.js 18+**、**Python 3.12**、**ffmpeg**、已配置的模型 API（见 `.env` / `config/local.yaml`）。
 
 ```bash
-# 1) Python（仓库根，详见 docs/local-development.md）
+# 1) Python（仓库根，详见 docs/reference/local-development.md）
 python3.12 -m venv .venv && source .venv/bin/activate
 # … pip install 各 python/* 包与 videocaptioner
 
@@ -25,11 +25,14 @@ cd client && npm install && npm run dev    # http://localhost:5173
 
 ## 文档索引
 
+说明性文档（当前系统）与过程性文档（计划/归档）已分目录存放，见 **[docs/README.md](docs/README.md)**。
+
 | 文档 | 内容 |
 |------|------|
-| **[docs/local-development.md](docs/local-development.md)** | **本地运行主文档**：架构、环境、前后端、Job 目录、排障 |
-| [docs/jobs-api.md](docs/jobs-api.md) | Job HTTP API、状态机、产物 manifest、smoke |
-| [docs/productization-roadmap.md](docs/productization-roadmap.md) | 产品化阶段路线图 |
+| **[docs/reference/local-development.md](docs/reference/local-development.md)** | **本地运行主文档**：架构、环境、前后端、Job 目录、排障 |
+| [docs/reference/phase2-lite.md](docs/reference/phase2-lite.md) | Postgres + api/worker 实施合同 |
+| [docs/reference/jobs-api.md](docs/reference/jobs-api.md) | Job HTTP API、状态机、产物 manifest、smoke |
+| [docs/planning/productization-roadmap.md](docs/planning/productization-roadmap.md) | 产品化阶段路线图（过程性） |
 | [python/movieteller_config/README.md](python/movieteller_config/README.md) | 配置与 provider |
 
 ## 主链路（摘要）
