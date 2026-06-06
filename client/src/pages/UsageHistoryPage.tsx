@@ -1,77 +1,71 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-type UsageRecord = {
-  id: string
-  createdAt: string
-  videoName: string
-  consumedMinutes: number
-  remainingAfter: number
-  durationSeconds: number
-  status: 'succeeded' | 'failed' | 'canceled'
+import { apiFetch } from '../api/apiClient'
+import type { UsageResponse } from '../types/usage'
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
-const mockRecords: UsageRecord[] = [
-  {
-    id: '1',
-    createdAt: '2026-05-31 14:22',
-    videoName: 'harrypotter.mp4',
-    consumedMinutes: 18,
-    remainingAfter: 282,
-    durationSeconds: 1240,
-    status: 'succeeded',
-  },
-  {
-    id: '2',
-    createdAt: '2026-05-30 09:15',
-    videoName: 'interview_with_prof.mp4',
-    consumedMinutes: 27,
-    remainingAfter: 300,
-    durationSeconds: 1650,
-    status: 'succeeded',
-  },
-  {
-    id: '3',
-    createdAt: '2026-05-28 21:03',
-    videoName: 'news_clip_20260528.mp4',
-    consumedMinutes: 9,
-    remainingAfter: 327,
-    durationSeconds: 540,
-    status: 'succeeded',
-  },
-  {
-    id: '4',
-    createdAt: '2026-05-25 11:47',
-    videoName: 'ted_talk_ai_future.mp4',
-    consumedMinutes: 41,
-    remainingAfter: 336,
-    durationSeconds: 2490,
-    status: 'succeeded',
-  },
-  {
-    id: '5',
-    createdAt: '2026-05-22 16:30',
-    videoName: 'failed_test_upload.mp4',
-    consumedMinutes: 0,
-    remainingAfter: 377,
-    durationSeconds: 120,
-    status: 'failed',
-  },
-]
+function formatDurationSeconds(seconds: number | null | undefined) {
+  if (seconds == null || seconds <= 0) return '—'
+  const minutes = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${minutes}分 ${secs}秒`
+}
 
 export function UsageHistoryPage() {
   const navigate = useNavigate()
+  const [data, setData] = useState<UsageResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const totalConsumed = mockRecords
-    .filter(r => r.status === 'succeeded')
-    .reduce((sum, r) => sum + r.consumedMinutes, 0)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await apiFetch('/api/usage')
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error(
+            typeof body.error === 'string' ? body.error : `请求失败 (${res.status})`,
+          )
+        }
+        const payload = (await res.json()) as UsageResponse
+        if (!cancelled) {
+          setData(payload)
+          setError(null)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : '加载失败')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
-  const currentRemaining = mockRecords.length > 0 
-    ? mockRecords[0].remainingAfter 
-    : 300
+  const records = data?.records ?? []
+  const summary = data?.summary
+  const currentRemaining = summary?.remainingMinutes ?? 0
+  const totalConsumed = summary?.consumedInPeriod ?? 0
+  const succeededCount = summary?.succeededCount ?? 0
 
   return (
     <div className="min-h-dvh bg-[#f0fdf4] text-[#4a5568]">
-      {/* Header */}
       <div className="border-b border-[#d1fae5] bg-white px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-3">
@@ -101,34 +95,41 @@ export function UsageHistoryPage() {
       <div className="mx-auto max-w-6xl px-6 pb-16 pt-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-[#166534]">Usage &amp; History</h1>
-          <p className="mt-1 text-[#718096]">查看您的额度使用记录与处理历史</p>
+          <p className="mt-1 text-[#718096]">查看当前计费周期额度与近 3 天使用记录</p>
         </div>
 
-        {/* Summary Cards */}
+        {error && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
         <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-[#d1fae5] bg-white p-5">
-            <div className="text-sm text-[#718096]">当前剩余额度</div>
+            <div className="text-sm text-[#718096]">当前剩余额度（计费周期）</div>
             <div className="mt-1 text-4xl font-bold tracking-tighter text-[#166534]">
-              {currentRemaining} <span className="text-2xl font-medium">分钟</span>
+              {loading ? '…' : currentRemaining}{' '}
+              <span className="text-2xl font-medium">分钟</span>
             </div>
           </div>
 
           <div className="rounded-2xl border border-[#d1fae5] bg-white p-5">
-            <div className="text-sm text-[#718096]">本月已消耗</div>
+            <div className="text-sm text-[#718096]">本周期已消耗</div>
             <div className="mt-1 text-4xl font-bold tracking-tighter text-[#166534]">
-              {totalConsumed} <span className="text-2xl font-medium">分钟</span>
+              {loading ? '…' : totalConsumed}{' '}
+              <span className="text-2xl font-medium">分钟</span>
             </div>
           </div>
 
           <div className="rounded-2xl border border-[#d1fae5] bg-white p-5">
-            <div className="text-sm text-[#718096]">本月处理视频</div>
+            <div className="text-sm text-[#718096]">本周期成功任务</div>
             <div className="mt-1 text-4xl font-bold tracking-tighter text-[#166534]">
-              {mockRecords.filter(r => r.status === 'succeeded').length} <span className="text-2xl font-medium">个</span>
+              {loading ? '…' : succeededCount}{' '}
+              <span className="text-2xl font-medium">个</span>
             </div>
           </div>
         </div>
 
-        {/* History Table */}
         <div className="rounded-3xl border border-[#d1fae5] bg-white p-1 shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full table-auto text-sm">
@@ -143,13 +144,13 @@ export function UsageHistoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f0fdf4]">
-                {mockRecords.map((record) => (
+                {records.map((record) => (
                   <tr key={record.id} className="hover:bg-[#f8fdf9]">
                     <td className="px-6 py-4 font-mono text-xs text-[#718096]">
-                      {record.createdAt}
+                      {formatDate(record.createdAt)}
                     </td>
                     <td className="px-6 py-4 font-medium text-[#166534]">
-                      {record.videoName}
+                      {record.videoName || record.jobId}
                     </td>
                     <td className="px-6 py-4">
                       <span className="font-medium text-red-600">
@@ -157,10 +158,12 @@ export function UsageHistoryPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 font-medium text-[#166534]">
-                      {record.remainingAfter} 分钟
+                      {record.remainingAfter ?? '—'} 分钟
                     </td>
                     <td className="px-6 py-4 text-[#718096]">
-                      {Math.floor(record.durationSeconds / 60)}分 {record.durationSeconds % 60}秒
+                      {formatDurationSeconds(
+                        record.processedDurationSeconds ?? record.sourceDurationSeconds,
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       {record.status === 'succeeded' && (
@@ -185,15 +188,16 @@ export function UsageHistoryPage() {
             </table>
           </div>
 
-          {mockRecords.length === 0 && (
-            <div className="py-12 text-center text-[#718096]">
-              暂无使用记录
-            </div>
+          {!loading && records.length === 0 && (
+            <div className="py-12 text-center text-[#718096]">暂无近 3 天使用记录</div>
+          )}
+          {loading && (
+            <div className="py-12 text-center text-[#718096]">加载中…</div>
           )}
         </div>
 
         <div className="mt-6 text-center text-xs text-[#9ca3af]">
-          额度消耗仅统计成功完成的任务。失败或取消的任务不扣除额度。
+          列表展示近 3 天流水；摘要为当前计费周期。失败或取消的任务不扣除额度。
         </div>
       </div>
     </div>

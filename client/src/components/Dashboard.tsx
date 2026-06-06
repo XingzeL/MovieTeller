@@ -79,6 +79,13 @@ function formatDate(value?: string) {
   })
 }
 
+function formatDurationSec(sec?: number | null) {
+  if (sec == null || sec <= 0) return null
+  const minutes = Math.floor(sec / 60)
+  const seconds = sec % 60
+  return `${minutes}分${seconds}秒`
+}
+
 function displayTitle(job: JobListItem) {
   return (
     job.originalSource?.original_filename ||
@@ -482,6 +489,17 @@ function DashboardContent({ clerkUserLabel }: { clerkUserLabel: string | null })
 
                       <div className="mt-1 text-xs text-[#718096]">{formatDate(job.createdAt)}</div>
                       <SourceInfo job={job} />
+                      {(job.processedDurationSec != null || job.quotaClipApplied) && (
+                        <div className="mt-1 text-[11px] text-[#718096]">
+                          处理时长：{formatDurationSec(job.processedDurationSec) ?? '—'}
+                          {job.quotaClipApplied && job.sourceDurationSec != null && (
+                            <span>
+                              {' '}
+                              （已按额度裁剪，原视频 {formatDurationSec(job.sourceDurationSec)}）
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {/* Live progress for running / queued jobs — shows current stage + % + animated bar */}
                       {isActive && (

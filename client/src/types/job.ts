@@ -36,6 +36,10 @@ export type JobDto = {
   videoState?: VideoState
   canDownloadVideo?: boolean
   canOpenStudyCards?: boolean
+  sourceDurationSec?: number | null
+  processedDurationSec?: number | null
+  quotaClipApplied?: boolean
+  processingRange?: { startPoint: number; endPoint: number } | null
 }
 
 export type JobOriginalSource = {
@@ -75,6 +79,9 @@ export type JobListItem = {
   videoState?: VideoState
   canDownloadVideo?: boolean
   canOpenStudyCards?: boolean
+  sourceDurationSec?: number | null
+  processedDurationSec?: number | null
+  quotaClipApplied?: boolean
 }
 
 export type JobListResponse = {
