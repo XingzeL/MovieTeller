@@ -7,11 +7,9 @@ import { readJobRequestMetadata } from "./readJobRequest.js";
 import { jobRecordToListItemDto } from "./readJob.js";
 
 /**
- * Full filesystem scan for retention/recovery/admin — not subject to API list MAX_LIMIT.
  * @param {{ jobsRoot?: string }} [opts]
- * @returns {Array<{ jobId: string, record: Record<string, unknown>, jobRoot: string, listItem: ReturnType<typeof jobRecordToListItemDto> }>}
  */
-export function scanAllJobsForSystem(opts = {}) {
+export async function scanAllJobsForSystem(opts = {}) {
   const jobsRoot = opts.jobsRoot || getJobsRoot();
   if (!fs.existsSync(jobsRoot)) {
     return [];
@@ -33,16 +31,17 @@ export function scanAllJobsForSystem(opts = {}) {
     const record = readWorkflowRecord(paths.workflowJsonPath);
     if (!record) continue;
 
-    const jobId = String(record.job_id || name);
+    const listItem = await jobRecordToListItemDto(
+      record,
+      readJobRequestMetadata(jobRoot),
+      jobRoot
+    );
+
     entries.push({
-      jobId,
+      jobId: String(record.job_id || name),
       record,
       jobRoot,
-      listItem: jobRecordToListItemDto(
-        record,
-        readJobRequestMetadata(jobRoot),
-        jobRoot
-      ),
+      listItem,
     });
   }
   return entries;

@@ -12,11 +12,11 @@ const DEFAULT_MAX_AGE_DAYS = 3;
  *
  * @param {number} [maxAgeDays]
  * @param {{ jobsRoot?: string }} [opts]
- * @returns {{ deleted: number, scanned: number }}
+ * @returns {Promise<{ deleted: number, scanned: number }>}
  */
-export function purgeOldJobs(maxAgeDays = DEFAULT_MAX_AGE_DAYS, opts = {}) {
+export async function purgeOldJobs(maxAgeDays = DEFAULT_MAX_AGE_DAYS, opts = {}) {
   const jobsRoot = opts.jobsRoot || getJobsRoot();
-  const scannedEntries = scanAllJobsForSystem({ jobsRoot });
+  const scannedEntries = await scanAllJobsForSystem({ jobsRoot });
 
   const cutoffMs = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
 

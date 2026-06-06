@@ -13,25 +13,25 @@ export function startRetentionScheduler(opts = {}) {
   }
 
   const runPurge = () => {
-    try {
-      const result = runRetentionCycle({
-        jobsRoot: opts.jobsRoot,
-        maxAgeDays: MAX_AGE_DAYS,
-      });
-
+    runRetentionCycle({
+      jobsRoot: opts.jobsRoot,
+      maxAgeDays: MAX_AGE_DAYS,
+    })
+      .then((result) => {
       if (result.videoChecked > 0) {
         console.log(
           `[Retention] Video purge: checked ${result.videoChecked}, attempted ${result.videoPurged}`
         );
       }
-      if (result.deleted > 0) {
+      if (result.deleted > 0 || result.dbDeleted > 0) {
         console.log(
-          `[Retention] Age-based full purge: deleted ${result.deleted} jobs older than ${MAX_AGE_DAYS} days (scanned ${result.ageScanned} in this cycle).`
+          `[Retention] Age-based full purge: disk ${result.deleted}, db ${result.dbDeleted ?? 0}, ledger ${result.ledgerDeleted ?? 0} (scanned ${result.ageScanned}).`
         );
       }
-    } catch (err) {
+      })
+      .catch((err) => {
       console.error("[Retention Scheduler] Error during purge run", err);
-    }
+    });
   };
 
   const startupTimer = setTimeout(runPurge, STARTUP_DELAY_MS);

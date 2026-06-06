@@ -24,20 +24,37 @@ export function rowToRecord(row) {
  *   outputRoot: string,
  *   inputVideoPath: string,
  *   originalSource?: object | null,
+ *   sourceDurationSec?: number | null,
+ *   processedDurationSec?: number | null,
+ *   quotaClipApplied?: boolean,
+ *   quotaPolicy?: object | null,
+ *   reservedMinutes?: number,
+ *   reservedUsageDate?: string | null,
  * }} input
+ * @param {import('pg').PoolClient} [client]
  */
-export async function insertJobQueued(input) {
-  await getPool().query(
+export async function insertJobQueued(input, client) {
+  const pool = client ?? getPool();
+  await pool.query(
     `INSERT INTO jobs (
       job_id, user_id, status, attempt_id,
-      output_root, input_video_path, original_source, video_state_version, progress
-    ) VALUES ($1, $2, 'queued', 1, $3, $4, $5::jsonb, 0, '{}'::jsonb)`,
+      output_root, input_video_path, original_source, video_state_version, progress,
+      source_duration_sec, processed_duration_sec, quota_clip_applied,
+      quota_policy, reserved_minutes, reserved_usage_date
+    ) VALUES ($1, $2, 'queued', 1, $3, $4, $5::jsonb, 0, '{}'::jsonb,
+      $6, $7, $8, $9::jsonb, $10, $11)`,
     [
       input.jobId,
       input.userId,
       input.outputRoot,
       input.inputVideoPath,
       input.originalSource ? JSON.stringify(input.originalSource) : null,
+      input.sourceDurationSec ?? null,
+      input.processedDurationSec ?? null,
+      input.quotaClipApplied ?? false,
+      input.quotaPolicy ? JSON.stringify(input.quotaPolicy) : null,
+      input.reservedMinutes ?? 0,
+      input.reservedUsageDate ?? null,
     ]
   );
 }
@@ -482,4 +499,54 @@ export async function failJobByWorker(input) {
     ]
   );
   return result.rowCount > 0;
+}
+
+/**
+ * Terminal jobs older than retention window (Postgres control plane).
+ * @param {number} maxAgeDays
+ */
+export async function listEligibleJobsForRetention(maxAgeDays) {
+  const result = await getPool().query(
+    `SELECT job_id, output_root, created_at
+     FROM jobs
+     WHERE status IN ('succeeded', 'failed', 'canceled')
+       AND created_at < now() - ($1::int * interval '1 day')
+     ORDER BY created_at`,
+    [maxAgeDays]
+  );
+  return result.rows;
+}
+
+/**
+ * @param {string} jobId
+ * @returns {Promise<boolean>}
+ */
+export async function deleteJobById(jobId) {
+  const result = await getPool().query("DELETE FROM jobs WHERE job_id = $1", [
+    jobId,
+  ]);
+  return result.rowCount > 0;
+}
+
+/**
+ * @param {string} jobId
+ */
+export async function jobExistsInDb(jobId) {
+  const result = await getPool().query(
+    "SELECT 1 FROM jobs WHERE job_id = $1 LIMIT 1",
+    [jobId]
+  );
+  return result.rowCount > 0;
+}
+
+/**
+ * @param {string} userId
+ */
+export async function countActiveJobsForUser(userId) {
+  const result = await getPool().query(
+    `SELECT COUNT(*)::int AS count FROM jobs
+     WHERE user_id = $1 AND status IN ('queued', 'running', 'canceling')`,
+    [userId]
+  );
+  return result.rows[0]?.count ?? 0;
 }

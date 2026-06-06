@@ -62,5 +62,16 @@ export function jobRowToRecord(row) {
       : null,
     video_state_version: row.video_state_version ?? 0,
     claimed_by: row.claimed_by ?? null,
+    source_duration_sec: row.source_duration_sec ?? null,
+    processed_duration_sec: row.processed_duration_sec ?? null,
+    quota_clip_applied: row.quota_clip_applied ?? false,
+    quota_policy: row.quota_policy ?? null,
+    reserved_minutes: row.reserved_minutes ?? 0,
+    reserved_usage_date: row.reserved_usage_date ?? null,
+    billing_finalized_at: row.billing_finalized_at
+      ? row.billing_finalized_at instanceof Date
+        ? row.billing_finalized_at.toISOString().replace(/\.\d{3}Z$/, "Z")
+        : row.billing_finalized_at
+      : null,
   };
 }

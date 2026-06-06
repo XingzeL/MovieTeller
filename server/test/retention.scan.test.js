@@ -36,7 +36,7 @@ function writeTerminalJob(root, jobId, opts = {}) {
   );
 }
 
-test("scanAllJobsForSystem is not capped at listJobs MAX_LIMIT", () => {
+test("scanAllJobsForSystem is not capped at listJobs MAX_LIMIT", async () => {
   const parent = path.join(repoRoot, "artifacts");
   fs.mkdirSync(parent, { recursive: true });
   const root = fs.mkdtempSync(path.join(parent, "test-jobs-"));
@@ -45,14 +45,14 @@ test("scanAllJobsForSystem is not capped at listJobs MAX_LIMIT", () => {
     for (let i = 0; i < count; i++) {
       writeTerminalJob(root, `scan-cap-${String(i).padStart(5, "0")}`);
     }
-    const scanned = scanAllJobsForSystem({ jobsRoot: root });
+    const scanned = await scanAllJobsForSystem({ jobsRoot: root });
     assert.equal(scanned.length, count);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("purgeOldJobs deletes terminal jobs older than retention via scanAllJobs", () => {
+test("purgeOldJobs deletes terminal jobs older than retention via scanAllJobs", async () => {
   const parent = path.join(repoRoot, "artifacts");
   fs.mkdirSync(parent, { recursive: true });
   const root = fs.mkdtempSync(path.join(parent, "test-jobs-"));
@@ -70,7 +70,7 @@ test("purgeOldJobs deletes terminal jobs older than retention via scanAllJobs", 
       status: "running",
     });
 
-    const { deleted, scanned } = purgeOldJobs(3, { jobsRoot: root });
+    const { deleted, scanned } = await purgeOldJobs(3, { jobsRoot: root });
     assert.equal(scanned, 3);
     assert.equal(deleted, 1);
     assert.equal(fs.existsSync(path.join(root, "old-job")), false);
