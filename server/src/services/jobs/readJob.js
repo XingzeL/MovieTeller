@@ -67,9 +67,9 @@ export async function readJobRecord(jobId) {
  * @param {import("./readJobRequest.js").JobRequestMetadata} [request]
  * @param {string} [jobRoot]
  */
-export function jobRecordToDto(record, request = {}, jobRoot = "") {
+export async function jobRecordToDto(record, request = {}, jobRoot = "") {
   const availability = jobRoot
-    ? buildJobAvailability(record, request, jobRoot)
+    ? await buildJobAvailability(record, request, jobRoot)
     : {
         videoState: "not_generated",
         canDownloadVideo: false,
@@ -102,22 +102,29 @@ export function jobRecordToDto(record, request = {}, jobRoot = "") {
     videoState: availability.videoState,
     canDownloadVideo: availability.canDownloadVideo,
     canOpenStudyCards: availability.canOpenStudyCards,
+
+    sourceDurationSec: record.source_duration_sec ?? null,
+    processedDurationSec: record.processed_duration_sec ?? null,
+    quotaClipApplied: record.quota_clip_applied ?? false,
+    processingRange:
+      record.processed_duration_sec != null
+        ? {
+            startPoint: 0,
+            endPoint: record.processed_duration_sec,
+          }
+        : null,
   };
 }
 
 /**
  * @param {Record<string, unknown>} record
  * @param {import("./readJobRequest.js").JobRequestMetadata} [request]
- */
-/**
- * @param {Record<string, unknown>} record
- * @param {import("./readJobRequest.js").JobRequestMetadata} [request]
  * @param {string} [jobRoot]
  */
-export function jobRecordToListItemDto(record, request = {}, jobRoot = "") {
+export async function jobRecordToListItemDto(record, request = {}, jobRoot = "") {
   const inputPath = String(record.input_video_path || "");
   const availability = jobRoot
-    ? buildJobAvailability(record, request, jobRoot)
+    ? await buildJobAvailability(record, request, jobRoot)
     : {
         videoState: "not_generated",
         canDownloadVideo: false,
@@ -146,5 +153,9 @@ export function jobRecordToListItemDto(record, request = {}, jobRoot = "") {
     videoState: availability.videoState,
     canDownloadVideo: availability.canDownloadVideo,
     canOpenStudyCards: availability.canOpenStudyCards,
+
+    sourceDurationSec: record.source_duration_sec ?? null,
+    processedDurationSec: record.processed_duration_sec ?? null,
+    quotaClipApplied: record.quota_clip_applied ?? false,
   };
 }

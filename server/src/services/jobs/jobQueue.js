@@ -14,6 +14,7 @@ import {
 } from "../../db/jobsRepository.js";
 import { isApiRunMode, isWorkerRunMode } from "../../runtime/runMode.js";
 import { releaseClaimIfOwned } from "./claimJob.js";
+import { finalizeBilling } from "../billing/finalizeBilling.js";
 import { createJobFromUpload, spawnPreparedJob } from "./createJob.js";
 import { syncWorkflowTerminalToDb } from "./dbJobSync.js";
 import {
@@ -292,6 +293,7 @@ export async function cancelJob(jobId, userId = null) {
     markJobCanceledByNode(jobRoot);
     if (isDbEnabled() && userId) {
       await markJobCanceledQueued(userId, jobId);
+      await finalizeBilling(jobId);
     }
     drainQueue();
     return { jobId, status: "canceled" };
@@ -302,6 +304,7 @@ export async function cancelJob(jobId, userId = null) {
     if (dbRow && String(dbRow.status) === "queued") {
       markJobCanceledByNode(jobRoot);
       await markJobCanceledQueued(userId, jobId);
+      await finalizeBilling(jobId);
       drainQueue();
       return { jobId, status: "canceled" };
     }

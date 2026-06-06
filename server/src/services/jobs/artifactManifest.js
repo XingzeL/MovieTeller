@@ -4,6 +4,7 @@ import path from "node:path";
 import { jobPathsFromRoot } from "../../config/jobs.js";
 import { readJobRequestOptions } from "./readJobRequest.js";
 import { readJobRecord } from "./readJob.js";
+import { resolveStudyCardsArtifact } from "./resolveStudyCardsArtifact.js";
 
 /** User-facing artifact kinds exposed in API / frontend downloads. */
 const PRODUCT_ARTIFACT_KINDS = new Set(["renderedVideo", "studyCardsHtml"]);
@@ -32,21 +33,36 @@ function readManifestFile(jobRoot) {
 export async function listJobArtifacts(jobId) {
   const { paths } = await readJobRecord(jobId);
   const request = readJobRequestOptions(paths.root);
-  const manifestEntries = readManifestFile(paths.root);
-  if (!manifestEntries) return [];
-  return manifestEntries
-    .filter(
-      (entry) =>
-        PRODUCT_ARTIFACT_KINDS.has(String(entry.kind || "")) &&
-        fs.existsSync(entry.path) &&
-        (request.enableSpeech || String(entry.kind) !== "renderedVideo")
-    )
-    .map((entry) => ({
+  const artifacts = [];
+
+  const manifestEntries = readManifestFile(paths.root) ?? [];
+  for (const entry of manifestEntries) {
+    if (!PRODUCT_ARTIFACT_KINDS.has(String(entry.kind || ""))) continue;
+    if (!fs.existsSync(entry.path)) continue;
+    if (!request.enableSpeech && String(entry.kind) === "renderedVideo") continue;
+    artifacts.push({
       kind: entry.kind,
       label: entry.label || entry.kind,
       downloadUrl: `/api/jobs/${encodeURIComponent(jobId)}/artifacts/${entry.kind}`,
       sizeBytes: fs.statSync(entry.path).size,
-    }));
+    });
+  }
+
+  const studyCards = await resolveStudyCardsArtifact(jobId, paths.root);
+  if (
+    studyCards.source === "db" &&
+    studyCards.html &&
+    !artifacts.some((a) => a.kind === "studyCardsHtml")
+  ) {
+    artifacts.push({
+      kind: "studyCardsHtml",
+      label: "studyCardsHtml",
+      downloadUrl: `/api/jobs/${encodeURIComponent(jobId)}/artifacts/studyCardsHtml`,
+      sizeBytes: Buffer.byteLength(studyCards.html, "utf8"),
+    });
+  }
+
+  return artifacts;
 }
 
 /**
@@ -63,6 +79,23 @@ export async function resolveArtifactDownload(jobId, kind) {
   }
   if (!PRODUCT_ARTIFACT_KINDS.has(kind)) {
     const err = new Error("unknown artifact kind");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (kind === "studyCardsHtml") {
+    const resolved = await resolveStudyCardsArtifact(jobId, paths.root);
+    if (resolved.source === "db" && resolved.html) {
+      return { html: resolved.html, label: "study_cards.html" };
+    }
+    if (resolved.source === "disk" && resolved.path) {
+      return resolvePathWithinJob(
+        record.output_root,
+        resolved.path,
+        "study_cards.html"
+      );
+    }
+    const err = new Error("artifact not available");
     err.statusCode = 404;
     throw err;
   }

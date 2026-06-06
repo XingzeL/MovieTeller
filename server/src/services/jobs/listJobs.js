@@ -77,20 +77,24 @@ function sortTimestamp(record) {
 /**
  * @param {{ jobsRoot?: string, limit?: number, offset?: number }} [opts]
  */
-function listJobsFromRecords(sorted, opts = {}) {
+async function listJobsFromRecords(sorted, opts = {}) {
   const limit = parsePositiveInt(opts.limit, DEFAULT_LIMIT, MAX_LIMIT);
   const offset = parseNonNegativeInt(opts.offset, 0);
   const total = sorted.length;
   const page = sorted.slice(offset, offset + limit);
 
-  return {
-    jobs: page.map(({ record, jobRoot }) =>
+  const jobs = await Promise.all(
+    page.map(({ record, jobRoot }) =>
       jobRecordToListItemDto(
         record,
         readJobRequestMetadata(jobRoot),
         jobRoot
       )
-    ),
+    )
+  );
+
+  return {
+    jobs,
     total,
     limit,
     offset,
@@ -100,7 +104,7 @@ function listJobsFromRecords(sorted, opts = {}) {
 /**
  * @param {{ jobsRoot?: string, limit?: number, offset?: number }} [opts]
  */
-export function listJobs(opts = {}) {
+export async function listJobs(opts = {}) {
   const jobsRoot = opts.jobsRoot || getJobsRoot();
   const sorted = collectJobRecords(jobsRoot).sort(
     (a, b) => sortTimestamp(b.record) - sortTimestamp(a.record)
@@ -121,14 +125,17 @@ export async function listJobsForUser(userId, opts = {}) {
       limit,
       offset,
     });
-    return {
-      jobs: rows.map((record) =>
+    const jobs = await Promise.all(
+      rows.map((record) =>
         jobRecordToListItemDto(
           record,
           readJobRequestMetadata(String(record.output_root)),
           String(record.output_root)
         )
-      ),
+      )
+    );
+    return {
+      jobs,
       total,
       limit,
       offset,
@@ -139,5 +146,5 @@ export async function listJobsForUser(userId, opts = {}) {
   const sorted = collectJobRecords(jobsRoot)
     .filter(({ record }) => record.user_id === userId)
     .sort((a, b) => sortTimestamp(b.record) - sortTimestamp(a.record));
-  return listJobsFromRecords(sorted, opts);
+  return await listJobsFromRecords(sorted, opts);
 }

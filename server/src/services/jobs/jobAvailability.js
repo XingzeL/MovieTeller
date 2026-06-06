@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
 import { jobPathsFromRoot } from "../../config/jobs.js";
+import { resolveStudyCardsArtifact } from "./resolveStudyCardsArtifact.js";
 
 /**
  * @param {string} jobRoot
@@ -30,13 +31,6 @@ function manifestArtifactExists(jobRoot, kind) {
 /**
  * @param {string} jobRoot
  */
-function studyCardsExists(jobRoot) {
-  return manifestArtifactExists(jobRoot, "studyCardsHtml");
-}
-
-/**
- * @param {string} jobRoot
- */
 function renderedVideoExists(jobRoot) {
   return manifestArtifactExists(jobRoot, "renderedVideo");
 }
@@ -46,7 +40,7 @@ function renderedVideoExists(jobRoot) {
  * @param {import("./readJobRequest.js").JobRequestMetadata} request
  * @param {string} jobRoot
  */
-export function buildJobAvailability(record, request = {}, jobRoot) {
+export async function buildJobAvailability(record, request = {}, jobRoot) {
   const enableSpeech = request.enableSpeech !== false;
   const status = String(record.status || "");
   const downloaded = Boolean(record.video_downloaded_at);
@@ -68,8 +62,14 @@ export function buildJobAvailability(record, request = {}, jobRoot) {
   }
 
   const canDownloadVideo = videoState === "available";
+
+  const studyCards = await resolveStudyCardsArtifact(
+    String(record.job_id || ""),
+    jobRoot
+  );
   const canOpenStudyCards =
-    status === "succeeded" && studyCardsExists(jobRoot);
+    status === "succeeded" &&
+    (studyCards.source === "db" || studyCards.source === "disk");
 
   return {
     videoState,

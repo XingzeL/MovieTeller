@@ -163,7 +163,7 @@ test("readJobLogs supports limit, malformed lines, and cursor metadata", async (
   assert.equal(nextCursor.nextOffset, Buffer.byteLength(first + second + third));
 });
 
-test("listJobs sorts by updated_at desc and paginates", () => {
+test("listJobs sorts by updated_at desc and paginates", async () => {
   const root = tempJobsRoot();
   writeJob(root, "older-job", {
     updated_at: "2026-01-01T00:00:00Z",
@@ -178,7 +178,7 @@ test("listJobs sorts by updated_at desc and paginates", () => {
   fs.mkdirSync(path.join(root, "not-a-job"), { recursive: true });
   fs.writeFileSync(path.join(root, "not-a-job", "readme.txt"), "skip");
 
-  const page = listJobs({ jobsRoot: root, limit: 1, offset: 0 });
+  const page = await listJobs({ jobsRoot: root, limit: 1, offset: 0 });
   assert.equal(page.total, 2);
   assert.equal(page.limit, 1);
   assert.equal(page.offset, 0);
@@ -188,7 +188,7 @@ test("listJobs sorts by updated_at desc and paginates", () => {
   assert.equal(page.jobs[0].currentStage, "narration");
   assert.equal(page.jobs[0].inputFileName, "source.mp4");
 
-  const second = listJobs({ jobsRoot: root, limit: 10, offset: 1 });
+  const second = await listJobs({ jobsRoot: root, limit: 10, offset: 1 });
   assert.equal(second.jobs[0].jobId, "older-job");
 });
 
@@ -250,7 +250,7 @@ test("markJobCanceledByNode records cancel_mode forced when requested", () => {
   assert.equal(record.error, null);
 });
 
-test("job DTO exposes cancel_mode as cancelMode", () => {
+test("job DTO exposes cancel_mode as cancelMode", async () => {
   const record = {
     job_id: "forced-cancel-dto",
     status: "canceled",
@@ -260,8 +260,8 @@ test("job DTO exposes cancel_mode as cancelMode", () => {
     updated_at: "2026-01-01T00:00:01Z",
   };
 
-  assert.equal(jobRecordToDto(record).cancelMode, "forced");
-  assert.equal(jobRecordToListItemDto(record).cancelMode, "forced");
+  assert.equal((await jobRecordToDto(record)).cancelMode, "forced");
+  assert.equal((await jobRecordToListItemDto(record)).cancelMode, "forced");
 });
 
 test("runner exit with cancel flag should mark canceled not failed", () => {
@@ -405,7 +405,7 @@ test("workflow artifact fields are not used as product artifact fallback", async
     /artifact not available/
   );
 
-  const listed = listJobs({ jobsRoot: root, limit: 10 }).jobs.find(
+  const listed = (await listJobs({ jobsRoot: root, limit: 10 })).jobs.find(
     (job) => job.jobId === "legacy-only-job"
   );
   assert.ok(listed);
@@ -450,7 +450,7 @@ test("resolveJobThumbnail serves first frame-pool image and rejects traversal", 
   );
 });
 
-test("list jobs resolve display title from request.json when workflow lacks original_source", () => {
+test("list jobs resolve display title from request.json when workflow lacks original_source", async () => {
   const root = tempJobsRoot();
   const { jobRoot, paths } = writeJob(root, "title-job", {
     status: "succeeded",
@@ -464,7 +464,7 @@ test("list jobs resolve display title from request.json when workflow lacks orig
     )}\n`
   );
 
-  const listed = listJobs({ jobsRoot: root, limit: 10 }).jobs.find(
+  const listed = (await listJobs({ jobsRoot: root, limit: 10 })).jobs.find(
     (job) => job.jobId === "title-job"
   );
   assert.ok(listed);
@@ -504,7 +504,7 @@ test("jobs without enableSpeech omit rendered video from list API and artifacts"
   fs.mkdirSync(path.join(jobRoot, "study_cards"), { recursive: true });
   fs.writeFileSync(path.join(jobRoot, "study_cards", "study_cards.html"), "<html></html>");
 
-  const listed = listJobs({ jobsRoot: root, limit: 10 }).jobs.find(
+  const listed = (await listJobs({ jobsRoot: root, limit: 10 })).jobs.find(
     (job) => job.jobId === "no-speech-job"
   );
   assert.ok(listed);

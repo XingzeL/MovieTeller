@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { respondDatabaseError } from "../db/errors.js";
+import { respondBillingError } from "../services/billing/errors.js";
 import { appendAuditEvent } from "../services/audit/auditLog.js";
 import {
   listArtifactsForUser,
@@ -83,6 +84,7 @@ router.post("/jobs", upload.single("file"), async (req, res) => {
     });
     return res.status(201).json(created);
   } catch (err) {
+    if (respondBillingError(res, err)) return;
     return respondDatabaseError(res, err);
   }
 });
@@ -91,7 +93,7 @@ router.get("/jobs/:jobId", async (req, res) => {
   try {
     const { record, paths } = await readJobForUser(req.user.id, req.params.jobId);
     return res.json({
-      job: jobRecordToDto(
+      job: await jobRecordToDto(
         record,
         readJobRequestMetadata(paths.root),
         paths.root
@@ -185,11 +187,14 @@ router.get("/jobs/:jobId/thumbnail", async (req, res) => {
 
 router.get("/jobs/:jobId/artifacts/:kind", async (req, res) => {
   try {
-    const { filePath, label } = await resolveArtifactForUser(
+    const resolved = await resolveArtifactForUser(
       req.user.id,
       req.params.jobId,
       req.params.kind
     );
+    const filePath = "filePath" in resolved ? resolved.filePath : undefined;
+    const html = "html" in resolved ? resolved.html : undefined;
+    const label = resolved.label || req.params.kind;
 
     const wantsInline =
       req.query.inline === "1" || req.query.inline === "true";
@@ -205,6 +210,11 @@ router.get("/jobs/:jobId/artifacts/:kind", async (req, res) => {
         event: "artifact.access",
         detail: { kind: req.params.kind, inline: true },
       });
+      if (html) {
+        res.type("text/html");
+        res.setHeader("Content-Disposition", "inline");
+        return res.send(html);
+      }
       const mime =
         label && label.toLowerCase().endsWith(".html") ? "text/html" : undefined;
       if (mime) res.type(mime);
@@ -214,6 +224,15 @@ router.get("/jobs/:jobId/artifacts/:kind", async (req, res) => {
           console.error("artifact inline send failed", label, err);
         }
       });
+    }
+
+    if (html) {
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${path.basename(label)}"`
+      );
+      res.type("text/html");
+      return res.send(html);
     }
 
     return res.download(filePath, path.basename(filePath), (err) => {

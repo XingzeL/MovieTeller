@@ -12,6 +12,7 @@ import {
 } from "../db/jobsRepository.js";
 import { isCancelDeadlinePassed } from "../services/jobs/cancelDeadline.js";
 import { applyForcedCancel } from "../services/jobs/forcedCancel.js";
+import { finalizeBilling } from "../services/billing/finalizeBilling.js";
 import { claimAndSpawn } from "../services/jobs/claimJob.js";
 import { releaseClaim } from "../services/jobs/claimJob.js";
 import { markWorkflowFailed, readWorkflowRecord } from "../services/jobs/jobProcess.js";
@@ -120,7 +121,14 @@ async function sweepExpiredCancelingJobs() {
 async function tickOnceFromDatabase(opts = {}) {
   const jobsRoot = opts.jobsRoot || getJobsRoot();
   await sweepExpiredCancelingJobs();
-  await sweepStaleJobs();
+  const staleJobIds = await sweepStaleJobs();
+  for (const jobId of staleJobIds) {
+    try {
+      await finalizeBilling(String(jobId));
+    } catch (err) {
+      console.error(`[queueWorker] stale billing finalize failed for ${jobId}`, err);
+    }
+  }
 
   const { running, maxRunning } = getJobQueueSnapshot();
   if (running.length >= maxRunning) return { picked: 0 };
@@ -149,6 +157,7 @@ async function tickOnceFromDatabase(opts = {}) {
       errorMessage,
       retryable: true,
     });
+    await finalizeBilling(workerCtx.jobId);
   }
 
   if (!videoPath || !fs.existsSync(videoPath)) {
@@ -203,14 +212,14 @@ async function tickOnceFromDatabase(opts = {}) {
 /**
  * @param {{ jobsRoot?: string }} [opts]
  */
-function tickOnceFromFilesystem(opts = {}) {
+async function tickOnceFromFilesystem(opts = {}) {
   const jobsRoot = opts.jobsRoot || getJobsRoot();
   reconcileOrphanRunningJobs({ jobsRoot });
 
   const { running, maxRunning } = getJobQueueSnapshot();
   if (running.length >= maxRunning) return { picked: 0 };
 
-  const candidates = scanAllJobsForSystem({ jobsRoot })
+  const candidates = (await scanAllJobsForSystem({ jobsRoot }))
     .filter((job) => String(job.record.status || "") === "queued")
     .filter((job) => {
       const paths = jobPathsFromRoot(job.jobRoot);
@@ -267,7 +276,7 @@ export async function tickOnce(opts = {}) {
   if (isDbEnabled()) {
     return tickOnceFromDatabase(opts);
   }
-  return tickOnceFromFilesystem(opts);
+  return await tickOnceFromFilesystem(opts);
 }
 
 /**

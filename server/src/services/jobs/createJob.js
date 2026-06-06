@@ -8,8 +8,11 @@ import {
   resolveJobRoot,
 } from "../../config/jobs.js";
 import { isDbEnabled } from "../../db/database.js";
-import { insertJobQueued } from "../../db/jobsRepository.js";
+import { deleteJobById } from "../../db/jobsRepository.js";
 import { isApiRunMode, isWorkerRunMode } from "../../runtime/runMode.js";
+import { releaseQuota } from "../billing/releaseQuota.js";
+import { reserveQuotaAndInsertJob } from "../billing/reserveQuota.js";
+import { probeDurationSec } from "../media/probeDuration.js";
 import { spawnWorkflowJob } from "./spawnWorkflowJob.js";
 import { workflowOptionsFromForm } from "./workflowOptions.js";
 
@@ -18,16 +21,12 @@ function utcNowIso() {
 }
 
 /**
- * 从请求中构建 original_source 信息（更通用的设计）
- * 支持本地上传 + 任意远程链接（YouTube、Bilibili、直接视频 URL 等）
  * @param {any} req
  * @param {string} destVideoPath
  */
 function buildOriginalSourceFromRequest(req, destVideoPath) {
   const now = utcNowIso();
 
-  // 远程来源（YouTube、Bilibili、直接视频链接等）
-  // 优先尝试常见的远程来源字段名
   const remoteUrl =
     (req.body?.sourceUrl && String(req.body.sourceUrl).trim()) ||
     (req.body?.youtubeUrl && String(req.body.youtubeUrl).trim()) ||
@@ -43,7 +42,6 @@ function buildOriginalSourceFromRequest(req, destVideoPath) {
     };
   }
 
-  // 本地文件上传
   if (req.file) {
     return {
       type: "local_upload",
@@ -55,13 +53,44 @@ function buildOriginalSourceFromRequest(req, destVideoPath) {
     };
   }
 
-  // 兜底
   return {
     type: "unknown",
     source_url: null,
     original_filename: path.basename(destVideoPath),
     uploaded_at: now,
   };
+}
+
+const JOB_SUBDIRS = [
+  "input",
+  "logs",
+  "subtitles",
+  "analysis",
+  "frame_pool",
+  "narration",
+  "speech",
+  "speech/audio",
+  "render",
+  "study_cards",
+  "artifacts",
+];
+
+/**
+ * @param {string} jobRoot
+ */
+function ensureJobDirectories(jobRoot) {
+  for (const sub of JOB_SUBDIRS) {
+    fs.mkdirSync(path.join(jobRoot, sub), { recursive: true });
+  }
+}
+
+/**
+ * @param {string} jobRoot
+ */
+function removeJobRoot(jobRoot) {
+  if (fs.existsSync(jobRoot)) {
+    fs.rmSync(jobRoot, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -80,79 +109,116 @@ export async function createJobFromUpload(input) {
   const jobId = crypto.randomUUID();
   const jobRoot = resolveJobRoot(jobsRoot, jobId);
   const paths = jobPathsFromRoot(jobRoot);
-
-  for (const dir of [
-    paths.inputDir,
-    paths.logsDir,
-    path.join(jobRoot, "subtitles"),
-    path.join(jobRoot, "analysis"),
-    path.join(jobRoot, "frame_pool"),
-    path.join(jobRoot, "narration"),
-    path.join(jobRoot, "speech"),
-    path.join(jobRoot, "speech", "audio"),
-    path.join(jobRoot, "render"),
-    path.join(jobRoot, "study_cards"),
-    path.join(jobRoot, "artifacts"),
-  ]) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
   const ext = path.extname(input.file.originalname || "") || ".mp4";
   const destVideo = path.join(paths.inputDir, `source${ext}`);
-  fs.renameSync(input.file.path, destVideo);
 
-  const originalSource = buildOriginalSourceFromRequest(input, destVideo);
-
-  const options = workflowOptionsFromForm(input.body);
-  if (originalSource.original_filename) {
-    options.originalFilename = originalSource.original_filename;
-  }
-  if (originalSource.source_url) {
-    options.sourceUrl = originalSource.source_url;
-  }
-  fs.writeFileSync(
-    paths.requestJsonPath,
-    `${JSON.stringify(options, null, 2)}\n`,
-    "utf8"
-  );
-
-  const now = utcNowIso();
+  let sourceDurationSec = null;
+  let range = null;
+  let reservedMinutes = 0;
   const shouldSpawn = input.spawn !== false;
-  const status = shouldSpawn ? "queued" : "queued";
-
-  const queuedRecord = {
-    job_id: jobId,
-    status,
-    input_video_path: destVideo,
-    output_root: paths.root,
-    user_id: userId,
-    current_stage: null,
-    progress: {},
-    error: null,
-    artifacts: {},
-    created_at: now,
-    updated_at: now,
-
-    // 新增：原始来源 + 视频存储策略相关字段
-    original_source: originalSource,
-    video_downloaded_at: null,
-    video_purged_at: null,
-    video_state_version: 0,   // 用于简单乐观并发控制
-  };
-  fs.writeFileSync(
-    paths.workflowJsonPath,
-    `${JSON.stringify(queuedRecord, null, 2)}\n`,
-    "utf8"
-  );
 
   if (isDbEnabled()) {
-    await insertJobQueued({
+    try {
+      sourceDurationSec = await probeDurationSec(input.file.path);
+    } catch (probeErr) {
+      if (fs.existsSync(input.file.path)) {
+        try {
+          fs.unlinkSync(input.file.path);
+        } catch {
+          /* ignore */
+        }
+      }
+      throw probeErr;
+    }
+
+    range = await reserveQuotaAndInsertJob({
       jobId,
       userId,
       outputRoot: paths.root,
       inputVideoPath: destVideo,
-      originalSource,
+      originalSource: buildOriginalSourceFromRequest(input, destVideo),
+      sourceDurationSec,
     });
+    reservedMinutes = range.needMinutes;
+  }
+
+  try {
+    ensureJobDirectories(jobRoot);
+    fs.renameSync(input.file.path, destVideo);
+
+    const originalSource = buildOriginalSourceFromRequest(input, destVideo);
+    const options = workflowOptionsFromForm(input.body);
+    if (originalSource.original_filename) {
+      options.originalFilename = originalSource.original_filename;
+    }
+    if (originalSource.source_url) {
+      options.sourceUrl = originalSource.source_url;
+    }
+    if (range) {
+      options.startPoint = range.startPoint;
+      options.endPoint = range.endPoint;
+    }
+
+    fs.writeFileSync(
+      paths.requestJsonPath,
+      `${JSON.stringify(options, null, 2)}\n`,
+      "utf8"
+    );
+
+    const now = utcNowIso();
+    const status = "queued";
+
+    const queuedRecord = {
+      job_id: jobId,
+      status,
+      input_video_path: destVideo,
+      output_root: paths.root,
+      user_id: userId,
+      current_stage: null,
+      progress: {},
+      error: null,
+      artifacts: {},
+      created_at: now,
+      updated_at: now,
+      original_source: originalSource,
+      video_downloaded_at: null,
+      video_purged_at: null,
+      video_state_version: 0,
+      source_duration_sec: sourceDurationSec,
+      processed_duration_sec: range?.processedDurationSec ?? null,
+      quota_clip_applied: range?.quotaClipApplied ?? false,
+      quota_policy: range?.quotaPolicy ?? null,
+      reserved_minutes: reservedMinutes,
+    };
+
+    fs.writeFileSync(
+      paths.workflowJsonPath,
+      `${JSON.stringify(queuedRecord, null, 2)}\n`,
+      "utf8"
+    );
+
+  } catch (diskErr) {
+    if (isDbEnabled() && reservedMinutes > 0) {
+      try {
+        await releaseQuota(userId, reservedMinutes, range?.reservedUsageDate);
+      } catch (releaseErr) {
+        console.error(`[createJob] releaseQuota failed for ${jobId}`, releaseErr);
+      }
+      try {
+        await deleteJobById(jobId);
+      } catch (deleteErr) {
+        console.error(`[createJob] deleteJobById failed for ${jobId}`, deleteErr);
+      }
+    }
+    removeJobRoot(jobRoot);
+    if (fs.existsSync(input.file.path)) {
+      try {
+        fs.unlinkSync(input.file.path);
+      } catch {
+        /* ignore */
+      }
+    }
+    throw diskErr;
   }
 
   const maySpawnInline =
@@ -169,13 +235,16 @@ export async function createJobFromUpload(input) {
 
   return {
     jobId,
-    status,
-    createdAt: now,
+    status: "queued",
+    createdAt: utcNowIso(),
     outputRoot: paths.root,
     videoPath: destVideo,
     userId,
     jobsRoot,
     jobRoot,
+    sourceDurationSec,
+    processedDurationSec: range?.processedDurationSec ?? null,
+    quotaClipApplied: range?.quotaClipApplied ?? false,
   };
 }
 

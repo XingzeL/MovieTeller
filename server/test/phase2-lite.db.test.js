@@ -564,6 +564,45 @@ describeDb("Phase 2 Lite jobs repository (Postgres)", async (t) => {
     assert.equal(row?.status, "failed");
     assert.equal(Number(row?.attempt_id), 2);
   });
+
+  await t.test("purgeOldJobsFromDb deletes row after disk removal", async () => {
+    const { purgeOldJobsFromDb } = await import(
+      "../src/services/jobs/purgeOldJobsFromDb.js"
+    );
+    const jobId = crypto.randomUUID();
+    const userId = "phase2-retention-user";
+    const jobRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mt-retention-"));
+    const videoPath = path.join(jobRoot, "input", "source.mp4");
+    fs.mkdirSync(path.dirname(videoPath), { recursive: true });
+    fs.writeFileSync(videoPath, "fake");
+    writeMinimalWorkflow(jobRoot, jobId, userId, videoPath, "succeeded");
+
+    const pool = (await import("../src/db/pool.js")).getPool();
+    await insertJobQueued({
+      jobId,
+      userId,
+      outputRoot: jobRoot,
+      inputVideoPath: videoPath,
+    });
+    await pool.query(
+      `UPDATE jobs SET status = 'succeeded', created_at = now() - interval '5 days',
+       completed_at = now() - interval '5 days' WHERE job_id = $1`,
+      [jobId]
+    );
+
+    t.after(async () => {
+      await deleteJob(jobId);
+      if (fs.existsSync(jobRoot)) {
+        fs.rmSync(jobRoot, { recursive: true, force: true });
+      }
+    });
+
+    const result = await purgeOldJobsFromDb(3);
+    assert.ok(result.dbDeleted >= 1);
+    assert.equal(fs.existsSync(jobRoot), false);
+    const row = await getJobById(jobId);
+    assert.equal(row, null);
+  });
 });
 
 /**

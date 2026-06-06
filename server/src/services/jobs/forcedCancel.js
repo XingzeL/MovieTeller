@@ -4,6 +4,7 @@ import {
   recordForcedCancelKillFailed,
 } from "../../db/jobsRepository.js";
 import { markJobCanceledByNode } from "./jobProcess.js";
+import { finalizeBilling } from "../billing/finalizeBilling.js";
 import { killProcessGroup, readRunnerPid } from "./runnerControl.js";
 import {
   releaseQueueSlotAndClaim,
@@ -76,6 +77,7 @@ export async function applyForcedCancel(input) {
   }
 
   markJobCanceledByNode(jobRoot, { cancelMode: "forced" });
+  await finalizeBilling(jobId);
 
   unregisterDbJobContext(jobId);
   releaseQueueSlotAndClaim(jobId, jobRoot);
