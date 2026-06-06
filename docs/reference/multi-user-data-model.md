@@ -41,7 +41,9 @@ erDiagram
 | **Artifact** | `artifacts/manifest.json` + 文件路径 | manifest + 可选 S3 URL |
 | **Audit** | `logs/audit.jsonl` | 集中 `audit_events` 表（可选） |
 | **RetentionPolicy** | 代码：3 天删目录、下载后删视频 | 按 Plan 配置 |
-| **Plan / Credits** | 未实现 | `plans`, `subscriptions` |
+| **Plan / Credits** | 未实现 | `plans`, `user_subscriptions`, `user_balances`, `user_daily_usage` (M7) |
+| **Usage ledger** | 未实现 | `usage_ledger`（独立 3 天 retention） |
+| **Study cards HTML** | 仅磁盘 | `job_study_cards`（CASCADE 随 jobs） |
 
 ## 关系与约束
 
@@ -71,3 +73,5 @@ Browser Cookie (mt_uid)
 ## 与队列
 
 Phase 1 队列为进程内内存；Phase 2 见 [phase2-queue-design.md](../planning/phase2-queue-design.md)。
+
+M7 计费与流水见 [billing-and-usage.md](billing-and-usage.md)。

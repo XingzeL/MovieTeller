@@ -181,4 +181,17 @@ Protected Job APIs return **503** (fail fast). No fallback to filesystem scan or
 
 ---
 
-See also: [`multi-user-storage-and-transport.md`](multi-user-storage-and-transport.md), [`jobs-api.md`](jobs-api.md), [`job-queue-limitations.md`](job-queue-limitations.md).
+## M7: quota, clipping, billing (Postgres)
+
+When `DATABASE_URL` is set:
+
+- Create: `ffprobe` → reserve minutes (`FOR UPDATE`) → `INSERT jobs` with `source_duration_sec`, `processed_duration_sec`, `quota_policy`, `reserved_minutes`.
+- `request.json` carries `startPoint` / `endPoint`; Python clips before `run_full_workflow`.
+- Terminal: `finalizeBilling` (idempotent via `billing_finalized_at`) + `usage_ledger` row.
+- Retention: delete disk first, then `DELETE jobs`; `usage_ledger` purged independently.
+
+See [`billing-and-usage.md`](billing-and-usage.md).
+
+---
+
+See also: [`multi-user-storage-and-transport.md`](multi-user-storage-and-transport.md), [`jobs-api.md`](jobs-api.md), [`job-queue-limitations.md`](job-queue-limitations.md), [`billing-and-usage.md`](billing-and-usage.md).

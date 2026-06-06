@@ -8,6 +8,7 @@
 | [phase2-queue-design.md](phase2-queue-design.md) | Full Phase 2 分布式队列（design-only） |
 | [auth-plan.md](auth-plan.md) | Clerk / 多用户认证实施计划 |
 | [multi-user-readiness-work-items.md](multi-user-readiness-work-items.md) | 多用户就绪工作项 |
+| [database-persistence-plan.md](database-persistence-plan.md) | M7 用户、套餐、额度、使用记录与学习卡入库规划 |
 | [observability-95-landing.md](observability-95-landing.md) | 可观测性 B1–B4 落地记录 |
 | [stage-observability-design.md](stage-observability-design.md) | Stage 可观测性设计（含落地状态） |
 | [pipeline-parallelization-plan.md](pipeline-parallelization-plan.md) | Pipeline 并行化方案 |

@@ -337,3 +337,13 @@ npm run dev
 | 磁盘满 | retention 保持 3 天；备份 `JOBS_ROOT` |
 | 单 Worker 成瓶颈 | 当前小并发可接受；未来加 Worker 复用 claim SQL |
 | renderedVideo 代理占用 API 带宽 | 当前 200MB 上限可接受；仅视频走 proxy |
+
+## M7 扩展（计费与 retention 对齐）
+
+在 Phase 2 Lite 之上已落地：
+
+- 迁移 `002`–`005`：`jobs` 时长/预占字段、`users`/`plans`/余额、 `usage_ledger`、`job_study_cards`。
+- 创建时预占额度；超额裁剪（Node 算范围，Python `quota_clip`）。
+- `GET /api/usage`；retention 先删盘再删 `jobs` 行。
+
+合同见 [billing-and-usage.md](billing-and-usage.md)。
