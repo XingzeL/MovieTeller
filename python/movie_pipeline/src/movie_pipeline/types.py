@@ -259,6 +259,8 @@ class WorkflowRequest:
     source_language: str | None = None
     narration_language: str | None = None
     subtitle_language: str | None = None
+    start_point: float | None = None
+    end_point: float | None = None
 
 
 @dataclass(frozen=True)

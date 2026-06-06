@@ -15,7 +15,14 @@ _BOOL_KEYS = (
     "forceRebuildFramePool",
     "forceRebuildSubtitleContext",
 )
-_FLOAT_KEYS = ("minGapSec", "subtitleGuardSec", "maxCostUsd", "maxLatencySec")
+_FLOAT_KEYS = (
+    "minGapSec",
+    "subtitleGuardSec",
+    "maxCostUsd",
+    "maxLatencySec",
+    "startPoint",
+    "endPoint",
+)
 _STR_KEYS = (
     "promptStyle",
     "cefrLevel",
