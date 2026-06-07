@@ -41,7 +41,8 @@ export function JobThumbnail({ jobId, version, onUnavailable, className }: Props
       cancelled = true
       if (blobUrl) URL.revokeObjectURL(blobUrl)
     }
-  }, [jobId, version, onUnavailable])
+    // onUnavailable is read via ref; omit from deps to avoid reload on parent re-render.
+  }, [jobId, version])
 
   if (!objectUrl) {
     return (

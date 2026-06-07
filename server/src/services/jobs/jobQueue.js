@@ -136,6 +136,23 @@ function drainQueue() {
 }
 
 /**
+ * @param {Awaited<ReturnType<typeof createJobFromUpload>>} prepared
+ */
+export function toCreateJobApiResponse(prepared) {
+  return {
+    jobId: prepared.jobId,
+    status: prepared.status ?? "queued",
+    createdAt: prepared.createdAt,
+    outputRoot: prepared.outputRoot,
+    sourceDurationSec: prepared.sourceDurationSec ?? null,
+    processedDurationSec: prepared.processedDurationSec ?? null,
+    quotaClipApplied: prepared.quotaClipApplied ?? false,
+    quotaClipReasons: prepared.quotaClipReasons ?? [],
+    primaryClipReason: prepared.primaryClipReason ?? null,
+  };
+}
+
+/**
  * @param {{ file: import('multer').File, body: Record<string, unknown>, userId: string }} input
  */
 export async function enqueueJobUpload(input) {
@@ -145,24 +162,15 @@ export async function enqueueJobUpload(input) {
     userId: input.userId,
     spawn: false,
   });
+  const response = toCreateJobApiResponse(prepared);
   if (isApiRunMode() || isWorkerRunMode()) {
-    return {
-      jobId: prepared.jobId,
-      status: "queued",
-      createdAt: prepared.createdAt,
-      outputRoot: prepared.outputRoot,
-    };
+    return response;
   }
   if (running.size < maxRunningJobs()) {
     running.add(prepared.jobId);
     spawnPreparedJob(prepared);
     watchJobCompletion(prepared.jobId);
-    return {
-      jobId: prepared.jobId,
-      status: "queued",
-      createdAt: prepared.createdAt,
-      outputRoot: prepared.outputRoot,
-    };
+    return response;
   }
   waiting.push({
     jobId: prepared.jobId,
@@ -171,12 +179,7 @@ export async function enqueueJobUpload(input) {
     videoPath: prepared.videoPath,
     userId: prepared.userId,
   });
-  return {
-    jobId: prepared.jobId,
-    status: "queued",
-    createdAt: prepared.createdAt,
-    outputRoot: prepared.outputRoot,
-  };
+  return response;
 }
 
 const RETRYABLE_STATUSES = new Set(["failed", "canceled"]);

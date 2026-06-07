@@ -14,6 +14,7 @@ import { JobThumbnail } from './JobThumbnail'
 import { WorkflowProgressBar } from './WorkflowProgressBar'
 import { VideoStateBadge } from './VideoStateBadge'
 import type { JobListItem, JobListResponse, JobStatus } from '../types/job'
+import type { UsageResponse } from '../types/usage'
 
 // 不再对历史记录做前端数量限制（改用「创建超过 3 天即彻底删除」的后端保留策略）
 
@@ -77,6 +78,25 @@ function formatDate(value?: string) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function jobsShallowEqual(a: JobListItem[], b: JobListItem[]) {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i]
+    const right = b[i]
+    if (
+      left.jobId !== right.jobId ||
+      left.status !== right.status ||
+      left.updatedAt !== right.updatedAt ||
+      left.currentStage !== right.currentStage ||
+      left.videoState !== right.videoState ||
+      left.processedDurationSec !== right.processedDurationSec
+    ) {
+      return false
+    }
+  }
+  return true
 }
 
 function formatDurationSec(sec?: number | null) {
@@ -157,6 +177,7 @@ function DashboardContent({ clerkUserLabel }: { clerkUserLabel: string | null })
     null,
   )
   const [sessionUserId, setSessionUserId] = useState<string | null>(null)
+  const [usage, setUsage] = useState<UsageResponse['summary'] | null>(null)
 
   const sidebarUserLabel =
     clerkUserLabel ?? sessionUserId ?? getDevUserId() ?? 'User Demo'
@@ -196,32 +217,67 @@ function DashboardContent({ clerkUserLabel }: { clerkUserLabel: string | null })
     void fetchJobs()
   }, [])
 
-  // Lightweight auto-refresh of the job list while any job is active.
-  // This lets completed jobs "graduate" from progress view → succeeded view with download buttons.
   useEffect(() => {
-    const hasActive = jobs.some(
-      (j) =>
-        j.status === 'running' || j.status === 'queued' || j.status === 'canceling',
-    )
-    if (!hasActive) return
+    let cancelled = false
+
+    const fetchUsage = async () => {
+      if (!isClerkEnabled()) {
+        await ensureDevSession()
+      }
+      const res = await apiFetch('/api/usage')
+      if (!res.ok) throw res
+      return (await res.json()) as UsageResponse
+    }
+
+    const loadUsage = () => {
+      void fetchUsage()
+        .then((data) => {
+          if (!cancelled) setUsage(data.summary)
+        })
+        .catch(() => {
+          /* keep previous usage on transient errors to avoid header flicker */
+        })
+    }
+
+    loadUsage()
+    const onQuotaUpdated = () => loadUsage()
+    window.addEventListener('quota-updated', onQuotaUpdated)
+    return () => {
+      cancelled = true
+      window.removeEventListener('quota-updated', onQuotaUpdated)
+    }
+  }, [])
+
+  const hasActiveJobs = useMemo(
+    () =>
+      jobs.some(
+        (j) =>
+          j.status === 'running' || j.status === 'queued' || j.status === 'canceling',
+      ),
+    [jobs],
+  )
+
+  // Lightweight auto-refresh while any job is active (stable interval; no thumbnail reset).
+  useEffect(() => {
+    if (!hasActiveJobs) return
 
     const id = window.setInterval(() => {
-      // Re-fetch silently (keep existing error/loading state)
       apiFetch('/api/jobs?limit=1000')
         .then((r) => (r.ok ? r.json() : Promise.reject(r)))
         .then((data: JobListResponse) => {
-          if (Array.isArray(data.jobs)) {
-            setJobs(data.jobs)
-            setHiddenThumbnails({})
-          }
+          if (!Array.isArray(data.jobs)) return
+          setJobs((prev) => {
+            if (jobsShallowEqual(prev, data.jobs)) return prev
+            return data.jobs
+          })
         })
         .catch(() => {
           /* ignore transient errors during background refresh */
         })
-    }, 12000) // every 12s while there is work in flight
+    }, 12000)
 
     return () => window.clearInterval(id)
-  }, [jobs])
+  }, [hasActiveJobs])
 
   const filteredJobs = useMemo(() => {
     const keyword = query.trim().toLowerCase()
@@ -374,6 +430,26 @@ function DashboardContent({ clerkUserLabel }: { clerkUserLabel: string | null })
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/usage')}
+              className="hidden rounded-2xl border border-[#d1fae5] bg-[#f8fdf9] px-4 py-2 text-left transition hover:bg-[#f0fdf4] md:block"
+            >
+              <div className="text-[11px] font-medium text-[#718096]">基础额度</div>
+              <div className="text-sm font-semibold text-[#166534]">
+                {usage ? usage.processingRemainingMinutes ?? usage.remainingMinutes : '—'} 分钟
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/usage')}
+              className="hidden rounded-2xl border border-[#d1fae5] bg-[#f8fdf9] px-4 py-2 text-left transition hover:bg-[#f0fdf4] lg:block"
+            >
+              <div className="text-[11px] font-medium text-[#718096]">解说额度</div>
+              <div className="text-sm font-semibold text-[#166534]">
+                {usage ? usage.narrationRemainingMinutes ?? 0 : '—'} 分钟
+              </div>
+            </button>
             <button className="rounded-full border border-[#d1fae5] bg-white px-5 py-2 text-sm font-semibold text-[#166534] transition hover:bg-[#f0fdf4]">
               Quick Start
             </button>
@@ -441,9 +517,9 @@ function DashboardContent({ clerkUserLabel }: { clerkUserLabel: string | null })
                     job.enableSpeech !== false)
                 const canOpenStudyCards =
                   job.canOpenStudyCards ?? isSucceeded
-                const thumbnailVersion = String(
-                  job.updatedAt ?? job.createdAt ?? job.videoStateVersion ?? '',
-                )
+                const thumbnailVersion = isSucceeded
+                  ? String(job.videoStateVersion ?? job.updatedAt ?? job.createdAt ?? '')
+                  : job.jobId
                 const thumbnailKey = `${job.jobId}:${thumbnailVersion}`
                 const showThumbnail = !hiddenThumbnails[thumbnailKey]
 
