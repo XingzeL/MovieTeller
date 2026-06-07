@@ -6,6 +6,7 @@ import generateRouter from "./routes/generate.js";
 import extractRouter from "./routes/extract.js";
 import jobsRouter from "./routes/jobs.js";
 import usageRouter from "./routes/usage.js";
+import billingRouter from "./routes/billing.js";
 import healthRouter from "./routes/health.js";
 import devRouter from "./routes/dev.js";
 import { isProductionEnv } from "./middleware/userId.js";
@@ -52,6 +53,7 @@ export function createApp(opts = {}) {
   protectedApi.use(extractRouter);
   protectedApi.use(jobsRouter);
   protectedApi.use(usageRouter);
+  protectedApi.use(billingRouter);
 
   app.use("/api", (req, res, next) => {
     if (req.path.startsWith("/healthz")) {
