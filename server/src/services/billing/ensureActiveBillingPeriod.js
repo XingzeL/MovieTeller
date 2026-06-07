@@ -39,6 +39,7 @@ export async function ensureActiveBillingPeriod(userId, client) {
     userId,
     {
       quotaMinutes: Number(subscription.quota_minutes_per_month),
+      narrationQuotaMinutes: Number(subscription.narration_quota_minutes_per_month),
       periodStart: now,
       periodEnd: nextEnd,
     },

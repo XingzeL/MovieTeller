@@ -1,8 +1,9 @@
 export class PlanQuotaExhaustedError extends Error {
-  constructor(message = "plan quota exhausted") {
+  constructor(message = "plan quota exhausted", reason = "quota_exhausted") {
     super(message);
     this.name = "PlanQuotaExhaustedError";
     this.code = "plan_quota_exhausted";
+    this.reason = reason;
     this.statusCode = 400;
   }
 }
@@ -28,6 +29,7 @@ export function respondBillingError(res, err) {
     res.status(400).json({
       error: String(err.message || err),
       code: String(err.code),
+      reason: "reason" in err ? String(err.reason) : undefined,
     });
     return true;
   }

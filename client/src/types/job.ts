@@ -39,6 +39,9 @@ export type JobDto = {
   sourceDurationSec?: number | null
   processedDurationSec?: number | null
   quotaClipApplied?: boolean
+  narrationRequired?: boolean
+  reservedProcessingMinutes?: number
+  reservedNarrationMinutes?: number
   processingRange?: { startPoint: number; endPoint: number } | null
 }
 
@@ -55,10 +58,22 @@ export type JobArtifactItem = {
   sizeBytes?: number
 }
 
+export type QuotaClipReason = {
+  code: string
+  category: 'plan_limit' | 'quota_insufficient'
+  limitSeconds: number
+  limitMinutes: number
+}
+
 export type CreateJobResponse = {
   jobId: string
   status: JobStatus
   createdAt: string
+  sourceDurationSec?: number | null
+  processedDurationSec?: number | null
+  quotaClipApplied?: boolean
+  quotaClipReasons?: QuotaClipReason[]
+  primaryClipReason?: string | null
 }
 
 export type JobListItem = {
@@ -82,6 +97,9 @@ export type JobListItem = {
   sourceDurationSec?: number | null
   processedDurationSec?: number | null
   quotaClipApplied?: boolean
+  narrationRequired?: boolean
+  reservedProcessingMinutes?: number
+  reservedNarrationMinutes?: number
 }
 
 export type JobListResponse = {

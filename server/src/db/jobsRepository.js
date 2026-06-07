@@ -30,6 +30,9 @@ export function rowToRecord(row) {
  *   quotaPolicy?: object | null,
  *   reservedMinutes?: number,
  *   reservedUsageDate?: string | null,
+ *   reservedProcessingMinutes?: number,
+ *   reservedNarrationMinutes?: number,
+ *   narrationRequired?: boolean,
  * }} input
  * @param {import('pg').PoolClient} [client]
  */
@@ -40,9 +43,10 @@ export async function insertJobQueued(input, client) {
       job_id, user_id, status, attempt_id,
       output_root, input_video_path, original_source, video_state_version, progress,
       source_duration_sec, processed_duration_sec, quota_clip_applied,
-      quota_policy, reserved_minutes, reserved_usage_date
+      quota_policy, reserved_minutes, reserved_usage_date,
+      reserved_processing_minutes, reserved_narration_minutes, narration_required
     ) VALUES ($1, $2, 'queued', 1, $3, $4, $5::jsonb, 0, '{}'::jsonb,
-      $6, $7, $8, $9::jsonb, $10, $11)`,
+      $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14)`,
     [
       input.jobId,
       input.userId,
@@ -55,6 +59,9 @@ export async function insertJobQueued(input, client) {
       input.quotaPolicy ? JSON.stringify(input.quotaPolicy) : null,
       input.reservedMinutes ?? 0,
       input.reservedUsageDate ?? null,
+      input.reservedProcessingMinutes ?? input.reservedMinutes ?? 0,
+      input.reservedNarrationMinutes ?? 0,
+      input.narrationRequired ?? false,
     ]
   );
 }

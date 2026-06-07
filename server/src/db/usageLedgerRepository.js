@@ -8,7 +8,10 @@ import { getPool } from "./pool.js";
  *   sourceDurationSeconds?: number | null,
  *   processedDurationSeconds?: number | null,
  *   consumedMinutes: number,
+ *   processingConsumedMinutes?: number,
+ *   narrationConsumedMinutes?: number,
  *   remainingAfter: number,
+ *   narrationRemainingAfter?: number | null,
  *   status: string,
  * }} input
  * @param {import('pg').PoolClient} client
@@ -18,8 +21,9 @@ export async function insertUsageLedgerEntry(input, client) {
     `INSERT INTO usage_ledger (
        user_id, job_id, job_id_snapshot, video_name,
        source_duration_seconds, processed_duration_seconds,
-       consumed_minutes, remaining_after, status
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+       consumed_minutes, processing_consumed_minutes, narration_consumed_minutes,
+       remaining_after, narration_remaining_after, status
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
     [
       input.userId,
       input.jobId,
@@ -28,7 +32,10 @@ export async function insertUsageLedgerEntry(input, client) {
       input.sourceDurationSeconds ?? null,
       input.processedDurationSeconds ?? null,
       input.consumedMinutes,
+      input.processingConsumedMinutes ?? input.consumedMinutes,
+      input.narrationConsumedMinutes ?? 0,
       input.remainingAfter,
+      input.narrationRemainingAfter ?? null,
       input.status,
     ]
   );
@@ -74,6 +81,8 @@ export async function listUsageLedgerForUser(userId, opts = {}) {
 export async function sumConsumedInPeriod(userId, periodStart) {
   const result = await getPool().query(
     `SELECT COALESCE(SUM(consumed_minutes), 0)::int AS total,
+            COALESCE(SUM(processing_consumed_minutes), 0)::int AS processing_total,
+            COALESCE(SUM(narration_consumed_minutes), 0)::int AS narration_total,
             COUNT(*) FILTER (WHERE status = 'succeeded')::int AS succeeded_count
      FROM usage_ledger
      WHERE user_id = $1 AND created_at >= $2`,
@@ -81,6 +90,8 @@ export async function sumConsumedInPeriod(userId, periodStart) {
   );
   return {
     consumedInPeriod: result.rows[0]?.total ?? 0,
+    processingConsumedInPeriod: result.rows[0]?.processing_total ?? 0,
+    narrationConsumedInPeriod: result.rows[0]?.narration_total ?? 0,
     succeededCount: result.rows[0]?.succeeded_count ?? 0,
   };
 }

@@ -60,8 +60,11 @@ export function UsageHistoryPage() {
 
   const records = data?.records ?? []
   const summary = data?.summary
-  const currentRemaining = summary?.remainingMinutes ?? 0
-  const totalConsumed = summary?.consumedInPeriod ?? 0
+  const processingRemaining = summary?.processingRemainingMinutes ?? summary?.remainingMinutes ?? 0
+  const narrationRemaining = summary?.narrationRemainingMinutes ?? 0
+  const processingConsumed =
+    summary?.processingConsumedInPeriod ?? summary?.consumedInPeriod ?? 0
+  const narrationConsumed = summary?.narrationConsumedInPeriod ?? 0
   const succeededCount = summary?.succeededCount ?? 0
 
   return (
@@ -106,18 +109,24 @@ export function UsageHistoryPage() {
 
         <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-[#d1fae5] bg-white p-5">
-            <div className="text-sm text-[#718096]">当前剩余额度（计费周期）</div>
+            <div className="text-sm text-[#718096]">基础处理剩余额度</div>
             <div className="mt-1 text-4xl font-bold tracking-tighter text-[#166534]">
-              {loading ? '…' : currentRemaining}{' '}
+              {loading ? '…' : processingRemaining}{' '}
               <span className="text-2xl font-medium">分钟</span>
+            </div>
+            <div className="mt-2 text-xs text-[#718096]">
+              本周期已用 {loading ? '…' : processingConsumed} 分钟
             </div>
           </div>
 
           <div className="rounded-2xl border border-[#d1fae5] bg-white p-5">
-            <div className="text-sm text-[#718096]">本周期已消耗</div>
+            <div className="text-sm text-[#718096]">解说声道剩余额度</div>
             <div className="mt-1 text-4xl font-bold tracking-tighter text-[#166534]">
-              {loading ? '…' : totalConsumed}{' '}
+              {loading ? '…' : narrationRemaining}{' '}
               <span className="text-2xl font-medium">分钟</span>
+            </div>
+            <div className="mt-2 text-xs text-[#718096]">
+              本周期已用 {loading ? '…' : narrationConsumed} 分钟
             </div>
           </div>
 
@@ -137,8 +146,10 @@ export function UsageHistoryPage() {
                 <tr className="border-b border-[#e5f5e9] text-left text-[#718096]">
                   <th className="px-6 py-4 font-medium">时间</th>
                   <th className="px-6 py-4 font-medium">视频名称</th>
-                  <th className="px-6 py-4 font-medium">消耗额度</th>
-                  <th className="px-6 py-4 font-medium">剩余额度</th>
+                  <th className="px-6 py-4 font-medium">基础消耗</th>
+                  <th className="px-6 py-4 font-medium">解说消耗</th>
+                  <th className="px-6 py-4 font-medium">基础剩余</th>
+                  <th className="px-6 py-4 font-medium">解说剩余</th>
                   <th className="px-6 py-4 font-medium">处理时长</th>
                   <th className="px-6 py-4 font-medium">状态</th>
                 </tr>
@@ -154,11 +165,19 @@ export function UsageHistoryPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="font-medium text-red-600">
-                        -{record.consumedMinutes} 分钟
+                        -{record.processingConsumedMinutes ?? record.consumedMinutes} 分钟
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="font-medium text-red-600">
+                        -{record.narrationConsumedMinutes ?? 0} 分钟
                       </span>
                     </td>
                     <td className="px-6 py-4 font-medium text-[#166534]">
                       {record.remainingAfter ?? '—'} 分钟
+                    </td>
+                    <td className="px-6 py-4 font-medium text-[#166534]">
+                      {record.narrationRemainingAfter ?? '—'} 分钟
                     </td>
                     <td className="px-6 py-4 text-[#718096]">
                       {formatDurationSeconds(
@@ -197,7 +216,7 @@ export function UsageHistoryPage() {
         </div>
 
         <div className="mt-6 text-center text-xs text-[#9ca3af]">
-          列表展示近 3 天流水；摘要为当前计费周期。失败或取消的任务不扣除额度。
+          列表展示近 3 天记录；摘要为当前计费周期。未生成解说声道的任务不消耗解说额度，失败或取消的任务不扣除额度。
         </div>
       </div>
     </div>

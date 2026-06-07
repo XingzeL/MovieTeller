@@ -8,17 +8,25 @@ export type UsageRecord = {
   sourceDurationSeconds: number | null
   processedDurationSeconds: number | null
   consumedMinutes: number
+  processingConsumedMinutes?: number
+  narrationConsumedMinutes?: number
   remainingAfter: number | null
+  narrationRemainingAfter?: number | null
   status: UsageRecordStatus
 }
 
 export type UsageSummary = {
   remainingMinutes: number
+  processingRemainingMinutes?: number
+  narrationRemainingMinutes?: number
   consumedInPeriod: number
+  processingConsumedInPeriod?: number
+  narrationConsumedInPeriod?: number
   succeededCount: number
   periodStart: string | null
   periodEnd: string | null
   periodQuotaMinutes: number | null
+  narrationPeriodQuotaMinutes?: number | null
 }
 
 export type UsageResponse = {

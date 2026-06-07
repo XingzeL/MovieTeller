@@ -1,6 +1,13 @@
 import path from "node:path";
 
-import { applyBillingFinalize, getUserBalance, lockUserBalance } from "../../db/balancesRepository.js";
+import {
+  applyBillingFinalize,
+  applyQuotaConsumption,
+  getNarrationAvailableMinutes,
+  getProcessingAvailableMinutes,
+  getUserBalance,
+  lockUserBalance,
+} from "../../db/balancesRepository.js";
 import {
   applyDailyFinalize,
   lockDailyUsage,
@@ -32,7 +39,9 @@ export async function finalizeBilling(jobId) {
     const job = claimResult.rows[0];
     const userId = String(job.user_id);
     const status = String(job.status);
-    const reservedMinutes = Number(job.reserved_minutes) || 0;
+    const reservedMinutes =
+      Number(job.reserved_processing_minutes ?? job.reserved_minutes) || 0;
+    const reservedNarrationMinutes = Number(job.reserved_narration_minutes) || 0;
     const processedDurationSec = Number(job.processed_duration_sec) || 0;
     const sourceDurationSec = Number(job.source_duration_sec) || null;
 
@@ -44,7 +53,12 @@ export async function finalizeBilling(jobId) {
     const lockedBalance = await lockUserBalance(userId, client);
     if (!lockedBalance) {
       await client.query(
-        `UPDATE jobs SET reserved_minutes = 0, updated_at = now() WHERE job_id = $1`,
+        `UPDATE jobs SET
+           reserved_minutes = 0,
+           reserved_processing_minutes = 0,
+           reserved_narration_minutes = 0,
+           updated_at = now()
+         WHERE job_id = $1`,
         [jobId]
       );
       await client.query("COMMIT");
@@ -58,11 +72,29 @@ export async function finalizeBilling(jobId) {
     await lockDailyUsage(userId, usageDate, client);
 
     let consumedMinutes = 0;
-    if (status === "succeeded" && reservedMinutes > 0) {
+    let narrationConsumedMinutes = 0;
+    if (
+      status === "succeeded" &&
+      (reservedMinutes > 0 || reservedNarrationMinutes > 0)
+    ) {
       consumedMinutes = reservedMinutes;
+      narrationConsumedMinutes = reservedNarrationMinutes;
       await applyBillingFinalize(
         userId,
-        { reservedDelta: -reservedMinutes, remainingDelta: -consumedMinutes },
+        {
+          reservedDelta: -reservedMinutes,
+          remainingDelta: 0,
+          narrationReservedDelta: -reservedNarrationMinutes,
+          narrationRemainingDelta: 0,
+        },
+        client
+      );
+      await applyQuotaConsumption(
+        userId,
+        {
+          processingMinutes: consumedMinutes,
+          narrationMinutes: narrationConsumedMinutes,
+        },
         client
       );
       await applyDailyFinalize(
@@ -71,10 +103,15 @@ export async function finalizeBilling(jobId) {
         { reservedDelta: -reservedMinutes, consumedDelta: consumedMinutes },
         client
       );
-    } else if (reservedMinutes > 0) {
+    } else if (reservedMinutes > 0 || reservedNarrationMinutes > 0) {
       await applyBillingFinalize(
         userId,
-        { reservedDelta: -reservedMinutes, remainingDelta: 0 },
+        {
+          reservedDelta: -reservedMinutes,
+          remainingDelta: 0,
+          narrationReservedDelta: -reservedNarrationMinutes,
+          narrationRemainingDelta: 0,
+        },
         client
       );
       await applyDailyFinalize(
@@ -86,13 +123,19 @@ export async function finalizeBilling(jobId) {
     }
 
     await client.query(
-      `UPDATE jobs SET reserved_minutes = 0, updated_at = now() WHERE job_id = $1`,
+      `UPDATE jobs SET
+         reserved_minutes = 0,
+         reserved_processing_minutes = 0,
+         reserved_narration_minutes = 0,
+         updated_at = now()
+       WHERE job_id = $1`,
       [jobId]
     );
 
     const balance = await getUserBalance(userId, client);
-    const remainingAfter = balance
-      ? Math.max(0, Number(balance.remaining_minutes) - Number(balance.reserved_minutes))
+    const remainingAfter = balance ? getProcessingAvailableMinutes(balance) : 0;
+    const narrationRemainingAfter = balance
+      ? getNarrationAvailableMinutes(balance)
       : 0;
 
     const originalSource =
@@ -113,7 +156,10 @@ export async function finalizeBilling(jobId) {
         sourceDurationSeconds: sourceDurationSec,
         processedDurationSeconds: processedDurationSec,
         consumedMinutes,
+        processingConsumedMinutes: consumedMinutes,
+        narrationConsumedMinutes,
         remainingAfter,
+        narrationRemainingAfter,
         status,
       },
       client

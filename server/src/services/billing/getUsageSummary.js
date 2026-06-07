@@ -1,4 +1,8 @@
-import { getUserBalance } from "../../db/balancesRepository.js";
+import {
+  getNarrationAvailableMinutes,
+  getProcessingAvailableMinutes,
+  getUserBalance,
+} from "../../db/balancesRepository.js";
 import { sumConsumedInPeriod } from "../../db/usageLedgerRepository.js";
 import { listUsageLedgerForUser } from "../../db/usageLedgerRepository.js";
 import { ensureActiveBillingPeriod } from "./ensureActiveBillingPeriod.js";
@@ -17,16 +21,16 @@ export async function getUsageForUser(userId, opts = {}) {
     : new Date();
   const periodEnd = balance?.period_end ? new Date(balance.period_end) : null;
 
-  const { consumedInPeriod, succeededCount } = await sumConsumedInPeriod(
-    userId,
-    periodStart
-  );
+  const {
+    consumedInPeriod,
+    processingConsumedInPeriod,
+    narrationConsumedInPeriod,
+    succeededCount,
+  } = await sumConsumedInPeriod(userId, periodStart);
 
-  const remainingMinutes = balance
-    ? Math.max(
-        0,
-        Number(balance.remaining_minutes) - Number(balance.reserved_minutes)
-      )
+  const remainingMinutes = balance ? getProcessingAvailableMinutes(balance) : 0;
+  const narrationRemainingMinutes = balance
+    ? getNarrationAvailableMinutes(balance)
     : 0;
 
   const ledger = await listUsageLedgerForUser(userId, {
@@ -46,7 +50,11 @@ export async function getUsageForUser(userId, opts = {}) {
     sourceDurationSeconds: row.source_duration_seconds ?? null,
     processedDurationSeconds: row.processed_duration_seconds ?? null,
     consumedMinutes: Number(row.consumed_minutes) || 0,
+    processingConsumedMinutes:
+      Number(row.processing_consumed_minutes ?? row.consumed_minutes) || 0,
+    narrationConsumedMinutes: Number(row.narration_consumed_minutes) || 0,
     remainingAfter: row.remaining_after ?? null,
+    narrationRemainingAfter: row.narration_remaining_after ?? null,
     status: row.status,
   }));
 
@@ -57,11 +65,18 @@ export async function getUsageForUser(userId, opts = {}) {
     offset: ledger.offset,
     summary: {
       remainingMinutes,
+      processingRemainingMinutes: remainingMinutes,
+      narrationRemainingMinutes,
       consumedInPeriod,
+      processingConsumedInPeriod,
+      narrationConsumedInPeriod,
       succeededCount,
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd ? periodEnd.toISOString() : null,
       periodQuotaMinutes: balance ? Number(balance.period_quota_minutes) : null,
+      narrationPeriodQuotaMinutes: balance
+        ? Number(balance.narration_period_quota_minutes)
+        : null,
     },
   };
 }

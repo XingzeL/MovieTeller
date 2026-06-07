@@ -115,7 +115,10 @@ export async function createJobFromUpload(input) {
   let sourceDurationSec = null;
   let range = null;
   let reservedMinutes = 0;
+  let reservedNarrationMinutes = 0;
   const shouldSpawn = input.spawn !== false;
+  const formOptions = workflowOptionsFromForm(input.body);
+  const enableSpeech = formOptions.enableSpeech !== false;
 
   if (isDbEnabled()) {
     try {
@@ -138,8 +141,10 @@ export async function createJobFromUpload(input) {
       inputVideoPath: destVideo,
       originalSource: buildOriginalSourceFromRequest(input, destVideo),
       sourceDurationSec,
+      enableSpeech,
     });
     reservedMinutes = range.needMinutes;
+    reservedNarrationMinutes = range.needNarrationMinutes ?? 0;
   }
 
   try {
@@ -147,7 +152,7 @@ export async function createJobFromUpload(input) {
     fs.renameSync(input.file.path, destVideo);
 
     const originalSource = buildOriginalSourceFromRequest(input, destVideo);
-    const options = workflowOptionsFromForm(input.body);
+    const options = { ...formOptions };
     if (originalSource.original_filename) {
       options.originalFilename = originalSource.original_filename;
     }
@@ -189,6 +194,9 @@ export async function createJobFromUpload(input) {
       quota_clip_applied: range?.quotaClipApplied ?? false,
       quota_policy: range?.quotaPolicy ?? null,
       reserved_minutes: reservedMinutes,
+      reserved_processing_minutes: range?.needProcessingMinutes ?? reservedMinutes,
+      reserved_narration_minutes: reservedNarrationMinutes,
+      narration_required: enableSpeech,
     };
 
     fs.writeFileSync(
@@ -200,7 +208,12 @@ export async function createJobFromUpload(input) {
   } catch (diskErr) {
     if (isDbEnabled() && reservedMinutes > 0) {
       try {
-        await releaseQuota(userId, reservedMinutes, range?.reservedUsageDate);
+        await releaseQuota(
+          userId,
+          reservedMinutes,
+          range?.reservedUsageDate,
+          reservedNarrationMinutes
+        );
       } catch (releaseErr) {
         console.error(`[createJob] releaseQuota failed for ${jobId}`, releaseErr);
       }
@@ -245,6 +258,8 @@ export async function createJobFromUpload(input) {
     sourceDurationSec,
     processedDurationSec: range?.processedDurationSec ?? null,
     quotaClipApplied: range?.quotaClipApplied ?? false,
+    quotaClipReasons: range?.quotaPolicy?.clipReasons ?? [],
+    primaryClipReason: range?.quotaPolicy?.primaryClipReason ?? null,
   };
 }
 

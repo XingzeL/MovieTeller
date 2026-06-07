@@ -106,6 +106,9 @@ export async function jobRecordToDto(record, request = {}, jobRoot = "") {
     sourceDurationSec: record.source_duration_sec ?? null,
     processedDurationSec: record.processed_duration_sec ?? null,
     quotaClipApplied: record.quota_clip_applied ?? false,
+    narrationRequired: record.narration_required ?? false,
+    reservedProcessingMinutes: record.reserved_processing_minutes ?? record.reserved_minutes ?? 0,
+    reservedNarrationMinutes: record.reserved_narration_minutes ?? 0,
     processingRange:
       record.processed_duration_sec != null
         ? {
@@ -157,5 +160,8 @@ export async function jobRecordToListItemDto(record, request = {}, jobRoot = "")
     sourceDurationSec: record.source_duration_sec ?? null,
     processedDurationSec: record.processed_duration_sec ?? null,
     quotaClipApplied: record.quota_clip_applied ?? false,
+    narrationRequired: record.narration_required ?? false,
+    reservedProcessingMinutes: record.reserved_processing_minutes ?? record.reserved_minutes ?? 0,
+    reservedNarrationMinutes: record.reserved_narration_minutes ?? 0,
   };
 }

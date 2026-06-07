@@ -32,6 +32,7 @@ export async function upsertUserOnLogin(userId, client) {
       userId,
       {
         quotaMinutes: Number(subscription.quota_minutes_per_month),
+        narrationQuotaMinutes: Number(subscription.narration_quota_minutes_per_month),
         periodStart,
         periodEnd,
       },

@@ -33,6 +33,8 @@ const EXPECTED_MIGRATIONS = [
   "004_usage_ledger.sql",
   "005_job_study_cards.sql",
   "006_reserved_usage_date.sql",
+  "007_dual_quota.sql",
+  "008_quota_purchases.sql",
 ];
 
 const M7_JOB_COLUMNS = [
@@ -43,6 +45,9 @@ const M7_JOB_COLUMNS = [
   "reserved_minutes",
   "reserved_usage_date",
   "billing_finalized_at",
+  "reserved_processing_minutes",
+  "reserved_narration_minutes",
+  "narration_required",
 ];
 
 describeDb("M7 migration schema", async (t) => {
@@ -56,7 +61,7 @@ describeDb("M7 migration schema", async (t) => {
     await runMigrations();
   });
 
-  await t.test("schema_migrations records 001 through 006", async () => {
+  await t.test("schema_migrations records all expected migrations", async () => {
     const result = await getPool().query(
       "SELECT name FROM schema_migrations ORDER BY name"
     );
@@ -85,6 +90,32 @@ describeDb("M7 migration schema", async (t) => {
       result.rows.map((row) => row.code),
       ["free", "lite", "pro", "max"]
     );
+  });
+
+  await t.test("dual quota columns exist", async () => {
+    const balanceColumns = new Set(
+      (
+        await getPool().query(
+          `SELECT column_name FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'user_balances'`
+        )
+      ).rows.map((row) => row.column_name)
+    );
+    assert.ok(balanceColumns.has("narration_remaining_minutes"));
+    assert.ok(balanceColumns.has("narration_reserved_minutes"));
+    assert.ok(balanceColumns.has("narration_period_quota_minutes"));
+
+    const ledgerColumns = new Set(
+      (
+        await getPool().query(
+          `SELECT column_name FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'usage_ledger'`
+        )
+      ).rows.map((row) => row.column_name)
+    );
+    assert.ok(ledgerColumns.has("processing_consumed_minutes"));
+    assert.ok(ledgerColumns.has("narration_consumed_minutes"));
+    assert.ok(ledgerColumns.has("narration_remaining_after"));
   });
 
   await t.test("006 reserved_usage_date ALTER is idempotent", async () => {

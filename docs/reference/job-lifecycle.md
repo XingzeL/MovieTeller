@@ -185,10 +185,12 @@ Protected Job APIs return **503** (fail fast). No fallback to filesystem scan or
 
 When `DATABASE_URL` is set:
 
-- Create: `ffprobe` → reserve minutes (`FOR UPDATE`) → `INSERT jobs` with `source_duration_sec`, `processed_duration_sec`, `quota_policy`, `reserved_minutes`.
+- Create: `ffprobe` → reserve processing minutes (`FOR UPDATE`) → reserve narration minutes when `enableSpeech=true` → `INSERT jobs` with `source_duration_sec`, `processed_duration_sec`, `quota_policy`, `reserved_minutes`.
 - `request.json` carries `startPoint` / `endPoint`; Python clips before `run_full_workflow`.
 - Terminal: `finalizeBilling` (idempotent via `billing_finalized_at`) + `usage_ledger` row.
 - Retention: delete disk first, then `DELETE jobs`; `usage_ledger` purged independently.
+
+`enableSpeech=false` jobs do not reserve or consume narration quota.
 
 See [`billing-and-usage.md`](billing-and-usage.md).
 

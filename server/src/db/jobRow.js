@@ -68,6 +68,9 @@ export function jobRowToRecord(row) {
     quota_policy: row.quota_policy ?? null,
     reserved_minutes: row.reserved_minutes ?? 0,
     reserved_usage_date: row.reserved_usage_date ?? null,
+    reserved_processing_minutes: row.reserved_processing_minutes ?? row.reserved_minutes ?? 0,
+    reserved_narration_minutes: row.reserved_narration_minutes ?? 0,
+    narration_required: row.narration_required ?? false,
     billing_finalized_at: row.billing_finalized_at
       ? row.billing_finalized_at instanceof Date
         ? row.billing_finalized_at.toISOString().replace(/\.\d{3}Z$/, "Z")

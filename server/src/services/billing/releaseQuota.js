@@ -1,4 +1,7 @@
-import { adjustReservedMinutes } from "../../db/balancesRepository.js";
+import {
+  adjustNarrationReservedMinutes,
+  adjustReservedMinutes,
+} from "../../db/balancesRepository.js";
 import { adjustDailyReserved, utcUsageDate } from "../../db/dailyUsageRepository.js";
 import { getPool } from "../../db/pool.js";
 
@@ -7,14 +10,32 @@ import { getPool } from "../../db/pool.js";
  * @param {string} userId
  * @param {number} reservedMinutes
  * @param {string} [usageDate]
+ * @param {number} [reservedNarrationMinutes]
  */
-export async function releaseQuota(userId, reservedMinutes, usageDate = utcUsageDate()) {
-  if (!reservedMinutes || reservedMinutes <= 0) return;
+export async function releaseQuota(
+  userId,
+  reservedMinutes,
+  usageDate = utcUsageDate(),
+  reservedNarrationMinutes = 0
+) {
+  if (
+    (!reservedMinutes || reservedMinutes <= 0) &&
+    (!reservedNarrationMinutes || reservedNarrationMinutes <= 0)
+  ) return;
 
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
-    await adjustReservedMinutes(userId, -reservedMinutes, client);
+    if (reservedMinutes > 0) {
+      await adjustReservedMinutes(userId, -reservedMinutes, client);
+    }
+    if (reservedNarrationMinutes > 0) {
+      await adjustNarrationReservedMinutes(
+        userId,
+        -reservedNarrationMinutes,
+        client
+      );
+    }
     await adjustDailyReserved(
       userId,
       usageDate,

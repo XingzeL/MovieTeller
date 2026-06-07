@@ -26,6 +26,7 @@ export async function upsertUser(userId, client) {
 export async function getActiveSubscription(userId, client) {
   const result = await queryClient(client).query(
     `SELECT us.*, p.code AS plan_code, p.quota_minutes_per_month,
+            p.narration_quota_minutes_per_month,
             p.max_video_duration_sec, p.max_daily_minutes
      FROM user_subscriptions us
      JOIN plans p ON p.id = us.plan_id
@@ -42,6 +43,20 @@ export async function getActiveSubscription(userId, client) {
  * @param {string} planId
  * @param {import('pg').PoolClient} [client]
  */
+/**
+ * @param {string} userId
+ * @param {string} planId
+ * @param {import('pg').PoolClient} [client]
+ */
+export async function switchActiveSubscription(userId, planId, client) {
+  await queryClient(client).query(
+    `UPDATE user_subscriptions SET status = 'canceled'
+     WHERE user_id = $1 AND status = 'active'`,
+    [userId]
+  );
+  return createSubscription(userId, planId, client);
+}
+
 export async function createSubscription(userId, planId, client) {
   const now = new Date();
   const periodEnd = new Date(now);
