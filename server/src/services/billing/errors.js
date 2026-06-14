@@ -17,6 +17,15 @@ export class VideoProbeError extends Error {
   }
 }
 
+export class VideoDownloadError extends Error {
+  constructor(message = "video download failed") {
+    super(message);
+    this.name = "VideoDownloadError";
+    this.code = "video_download_failed";
+    this.statusCode = 400;
+  }
+}
+
 /**
  * @param {import('express').Response} res
  * @param {unknown} err

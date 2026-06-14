@@ -3,8 +3,11 @@ import { Component } from 'react'
 import { apiFetch, ensureDevSession } from './api/apiClient'
 import { JobPanel } from './components/JobPanel'
 import { UploadForm } from './components/UploadForm'
+import type { VideoSourceMode } from './modules/videoUpload'
+import { validateVideoUrl } from './modules/videoUpload'
 import type { CreateJobResponse, QuotaClipReason } from './types/job'
 import { buildQuotaClipNotice } from './utils/quotaClipMessages'
+import { formatVideoDownloadError } from './utils/videoDownloadErrors'
 
 type UploadPageProps = {
   jobId?: string | null
@@ -53,6 +56,10 @@ function uploadErrorMessage(input: {
   if (input.code === 'video_probe_failed') {
     return '无法读取视频时长。请确认视频文件可正常播放后再上传。'
   }
+  if (input.code === 'video_download_failed') {
+    const hint = formatVideoDownloadError(input.error)
+    return `无法从该链接下载视频。${hint}`
+  }
   return input.error ?? `Request failed (${input.status})`
 }
 
@@ -63,7 +70,9 @@ type ClipNotice = {
 }
 
 type UploadPageState = {
+  sourceMode: VideoSourceMode
   file: File | null
+  videoUrl: string
   jobId: string | null
   enableSpeech: boolean
   cefrLevel: string
@@ -77,7 +86,9 @@ type UploadPageState = {
 /** 上传视频并创建后台 Job；jobId 由 App 通过 URL 与列表同步。 */
 export default class UploadPage extends Component<UploadPageProps, UploadPageState> {
   state: UploadPageState = {
+    sourceMode: 'file',
     file: null,
+    videoUrl: '',
     jobId: this.props.jobId ?? null,
     enableSpeech: true,
     cefrLevel: 'B1',
@@ -97,27 +108,75 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
   }
 
   private get submitEnabled(): boolean {
-    return this.state.file !== null && !this.state.loading
+    if (this.state.loading) return false
+    if (this.state.sourceMode === 'file') {
+      return this.state.file !== null
+    }
+    return validateVideoUrl(this.state.videoUrl) === null
+  }
+
+  private buildJobOptions() {
+    return {
+      enablePolish: true,
+      enableSpeech: this.state.enableSpeech,
+      enableSubtitleContext: true,
+      enableEmbedVideo: true,
+      cefrLevel: this.state.cefrLevel,
+      sourceLanguage: this.state.videoLanguage,
+      ttsLanguage: this.state.ttsLanguage,
+      narrationLanguage: this.state.ttsLanguage,
+      subtitleLanguage: this.state.videoLanguage,
+    }
   }
 
   private handleCreateJob = async () => {
-    const { file, loading } = this.state
-    if (!file || loading) return
+    const { sourceMode, file, videoUrl, loading } = this.state
+    if (loading || !this.submitEnabled) return
     this.setState({ error: null, clipNotice: null, loading: true })
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      fd.append('enablePolish', 'true')
-      fd.append('enableSpeech', this.state.enableSpeech ? 'true' : 'false')
-      fd.append('enableSubtitleContext', 'true')
-      fd.append('enableEmbedVideo', 'true')
-      fd.append('cefrLevel', this.state.cefrLevel)
-      fd.append('sourceLanguage', this.state.videoLanguage)
-      fd.append('ttsLanguage', this.state.ttsLanguage)
-      fd.append('narrationLanguage', this.state.ttsLanguage)
-      fd.append('subtitleLanguage', this.state.videoLanguage)
       await ensureDevSession()
-      const res = await apiFetch('/api/jobs', { method: 'POST', body: fd })
+      const options = this.buildJobOptions()
+      let res: Response
+      if (sourceMode === 'file') {
+        if (!file) {
+          this.setState({ loading: false })
+          return
+        }
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('enablePolish', options.enablePolish ? 'true' : 'false')
+        fd.append('enableSpeech', options.enableSpeech ? 'true' : 'false')
+        fd.append('enableSubtitleContext', options.enableSubtitleContext ? 'true' : 'false')
+        fd.append('enableEmbedVideo', options.enableEmbedVideo ? 'true' : 'false')
+        fd.append('cefrLevel', options.cefrLevel)
+        fd.append('sourceLanguage', options.sourceLanguage)
+        fd.append('ttsLanguage', options.ttsLanguage)
+        fd.append('narrationLanguage', options.narrationLanguage)
+        fd.append('subtitleLanguage', options.subtitleLanguage)
+        res = await apiFetch('/api/jobs', { method: 'POST', body: fd })
+      } else {
+        const urlErr = validateVideoUrl(videoUrl)
+        if (urlErr) {
+          this.setState({ error: urlErr, loading: false })
+          return
+        }
+        res = await apiFetch('/api/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceUrl: videoUrl.trim(),
+            enablePolish: options.enablePolish,
+            enableSpeech: options.enableSpeech,
+            enableSubtitleContext: options.enableSubtitleContext,
+            enableEmbedVideo: options.enableEmbedVideo,
+            cefrLevel: options.cefrLevel,
+            sourceLanguage: options.sourceLanguage,
+            ttsLanguage: options.ttsLanguage,
+            narrationLanguage: options.narrationLanguage,
+            subtitleLanguage: options.subtitleLanguage,
+          }),
+        })
+      }
       const data = (await res.json()) as CreateJobResponse & {
         error?: string
         code?: string
@@ -159,7 +218,9 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
 
   render() {
     const {
+      sourceMode,
       file,
+      videoUrl,
       jobId,
       loading,
       error,
@@ -170,6 +231,14 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
       clipNotice,
     } = this.state
     const submitEnabled = this.submitEnabled
+    const loadingLabel =
+      sourceMode === 'url' && loading
+        ? '正在下载视频…'
+        : loading
+          ? '提交中…'
+          : sourceMode === 'url'
+            ? '下载并开始生成'
+            : '生成我的素材'
     const clipDialog = clipNotice
       ? buildQuotaClipNotice({
           lang: 'zh',
@@ -183,8 +252,12 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
       <>
         <div className="rounded-2xl border border-white/80 bg-white/90 p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] backdrop-blur-sm">
           <UploadForm
+            sourceMode={sourceMode}
+            onSourceModeChange={(mode) => this.setState({ sourceMode: mode, error: null })}
             file={file}
             onFileChange={(f) => this.setState({ file: f })}
+            videoUrl={videoUrl}
+            onVideoUrlChange={(url) => this.setState({ videoUrl: url })}
             disabled={loading || Boolean(jobId)}
           />
 
@@ -252,13 +325,19 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
               disabled={!submitEnabled || loading || Boolean(jobId)}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#86efac] to-[#4ade80] px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {loading ? '提交中…' : '生成我的素材'}
+              {loadingLabel}
             </button>
           </div>
 
           {error && (
             <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
               {error}
+            </p>
+          )}
+
+          {loading && sourceMode === 'url' && (
+            <p className="mt-4 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-200">
+              正在从链接下载视频到服务器，请稍候（长视频可能需要几分钟）…
             </p>
           )}
 
@@ -270,6 +349,8 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
                 this.setState({
                   jobId: null,
                   file: null,
+                  videoUrl: '',
+                  sourceMode: 'file',
                   error: null,
                   clipNotice: null,
                 })

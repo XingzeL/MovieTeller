@@ -164,6 +164,16 @@ function envOverrides() {
   if (process.env.NARRATION_FRAME_MAX_EDGE)
     o.narration_frame_max_edge = parseInt(process.env.NARRATION_FRAME_MAX_EDGE, 10);
   if (process.env.FFMPEG_PATH) o.ffmpeg_path = process.env.FFMPEG_PATH;
+  if (process.env.YT_DLP_PATH) o.yt_dlp_path = process.env.YT_DLP_PATH;
+  if (process.env.YT_DLP_COOKIES_FROM_BROWSER?.trim()) {
+    o.yt_dlp_cookies_from_browser = process.env.YT_DLP_COOKIES_FROM_BROWSER.trim();
+  }
+  if (process.env.YT_DLP_COOKIES?.trim()) {
+    o.yt_dlp_cookies = process.env.YT_DLP_COOKIES.trim();
+  }
+  if (process.env.YT_DLP_IMPERSONATE?.trim()) {
+    o.yt_dlp_impersonate = process.env.YT_DLP_IMPERSONATE.trim();
+  }
   if (process.env.DEFAULT_PROMPT_STYLE)
     o.default_prompt_style = process.env.DEFAULT_PROMPT_STYLE;
   if (process.env.VIDEOCAPTIONER_BIN) o.videocaptioner_bin = process.env.VIDEOCAPTIONER_BIN;

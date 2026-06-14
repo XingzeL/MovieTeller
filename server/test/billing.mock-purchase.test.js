@@ -4,7 +4,12 @@ import test from "node:test";
 
 import { closePool, getPool } from "../src/db/pool.js";
 import { runMigrations } from "../src/db/ensure.js";
-import { getUserBalance } from "../src/db/balancesRepository.js";
+import {
+  applyQuotaConsumption,
+  getNarrationAvailableMinutes,
+  getProcessingAvailableMinutes,
+  getUserBalance,
+} from "../src/db/balancesRepository.js";
 import { getActiveSubscription } from "../src/db/usersRepository.js";
 import {
   MockPurchaseError,
@@ -22,12 +27,14 @@ describeDb("billing mock purchase", async (t) => {
     await closePool();
   });
 
-  await t.test("addon adds processing and narration minutes", async () => {
+  await t.test("addon adds processing and narration minutes without double counting", async () => {
     const userId = `mock-addon-${crypto.randomUUID()}`;
     t.after(async () => cleanupUser(userId));
 
     await upsertUserOnLogin(userId);
     const before = await getUserBalance(userId);
+    const beforeProcessing = getProcessingAvailableMinutes(before);
+    const beforeNarration = getNarrationAvailableMinutes(before);
 
     const result = await mockPurchase(userId, { kind: "addon", id: "s" });
     assert.equal(result.addedProcessingMinutes, 60);
@@ -36,13 +43,16 @@ describeDb("billing mock purchase", async (t) => {
     const after = await getUserBalance(userId);
     assert.equal(
       Number(after.remaining_minutes),
-      Number(before.remaining_minutes) + 60
+      Number(before.remaining_minutes)
     );
     assert.equal(
       Number(after.narration_remaining_minutes),
-      Number(before.narration_remaining_minutes) + 60
+      Number(before.narration_remaining_minutes)
     );
     assert.equal(Number(after.bonus_processing_minutes), 60);
+    assert.equal(Number(after.bonus_narration_minutes), 60);
+    assert.equal(getProcessingAvailableMinutes(after), beforeProcessing + 60);
+    assert.equal(getNarrationAvailableMinutes(after), beforeNarration + 60);
     assert.equal(Number(after.max_video_duration_sec_override), 900);
 
     const purchases = await getPool().query(
@@ -58,18 +68,53 @@ describeDb("billing mock purchase", async (t) => {
 
     await upsertUserOnLogin(userId);
     const before = await getUserBalance(userId);
+    const beforeProcessing = getProcessingAvailableMinutes(before);
+    const beforeNarration = getNarrationAvailableMinutes(before);
 
     await mockPurchase(userId, { kind: "addon", id: "processing-120" });
 
     const after = await getUserBalance(userId);
     assert.equal(
       Number(after.remaining_minutes),
-      Number(before.remaining_minutes) + 120
+      Number(before.remaining_minutes)
     );
     assert.equal(
       Number(after.narration_remaining_minutes),
       Number(before.narration_remaining_minutes)
     );
+    assert.equal(Number(after.bonus_processing_minutes), 120);
+    assert.equal(Number(after.bonus_narration_minutes), 0);
+    assert.equal(getProcessingAvailableMinutes(after), beforeProcessing + 120);
+    assert.equal(getNarrationAvailableMinutes(after), beforeNarration);
+  });
+
+  await t.test("consumption spends period quota first then purchased bonus", async () => {
+    const userId = `mock-consume-${crypto.randomUUID()}`;
+    t.after(async () => cleanupUser(userId));
+
+    await upsertUserOnLogin(userId);
+    await mockPurchase(userId, { kind: "addon", id: "processing-120" });
+
+    const client = await getPool().connect();
+    try {
+      await client.query("BEGIN");
+      await applyQuotaConsumption(
+        userId,
+        { processingMinutes: 7, narrationMinutes: 0 },
+        client
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    const after = await getUserBalance(userId);
+    assert.equal(Number(after.remaining_minutes), 0);
+    assert.equal(Number(after.bonus_processing_minutes), 118);
+    assert.equal(getProcessingAvailableMinutes(after), 118);
   });
 
   await t.test("plan purchase switches subscription and adds quota", async () => {
@@ -78,6 +123,8 @@ describeDb("billing mock purchase", async (t) => {
 
     await upsertUserOnLogin(userId);
     const before = await getUserBalance(userId);
+    const beforeProcessing = getProcessingAvailableMinutes(before);
+    const beforeNarration = getNarrationAvailableMinutes(before);
 
     const result = await mockPurchase(userId, { kind: "plan", id: "pro" });
     assert.equal(result.planCode, "pro");
@@ -90,12 +137,14 @@ describeDb("billing mock purchase", async (t) => {
     const after = await getUserBalance(userId);
     assert.equal(
       Number(after.remaining_minutes),
-      Number(before.remaining_minutes) + 300
+      Number(before.remaining_minutes)
     );
     assert.equal(
       Number(after.narration_remaining_minutes),
-      Number(before.narration_remaining_minutes) + 300
+      Number(before.narration_remaining_minutes)
     );
+    assert.equal(getProcessingAvailableMinutes(after), beforeProcessing + 300);
+    assert.equal(getNarrationAvailableMinutes(after), beforeNarration + 300);
   });
 
   await t.test("free plan purchase is rejected", async () => {

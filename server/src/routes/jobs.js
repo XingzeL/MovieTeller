@@ -1,11 +1,20 @@
 import express from "express";
 import multer from "multer";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { respondDatabaseError } from "../db/errors.js";
 import { respondBillingError } from "../services/billing/errors.js";
 import { appendAuditEvent } from "../services/audit/auditLog.js";
+import {
+  downloadRemoteVideo,
+  removeDownloadDir,
+} from "../services/media/downloadRemoteVideo.js";
+import {
+  extractSourceUrlFromBody,
+  validateSourceUrl,
+} from "../services/media/validateSourceUrl.js";
 import {
   listArtifactsForUser,
   cancelJobForUser,
@@ -62,31 +71,95 @@ router.get("/jobs", async (req, res) => {
   }
 });
 
+const URL_JOB_CREATE_TIMEOUT_MS = 15 * 60 * 1000;
+
+/**
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {{ file: import('multer').File, body: Record<string, unknown> }} input
+ */
+async function createJobFromRequest(req, res, input) {
+  const created = await enqueueJobUpload({
+    file: input.file,
+    body: input.body,
+    userId: req.user.id,
+  });
+  appendAuditEvent({
+    jobId: created.jobId,
+    userId: req.user.id,
+    event: "job.created",
+  });
+  return res.status(201).json(created);
+}
+
 router.post("/jobs", upload.single("file"), async (req, res) => {
-  if (!req.file?.path) {
-    return res.status(400).json({ error: 'multipart field "file" is required' });
+  const isMultipart = req.is("multipart/form-data");
+
+  if (isMultipart) {
+    if (!req.file?.path) {
+      return res.status(400).json({ error: 'multipart field "file" is required' });
+    }
+    const validation = validateJobUploadFile(req.file);
+    if (!validation.ok) {
+      removeUploadedTempFile(req.file.path);
+      return res.status(400).json({ error: validation.message });
+    }
+    try {
+      return await createJobFromRequest(req, res, {
+        file: req.file,
+        body: req.body ?? {},
+      });
+    } catch (err) {
+      if (respondBillingError(res, err)) return;
+      return respondDatabaseError(res, err);
+    }
   }
-  const validation = validateJobUploadFile(req.file);
-  if (!validation.ok) {
-    removeUploadedTempFile(req.file.path);
-    return res.status(400).json({ error: validation.message });
+
+  if (req.is("application/json")) {
+    req.setTimeout(URL_JOB_CREATE_TIMEOUT_MS);
+    const sourceUrl = extractSourceUrlFromBody(req.body);
+    if (!sourceUrl) {
+      return res.status(400).json({ error: "sourceUrl is required" });
+    }
+    const urlValidation = validateSourceUrl(sourceUrl);
+    if (!urlValidation.ok) {
+      return res.status(400).json({ error: urlValidation.message });
+    }
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "movieteller_dl_"));
+    let downloaded;
+    try {
+      downloaded = await downloadRemoteVideo(urlValidation.url, tmpDir);
+      const fileValidation = validateJobUploadFile({
+        path: downloaded.path,
+        originalname: downloaded.originalname,
+        mimetype: downloaded.mimetype,
+        size: downloaded.size,
+      });
+      if (!fileValidation.ok) {
+        removeDownloadDir(tmpDir);
+        return res.status(400).json({ error: fileValidation.message });
+      }
+      const pseudoFile = {
+        path: downloaded.path,
+        originalname: downloaded.originalname,
+        mimetype: downloaded.mimetype,
+        size: downloaded.size,
+      };
+      return await createJobFromRequest(req, res, {
+        file: pseudoFile,
+        body: { ...(req.body ?? {}), sourceUrl: urlValidation.url },
+      });
+    } catch (err) {
+      removeDownloadDir(tmpDir);
+      if (respondBillingError(res, err)) return;
+      return respondDatabaseError(res, err);
+    }
   }
-  try {
-    const created = await enqueueJobUpload({
-      file: req.file,
-      body: req.body ?? {},
-      userId: req.user.id,
-    });
-    appendAuditEvent({
-      jobId: created.jobId,
-      userId: req.user.id,
-      event: "job.created",
-    });
-    return res.status(201).json(created);
-  } catch (err) {
-    if (respondBillingError(res, err)) return;
-    return respondDatabaseError(res, err);
-  }
+
+  return res.status(415).json({
+    error: 'use multipart/form-data with "file" or application/json with "sourceUrl"',
+  });
 });
 
 router.get("/jobs/:jobId", async (req, res) => {

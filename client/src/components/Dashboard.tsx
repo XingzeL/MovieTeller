@@ -120,17 +120,33 @@ function SourceInfo({ job }: { job: JobListItem }) {
   if (!source) return null
 
   if (source.type === 'remote_url' && source.source_url) {
+    let hostname = '远程链接'
+    try {
+      hostname = new URL(source.source_url).hostname.replace(/^www\./, '')
+    } catch {
+      /* keep fallback */
+    }
     return (
-      <div className="truncate text-[11px] text-[#718096]" title={source.source_url}>
-        来源：远程链接
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[#718096]">
+        <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 font-medium text-violet-800">
+          视频链接
+        </span>
+        <span className="truncate" title={source.source_url}>
+          {hostname}
+        </span>
       </div>
     )
   }
 
   if (source.original_filename) {
     return (
-      <div className="truncate text-[11px] text-[#718096]" title={source.original_filename}>
-        来源：{source.original_filename}
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[#718096]">
+        <span className="inline-flex rounded-full bg-zinc-100 px-2 py-0.5 font-medium text-zinc-700">
+          本地上传
+        </span>
+        <span className="truncate" title={source.original_filename}>
+          {source.original_filename}
+        </span>
       </div>
     )
   }

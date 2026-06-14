@@ -17,3 +17,30 @@ export function validateMp4File(file: File): string | null {
   }
   return null
 }
+
+export function validateVideoUrl(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (!trimmed) {
+    return '请输入视频链接'
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return '请输入有效的 http 或 https 链接'
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return '仅支持 http 或 https 链接'
+  }
+  return null
+}
+
+export function videoUrlHostname(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  try {
+    return new URL(trimmed).hostname.replace(/^www\./, '')
+  } catch {
+    return null
+  }
+}

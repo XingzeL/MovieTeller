@@ -12,6 +12,41 @@ import type { JobArtifactItem, JobDto } from '../types/job'
 import { StudyCardPreviewFrame } from './StudyCardPreviewFrame'
 import { WorkflowProgressBar } from './WorkflowProgressBar'
 
+function JobSourceSummary({ job }: { job: JobDto }) {
+  const source = job.originalSource
+  if (!source) return null
+
+  if (source.type === 'remote_url' && source.source_url) {
+    let hostname = '远程视频'
+    try {
+      hostname = new URL(source.source_url).hostname.replace(/^www\./, '')
+    } catch {
+      /* keep fallback */
+    }
+    return (
+      <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs dark:border-violet-900 dark:bg-violet-950/30">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-violet-900 dark:text-violet-200">视频链接</span>
+          <span className="text-violet-700 dark:text-violet-300">{hostname}</span>
+        </div>
+        <p className="mt-1 truncate text-violet-800/80 dark:text-violet-200/80" title={source.source_url}>
+          {source.source_url}
+        </p>
+      </div>
+    )
+  }
+
+  if (source.original_filename) {
+    return (
+      <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+        来源文件：{source.original_filename}
+      </p>
+    )
+  }
+
+  return null
+}
+
 type Props = {
   jobId: string
   onClear?: () => void
@@ -183,6 +218,8 @@ export function JobPanel({ jobId, onClear }: Props) {
           )}
         </div>
       </div>
+
+      {job ? <JobSourceSummary job={job} /> : null}
 
       {job && (
         <p className="flex flex-wrap items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">

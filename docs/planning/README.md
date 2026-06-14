@@ -17,6 +17,9 @@
 | [gateway-retryable-retry.md](gateway-retryable-retry.md) | Gateway 可重试错误 |
 | [capability-timeout-retries.md](capability-timeout-retries.md) | capability 超时/重试 |
 | [cancel-signal-gateway-check.md](cancel-signal-gateway-check.md) | cancel.flag 与 gateway 检查点 |
+| [url-video-download-ytdlp.md](url-video-download-ytdlp.md) | URL 视频下载 Lite 版（**分支已实现，待验收**；含已知问题与路线图） |
+| [free-video-downloader-analysis.md](free-video-downloader-analysis.md) | free-video-downloader 下载实现调研 |
+| [video-ingest-port-plan.md](video-ingest-port-plan.md) | 移植 video_ingest（Phase A/B/C：元数据优先 → Python 引擎 → downloading Job） |
 | [archive/](archive/) | 历史计划、checklist、模块设计归档 |
 
 当前生产合同见 [../reference/phase2-lite.md](../reference/phase2-lite.md)。

@@ -98,9 +98,9 @@ export async function lockUserBalance(userId, client) {
 export async function resetBalanceForNewPeriod(userId, input, client) {
   await queryClient(client).query(
     `UPDATE user_balances SET
-       remaining_minutes = $2 + bonus_processing_minutes,
+       remaining_minutes = $2,
        reserved_minutes = 0,
-       narration_remaining_minutes = $3 + bonus_narration_minutes,
+       narration_remaining_minutes = $3,
        narration_reserved_minutes = 0,
        period_quota_minutes = $2,
        narration_period_quota_minutes = $3,
@@ -166,8 +166,6 @@ export async function addPurchasedQuota(userId, input, client) {
 
   await queryClient(client).query(
     `UPDATE user_balances SET
-       remaining_minutes = remaining_minutes + $2,
-       narration_remaining_minutes = narration_remaining_minutes + $3,
        bonus_processing_minutes = bonus_processing_minutes + $2,
        bonus_narration_minutes = bonus_narration_minutes + $3,
        max_video_duration_sec_override = CASE
@@ -207,20 +205,22 @@ export async function applyQuotaConsumption(userId, amounts, client) {
   let processingLeft = Math.max(0, Number(amounts.processingMinutes) || 0);
   let narrationLeft = Math.max(0, Number(amounts.narrationMinutes) || 0);
 
-  let remainingMinutes = Number(balance.remaining_minutes) || 0;
+  let periodProcessingRemaining = Number(balance.remaining_minutes) || 0;
   let bonusProcessing = Number(balance.bonus_processing_minutes) || 0;
-  let narrationRemaining = Number(balance.narration_remaining_minutes) || 0;
+  let periodNarrationRemaining = Number(balance.narration_remaining_minutes) || 0;
   let bonusNarration = Number(balance.bonus_narration_minutes) || 0;
 
-  const fromPeriodProcessing = Math.min(remainingMinutes, processingLeft);
-  remainingMinutes -= fromPeriodProcessing;
+  const fromPeriodProcessing = Math.min(periodProcessingRemaining, processingLeft);
+  periodProcessingRemaining -= fromPeriodProcessing;
   processingLeft -= fromPeriodProcessing;
-  bonusProcessing = Math.max(0, bonusProcessing - processingLeft);
+  const fromBonusProcessing = Math.min(bonusProcessing, processingLeft);
+  bonusProcessing -= fromBonusProcessing;
 
-  const fromPeriodNarration = Math.min(narrationRemaining, narrationLeft);
-  narrationRemaining -= fromPeriodNarration;
+  const fromPeriodNarration = Math.min(periodNarrationRemaining, narrationLeft);
+  periodNarrationRemaining -= fromPeriodNarration;
   narrationLeft -= fromPeriodNarration;
-  bonusNarration = Math.max(0, bonusNarration - narrationLeft);
+  const fromBonusNarration = Math.min(bonusNarration, narrationLeft);
+  bonusNarration -= fromBonusNarration;
 
   await client.query(
     `UPDATE user_balances SET
@@ -232,9 +232,9 @@ export async function applyQuotaConsumption(userId, amounts, client) {
      WHERE user_id = $1`,
     [
       userId,
-      remainingMinutes,
+      periodProcessingRemaining,
       bonusProcessing,
-      narrationRemaining,
+      periodNarrationRemaining,
       bonusNarration,
     ]
   );

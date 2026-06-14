@@ -9,6 +9,7 @@
 | 有 | 尚无 |
 |----|------|
 | 单机本地：上传、队列、后台 Python、进度/日志、取消、产物下载 | S3 / presigned / 多 Worker 竞争（Full Phase 2） |
+| **视频 URL 导入**（`POST /api/jobs` JSON + yt-dlp 同步下载） | 元数据优先配额（先 `--dump-json` 再下载） |
 | Cookie 会话 + 每用户 Job ACL；可选 Clerk Bearer（见 [auth-plan.md](../planning/auth-plan.md)） | 自动 retry（仅手动 retry） |
 | 文件态 Job：`artifacts/jobs/{jobId}/` | combined 无 DB 时重启把 queued/running 标 `failed` |
 | **Phase 2 Lite**：Postgres 控制面 + `dev:api` + `dev:worker`（见下） | — |
@@ -41,6 +42,7 @@ Python workflow (full_workflow)
 - **Node.js 18+**（建议 LTS）
 - **Python 3.12**
 - **ffmpeg**（混流、抽帧等；`GET /api/healthz/deep` 会检查）
+- **yt-dlp**（视频 URL 导入；`POST /api/jobs` 以 JSON `sourceUrl` 提交时由 Node 调用）
 - **VideoCaptioner CLI**（字幕 ASR，`videocaptioner` 在 PATH 或配置 `videocaptioner_bin`）
 - **API 配置**：复制根目录 [.env.example](../.env.example) → `.env`，并按 [movieteller_config 说明](../python/movieteller_config/README.md) 配置 provider / key（旁白、TTS 等会调真实模型）
 
@@ -54,7 +56,27 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 
 python -m pip install -U pip
-python -m pip install videocaptioner pytest
+python -m pip install videocaptioner pytest yt-dlp
+
+### YouTube / B站 链接（Cookies，常见）
+
+**B站**（如 `BV1Yx411578x`）在多数环境下会返回 **HTTP 412**，这是 B 站反爬，不是 MovieTeller 的 bug。参见 [yt-dlp #14830](https://github.com/yt-dlp/yt-dlp/issues/14830)。
+
+推荐配置（仓库根 `.env`，改后重启 Node server）：
+
+```bash
+# 使用 .venv 内 yt-dlp（建议 pip install -U yt-dlp curl_cffi）
+YT_DLP_PATH=/path/to/MovieTeller/.venv/bin/yt-dlp
+YT_DLP_IMPERSONATE=chrome
+
+# B站通常需要 cookies：浏览器安装「Get cookies.txt LOCALLY」等扩展，
+# 打开 bilibili.com 后导出 Netscape cookies.txt，然后：
+YT_DLP_COOKIES=/path/to/bilibili_cookies.txt
+```
+
+**YouTube** 常见错误为 `Sign in to confirm you're not a bot`，同样需 `YT_DLP_COOKIES` 或 `YT_DLP_COOKIES_FROM_BROWSER=chrome`。
+
+仍失败时查看 server 日志 `[downloadRemoteVideo] failed:`，或先用「本地上传」。
 
 # 按依赖顺序 editable 安装（与 server  spawn 包列表一致）
 for pkg in movieteller_config movieteller_logging pipeline_types media_utils model_gateway \
