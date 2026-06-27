@@ -1,6 +1,7 @@
 import { loadConfig } from "../config/index.js";
 import { getJobsRoot } from "../config/jobs.js";
 import { runStartupRecovery } from "./startupRecovery.js";
+import { cleanupStaleDownloadDirs } from "../services/media/validateSourceUrl.js";
 import { startWorkerLoop, stopWorkerLoop } from "./queueWorker.js";
 import { isWorkerRunMode } from "./runMode.js";
 
@@ -21,6 +22,11 @@ export function startWorkerRuntime(opts = {}) {
   const recovery = runStartupRecovery();
   if (recovery.recovered > 0) {
     console.warn(`Worker recovered ${recovery.recovered} orphan running job(s)`);
+  }
+
+  const cleaned = cleanupStaleDownloadDirs();
+  if (cleaned.removed > 0) {
+    console.warn(`Worker cleaned ${cleaned.removed} stale download temp dir(s)`);
   }
 
   const worker = startWorkerLoop({ pollMs: opts.pollMs });

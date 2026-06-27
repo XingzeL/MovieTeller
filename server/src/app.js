@@ -5,6 +5,7 @@ import { requireCurrentUser } from "./middleware/currentUser.js";
 import generateRouter from "./routes/generate.js";
 import extractRouter from "./routes/extract.js";
 import jobsRouter from "./routes/jobs.js";
+import videosRouter from "./routes/videos.js";
 import usageRouter from "./routes/usage.js";
 import billingRouter from "./routes/billing.js";
 import healthRouter from "./routes/health.js";
@@ -51,6 +52,7 @@ export function createApp(opts = {}) {
   protectedApi.use(requireCurrentUser);
   protectedApi.use(generateRouter);
   protectedApi.use(extractRouter);
+  protectedApi.use(videosRouter);
   protectedApi.use(jobsRouter);
   protectedApi.use(usageRouter);
   protectedApi.use(billingRouter);

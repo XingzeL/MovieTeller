@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 
 import { getRepoRoot } from "../config/index.js";
+import { resolveYtDlpCookiesPath } from "./media/ytDlpOptions.js";
 
 const PYTHON_SRC_PACKAGES = [
   "movieteller_config",
@@ -21,6 +22,7 @@ const PYTHON_SRC_PACKAGES = [
   "video_render",
   "subtitle_context",
   "video_frame_pool",
+  "video_ingest",
   "movie_pipeline",
 ];
 
@@ -48,7 +50,13 @@ export function buildPythonEnv(repoRoot) {
   const env = {
     ...process.env,
     PYTHONPATH: pythonPathEntries.join(path.delimiter),
+    MOVIE_TELLER_REPO_ROOT: repoRoot,
   };
+
+  const cookies = process.env.YT_DLP_COOKIES?.trim();
+  if (cookies) {
+    env.YT_DLP_COOKIES = resolveYtDlpCookiesPath(cookies);
+  }
 
   if (fs.existsSync(repoVenvBin)) {
     env.PATH = [repoVenvBin, process.env.PATH || ""].filter(Boolean).join(path.delimiter);

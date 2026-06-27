@@ -6,7 +6,12 @@ import path from "node:path";
 import test from "node:test";
 
 import { VideoDownloadError } from "../src/services/billing/errors.js";
-import { downloadRemoteVideo } from "../src/services/media/downloadRemoteVideo.js";
+import {
+  downloadRemoteVideo,
+  parseYtDlpDurationFromStdout,
+} from "../src/services/media/downloadRemoteVideo.js";
+
+process.env.VIDEO_INGEST_DISABLED = "1";
 
 const tempDirs = [];
 
@@ -48,13 +53,22 @@ test("downloadRemoteVideo returns file metadata on success", async () => {
   const result = await downloadRemoteVideo("https://example.com/watch", outputDir, {
     ytDlpPath: "yt-dlp",
     timeoutMs: 5_000,
-    spawnFn: fakeSpawn({ stdout: `Sample Title\n${videoPath}\n` }),
+    title: "Sample Title",
+    spawnFn: fakeSpawn({ stdout: "[download] done\nduration:123.4\n" }),
   });
 
   assert.equal(result.path, videoPath);
   assert.equal(result.size, 1024);
   assert.equal(result.mimetype, "video/mp4");
-  assert.match(result.originalname, /\.mp4$/);
+  assert.match(result.originalname, /Sample Title\.mp4$/);
+  assert.equal(result.title, "Sample Title");
+  assert.equal(result.durationSec, 123.4);
+});
+
+test("parseYtDlpDurationFromStdout returns last valid duration marker", () => {
+  assert.equal(parseYtDlpDurationFromStdout("duration:0\nduration:65.2\n"), 65.2);
+  assert.equal(parseYtDlpDurationFromStdout("duration:NA\n"), null);
+  assert.equal(parseYtDlpDurationFromStdout(""), null);
 });
 
 test("downloadRemoteVideo throws VideoDownloadError when yt-dlp fails", async () => {
@@ -84,7 +98,7 @@ test("downloadRemoteVideo rejects files over maxBytes", async () => {
       downloadRemoteVideo("https://example.com/watch", outputDir, {
         maxBytes: 1024,
         timeoutMs: 5_000,
-        spawnFn: fakeSpawn({ stdout: `${videoPath}\n` }),
+        spawnFn: fakeSpawn({ stdout: "" }),
       }),
     (err) => {
       assert.ok(err instanceof VideoDownloadError);

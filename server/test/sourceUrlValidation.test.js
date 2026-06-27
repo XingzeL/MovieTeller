@@ -19,10 +19,50 @@ test("extractSourceUrlFromBody prefers sourceUrl and accepts aliases", () => {
 });
 
 test("validateSourceUrl accepts public https URLs", () => {
-  const result = validateSourceUrl("https://www.youtube.com/watch?v=abc");
-  assert.equal(result.ok, true);
-  if (result.ok) {
-    assert.equal(result.url, "https://www.youtube.com/watch?v=abc");
+  const prev = process.env.SOURCE_URL_ALLOWLIST;
+  process.env.SOURCE_URL_ALLOWLIST = "example.com,bilibili.com";
+  try {
+    const result = validateSourceUrl("https://www.bilibili.com/video/BV1Yx411578x");
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.url, "https://www.bilibili.com/video/BV1Yx411578x");
+    }
+  } finally {
+    if (prev === undefined) delete process.env.SOURCE_URL_ALLOWLIST;
+    else process.env.SOURCE_URL_ALLOWLIST = prev;
+  }
+});
+
+test("validateSourceUrl rejects YouTube while channel is disabled", () => {
+  const prev = process.env.SOURCE_URL_ALLOWLIST;
+  process.env.SOURCE_URL_ALLOWLIST = "youtube.com,youtu.be,bilibili.com";
+  try {
+    for (const url of [
+      "https://www.youtube.com/watch?v=abc",
+      "https://youtu.be/abc",
+      "https://m.youtube.com/watch?v=abc",
+    ]) {
+      const result = validateSourceUrl(url);
+      assert.equal(result.ok, false);
+      if (!result.ok) {
+        assert.equal(result.message, "暂不支持 YouTube 链接，请改用本地 MP4 上传。");
+      }
+    }
+  } finally {
+    if (prev === undefined) delete process.env.SOURCE_URL_ALLOWLIST;
+    else process.env.SOURCE_URL_ALLOWLIST = prev;
+  }
+});
+
+test("validateSourceUrl rejects hosts outside allowlist", () => {
+  const prev = process.env.SOURCE_URL_ALLOWLIST;
+  process.env.SOURCE_URL_ALLOWLIST = "bilibili.com";
+  try {
+    const result = validateSourceUrl("https://example.com/video");
+    assert.equal(result.ok, false);
+  } finally {
+    if (prev === undefined) delete process.env.SOURCE_URL_ALLOWLIST;
+    else process.env.SOURCE_URL_ALLOWLIST = prev;
   }
 });
 

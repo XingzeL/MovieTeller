@@ -2,6 +2,7 @@ import { loadConfig } from "../config/index.js";
 import { getJobsRoot } from "../config/jobs.js";
 import { createApp } from "../app.js";
 import { runStartupRecovery } from "./startupRecovery.js";
+import { cleanupStaleDownloadDirs } from "../services/media/validateSourceUrl.js";
 import { startRetentionScheduler } from "../services/retention/retentionScheduler.js";
 import { isApiRunMode } from "./runMode.js";
 
@@ -22,6 +23,11 @@ export function startApiServer(opts = {}) {
   const recovery = runStartupRecovery();
   if (recovery.recovered > 0) {
     console.warn(`Recovered ${recovery.recovered} stale job(s) on API startup`);
+  }
+
+  const cleaned = cleanupStaleDownloadDirs();
+  if (cleaned.removed > 0) {
+    console.warn(`Cleaned ${cleaned.removed} stale download temp dir(s)`);
   }
 
   let scheduler = { stop: () => {} };

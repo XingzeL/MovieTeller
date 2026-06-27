@@ -34,6 +34,8 @@ server/uploads/
 *.narration_audio/
 *.mp3.jsonl
 test_artifacts/
+secrets/*
+!secrets/README.md
 .DS_Store
 
 # Python — bytecode, tooling caches, editable install metadata

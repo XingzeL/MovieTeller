@@ -5,15 +5,14 @@ import os from "node:os";
 import path from "node:path";
 
 import { respondDatabaseError } from "../db/errors.js";
+import { isDbEnabled } from "../db/database.js";
 import { respondBillingError } from "../services/billing/errors.js";
 import { appendAuditEvent } from "../services/audit/auditLog.js";
-import {
-  downloadRemoteVideo,
-  removeDownloadDir,
-} from "../services/media/downloadRemoteVideo.js";
+import { preflightQuotaForDuration } from "../services/billing/preflightQuota.js";
+import { parseRemoteVideo } from "../services/media/parseRemoteVideo.js";
 import {
   extractSourceUrlFromBody,
-  validateSourceUrl,
+  validateSourceUrlAsync,
 } from "../services/media/validateSourceUrl.js";
 import {
   listArtifactsForUser,
@@ -26,7 +25,9 @@ import {
   resolveThumbnailForUser,
   retryJobForUser,
 } from "../services/jobs/jobAccess.js";
-import { enqueueJobUpload } from "../services/jobs/jobQueue.js";
+import { createRemoteUrlJob } from "../services/jobs/createRemoteUrlJob.js";
+import { enqueueJobUpload, toCreateJobApiResponse } from "../services/jobs/jobQueue.js";
+import { workflowOptionsFromForm } from "../services/jobs/workflowOptions.js";
 import { readJobRequestMetadata } from "../services/jobs/readJobRequest.js";
 import { jobRecordToDto } from "../services/jobs/readJob.js";
 import {
@@ -73,6 +74,54 @@ router.get("/jobs", async (req, res) => {
 
 const URL_JOB_CREATE_TIMEOUT_MS = 15 * 60 * 1000;
 
+async function createRemoteUrlJobFromRequest(req, res) {
+  const sourceUrl = extractSourceUrlFromBody(req.body);
+  if (!sourceUrl) {
+    return res.status(400).json({ error: "sourceUrl is required" });
+  }
+
+  const urlValidation = await validateSourceUrlAsync(sourceUrl);
+  if (!urlValidation.ok) {
+    return res.status(400).json({ error: urlValidation.message });
+  }
+
+  const parsed = await parseRemoteVideo(urlValidation.url);
+  const hasParsedIdentity = Boolean(
+    parsed.title?.trim() || parsed.id?.trim() || parsed.platform?.trim()
+  );
+  if (!hasParsedIdentity) {
+    return res.status(400).json({
+      error: "could not parse video from URL",
+      code: "video_parse_failed",
+    });
+  }
+
+  const formOptions = workflowOptionsFromForm(req.body ?? {});
+  if (isDbEnabled() && parsed.duration && parsed.duration > 0) {
+    await preflightQuotaForDuration({
+      userId: req.user.id,
+      sourceDurationSec: parsed.duration,
+      enableSpeech: formOptions.enableSpeech !== false,
+    });
+  }
+
+  const created = await createRemoteUrlJob({
+    userId: req.user.id,
+    sourceUrl: urlValidation.url,
+    body: req.body ?? {},
+    parsed,
+  });
+
+  appendAuditEvent({
+    jobId: created.jobId,
+    userId: req.user.id,
+    event: "job.created",
+    detail: { source: "remote_url", status: created.status },
+  });
+
+  return res.status(201).json(toCreateJobApiResponse(created));
+}
+
 /**
  * @param {import('express').Request} req
  * @param {import('express').Response} res
@@ -117,41 +166,9 @@ router.post("/jobs", upload.single("file"), async (req, res) => {
 
   if (req.is("application/json")) {
     req.setTimeout(URL_JOB_CREATE_TIMEOUT_MS);
-    const sourceUrl = extractSourceUrlFromBody(req.body);
-    if (!sourceUrl) {
-      return res.status(400).json({ error: "sourceUrl is required" });
-    }
-    const urlValidation = validateSourceUrl(sourceUrl);
-    if (!urlValidation.ok) {
-      return res.status(400).json({ error: urlValidation.message });
-    }
-
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "movieteller_dl_"));
-    let downloaded;
     try {
-      downloaded = await downloadRemoteVideo(urlValidation.url, tmpDir);
-      const fileValidation = validateJobUploadFile({
-        path: downloaded.path,
-        originalname: downloaded.originalname,
-        mimetype: downloaded.mimetype,
-        size: downloaded.size,
-      });
-      if (!fileValidation.ok) {
-        removeDownloadDir(tmpDir);
-        return res.status(400).json({ error: fileValidation.message });
-      }
-      const pseudoFile = {
-        path: downloaded.path,
-        originalname: downloaded.originalname,
-        mimetype: downloaded.mimetype,
-        size: downloaded.size,
-      };
-      return await createJobFromRequest(req, res, {
-        file: pseudoFile,
-        body: { ...(req.body ?? {}), sourceUrl: urlValidation.url },
-      });
+      return await createRemoteUrlJobFromRequest(req, res);
     } catch (err) {
-      removeDownloadDir(tmpDir);
       if (respondBillingError(res, err)) return;
       return respondDatabaseError(res, err);
     }

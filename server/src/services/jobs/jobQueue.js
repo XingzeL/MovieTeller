@@ -16,6 +16,7 @@ import { isApiRunMode, isWorkerRunMode } from "../../runtime/runMode.js";
 import { releaseClaimIfOwned } from "./claimJob.js";
 import { finalizeBilling } from "../billing/finalizeBilling.js";
 import { createJobFromUpload, spawnPreparedJob } from "./createJob.js";
+import { cancelRemoteDownloadJob } from "./remoteDownloadWorker.js";
 import { syncWorkflowTerminalToDb } from "./dbJobSync.js";
 import {
   markCancelRequested,
@@ -182,6 +183,31 @@ export async function enqueueJobUpload(input) {
   return response;
 }
 
+/**
+ * @param {{ jobId: string, jobRoot: string, jobsRoot: string, videoPath: string, userId?: string | null }} prepared
+ */
+export function enqueuePreparedJob(prepared) {
+  if (isApiRunMode() || isWorkerRunMode()) {
+    return;
+  }
+  if (isJobMarkedRunning(prepared.jobId) || isJobWaitingInQueue(prepared.jobId)) {
+    return;
+  }
+  if (running.size < maxRunningJobs()) {
+    running.add(prepared.jobId);
+    spawnPreparedJob(prepared);
+    watchJobCompletion(prepared.jobId);
+    return;
+  }
+  waiting.push({
+    jobId: prepared.jobId,
+    jobRoot: prepared.jobRoot,
+    jobsRoot: prepared.jobsRoot,
+    videoPath: prepared.videoPath,
+    userId: prepared.userId ?? null,
+  });
+}
+
 const RETRYABLE_STATUSES = new Set(["failed", "canceled"]);
 
 /**
@@ -283,6 +309,11 @@ export async function cancelJob(jobId, userId = null) {
   const jobsRoot = getJobsRoot();
   const jobRoot = resolveJobRoot(jobsRoot, jobId);
   const paths = jobPathsFromRoot(jobRoot);
+  const record = readWorkflowRecord(paths.workflowJsonPath);
+
+  if (record && String(record.status) === "downloading") {
+    return cancelRemoteDownloadJob(userId, jobId);
+  }
 
   const inWaiting = isJobWaitingInQueue(jobId);
   const wasSpawned = isJobMarkedRunning(jobId);
@@ -304,6 +335,9 @@ export async function cancelJob(jobId, userId = null) {
 
   if (isDbEnabled() && userId) {
     const dbRow = await getJobById(jobId);
+    if (dbRow && String(dbRow.status) === "downloading") {
+      return cancelRemoteDownloadJob(userId, jobId);
+    }
     if (dbRow && String(dbRow.status) === "queued") {
       markJobCanceledByNode(jobRoot);
       await markJobCanceledQueued(userId, jobId);

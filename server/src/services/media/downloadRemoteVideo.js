@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { loadConfig } from "../../config/index.js";
 import { VideoDownloadError } from "../billing/errors.js";
+import { buildYtDlpFormatSelector } from "./buildYtDlpFormat.js";
+import { downloadRemoteVideoViaIngest } from "./runVideoIngest.js";
 import { buildYtDlpExtraArgs } from "./ytDlpOptions.js";
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -14,10 +16,12 @@ const DEFAULT_MAX_BYTES = 500 * 1024 * 1024;
  * @param {string} cmd
  * @param {string[]} args
  * @param {number} timeoutMs
+ * @param {{ onSpawn?: (child: import('node:child_process').ChildProcess) => void }} [behavior]
  */
-function runCommandWithTimeout(spawnFn, cmd, args, timeoutMs) {
+function runCommandWithTimeout(spawnFn, cmd, args, timeoutMs, behavior = {}) {
   return new Promise((resolve, reject) => {
     const child = spawnFn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    behavior.onSpawn?.(child);
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
@@ -74,11 +78,46 @@ function findDownloadedVideo(outputDir) {
 /**
  * @param {string} url
  * @param {string} outputDir
- * @param {{ ytDlpPath?: string, timeoutMs?: number, maxBytes?: number, spawnFn?: typeof spawn }} [opts]
- * @returns {Promise<{ path: string, originalname: string, mimetype: string, size: number, title?: string | null }>}
+ * @param {{ ytDlpPath?: string, timeoutMs?: number, maxBytes?: number, spawnFn?: typeof spawn, preferIngest?: boolean, maxHeight?: number, title?: string | null, onSpawn?: (child: import('node:child_process').ChildProcess) => void }} [opts]
+ * @returns {Promise<{ path: string, originalname: string, mimetype: string, size: number, title?: string | null, durationSec?: number | null }>}
  */
 export async function downloadRemoteVideo(url, outputDir, opts = {}) {
   const config = loadConfig();
+  const preferIngest = opts.preferIngest !== false;
+  const maxHeight =
+    opts.maxHeight ??
+    (process.env.YT_DLP_MAX_HEIGHT
+      ? Number(process.env.YT_DLP_MAX_HEIGHT)
+      : 720);
+
+  if (preferIngest && process.env.VIDEO_INGEST_DISABLED !== "1") {
+    try {
+      const ingested = await downloadRemoteVideoViaIngest(url, outputDir, {
+        timeoutMs: opts.timeoutMs,
+        maxHeight,
+      });
+      const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
+      if (ingested.size > maxBytes) {
+        try {
+          fs.unlinkSync(ingested.path);
+        } catch {
+          /* ignore */
+        }
+        throw new VideoDownloadError("downloaded video exceeds size limit");
+      }
+      return ingested;
+    } catch (err) {
+      if (process.env.VIDEO_INGEST_REQUIRED === "1") {
+        if (err instanceof VideoDownloadError) throw err;
+        throw new VideoDownloadError(String(err?.message || err));
+      }
+      console.warn(
+        "[downloadRemoteVideo] video_ingest failed, falling back to yt-dlp CLI:",
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
   const ytDlpPath = opts.ytDlpPath || config.yt_dlp_path || "yt-dlp";
   const timeoutMs =
     opts.timeoutMs ??
@@ -98,23 +137,23 @@ export async function downloadRemoteVideo(url, outputDir, opts = {}) {
     "--merge-output-format",
     "mp4",
     "-f",
-    "bv*+ba/b",
+    buildYtDlpFormatSelector({ maxHeight }),
     "--max-filesize",
     maxFilesize,
     "--socket-timeout",
     "30",
+    "--print",
+    "after_move:duration:%(duration)s",
     "-o",
     outputTemplate,
-    "--print",
-    "title",
-    "--print",
-    "filename",
     url,
   ];
 
-  let stdout;
+  let commandResult;
   try {
-    ({ stdout } = await runCommandWithTimeout(spawnFn, ytDlpPath, args, timeoutMs));
+    commandResult = await runCommandWithTimeout(spawnFn, ytDlpPath, args, timeoutMs, {
+      onSpawn: opts.onSpawn,
+    });
   } catch (err) {
     if (err instanceof VideoDownloadError) {
       console.error("[downloadRemoteVideo] failed:", err.message);
@@ -123,17 +162,10 @@ export async function downloadRemoteVideo(url, outputDir, opts = {}) {
     throw new VideoDownloadError(String(err?.message || err));
   }
 
-  const lines = String(stdout || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const downloadedPath =
-    lines.length > 0 ? lines[lines.length - 1] : findDownloadedVideo(outputDir);
-  const resolvedPath = path.isAbsolute(downloadedPath)
-    ? downloadedPath
-    : path.join(outputDir, downloadedPath);
-
-  if (!fs.existsSync(resolvedPath)) {
+  let resolvedPath;
+  try {
+    resolvedPath = findDownloadedVideo(outputDir);
+  } catch {
     throw new VideoDownloadError("downloaded video file is missing");
   }
 
@@ -151,10 +183,14 @@ export async function downloadRemoteVideo(url, outputDir, opts = {}) {
   }
 
   const ext = path.extname(resolvedPath).toLowerCase() || ".mp4";
-  const title = lines.length >= 2 ? lines[0] : null;
+  const title =
+    opts.title != null && String(opts.title).trim()
+      ? String(opts.title).trim()
+      : null;
   const safeTitle = title
     ? `${title.replace(/[^\w.\-()\u4e00-\u9fff\s]+/g, "_").trim().slice(0, 80)}${ext}`
-    : `remote${ext}`;
+    : path.basename(resolvedPath) || `remote${ext}`;
+  const durationSec = parseYtDlpDurationFromStdout(commandResult?.stdout);
 
   return {
     path: resolvedPath,
@@ -162,7 +198,25 @@ export async function downloadRemoteVideo(url, outputDir, opts = {}) {
     mimetype: "video/mp4",
     size: stat.size,
     title,
+    durationSec,
   };
+}
+
+/**
+ * @param {string | undefined} stdout
+ */
+export function parseYtDlpDurationFromStdout(stdout) {
+  const lines = String(stdout || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const match = /^duration:(.+)$/.exec(lines[i]);
+    if (!match) continue;
+    const value = Number(match[1]);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  return null;
 }
 
 /**

@@ -26,6 +26,15 @@ export class VideoDownloadError extends Error {
   }
 }
 
+export class VideoParseError extends Error {
+  constructor(message = "video parse failed") {
+    super(message);
+    this.name = "VideoParseError";
+    this.code = "video_parse_failed";
+    this.statusCode = 400;
+  }
+}
+
 /**
  * @param {import('express').Response} res
  * @param {unknown} err

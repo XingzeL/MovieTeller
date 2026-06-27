@@ -67,6 +67,143 @@ export async function insertJobQueued(input, client) {
 }
 
 /**
+ * @param {Parameters<typeof insertJobQueued>[0]} input
+ * @param {import('pg').PoolClient} [client]
+ */
+export async function insertJobDownloading(input, client) {
+  const pool = client ?? getPool();
+  await pool.query(
+    `INSERT INTO jobs (
+      job_id, user_id, status, attempt_id,
+      output_root, input_video_path, original_source, video_state_version, progress,
+      source_duration_sec, processed_duration_sec, quota_clip_applied,
+      quota_policy, reserved_minutes, reserved_usage_date,
+      reserved_processing_minutes, reserved_narration_minutes, narration_required,
+      current_stage
+    ) VALUES ($1, $2, 'downloading', 1, $3, $4, $5::jsonb, 0, '{"downloadPercent":0}'::jsonb,
+      $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, 'remote_download')`,
+    [
+      input.jobId,
+      input.userId,
+      input.outputRoot,
+      input.inputVideoPath,
+      input.originalSource ? JSON.stringify(input.originalSource) : null,
+      input.sourceDurationSec ?? null,
+      input.processedDurationSec ?? null,
+      input.quotaClipApplied ?? false,
+      input.quotaPolicy ? JSON.stringify(input.quotaPolicy) : null,
+      input.reservedMinutes ?? 0,
+      input.reservedUsageDate ?? null,
+      input.reservedProcessingMinutes ?? input.reservedMinutes ?? 0,
+      input.reservedNarrationMinutes ?? 0,
+      input.narrationRequired ?? false,
+    ]
+  );
+}
+
+/**
+ * @param {string} workerId
+ */
+export async function claimNextDownloadingJob(workerId) {
+  const result = await getPool().query(
+    `UPDATE jobs SET
+       claimed_at = now(),
+       claimed_by = $1,
+       last_heartbeat_at = now(),
+       updated_at = now()
+     WHERE job_id = (
+       SELECT job_id FROM jobs
+       WHERE status = 'downloading'
+         AND cancel_requested_at IS NULL
+         AND (claimed_by IS NULL OR claimed_at < now() - interval '30 minutes')
+       ORDER BY created_at
+       FOR UPDATE SKIP LOCKED
+       LIMIT 1
+     )
+     RETURNING *`,
+    [workerId]
+  );
+  if (result.rowCount === 0) return null;
+  return rowToRecord(result.rows[0]);
+}
+
+/**
+ * @param {string} jobId
+ */
+export async function markJobQueuedAfterDownload(jobId) {
+  await getPool().query(
+    `UPDATE jobs SET
+       status = 'queued',
+       current_stage = NULL,
+       progress = '{}'::jsonb,
+       claimed_at = NULL,
+       claimed_by = NULL,
+       last_heartbeat_at = NULL,
+       updated_at = now()
+     WHERE job_id = $1 AND status = 'downloading'`,
+    [jobId]
+  );
+}
+
+/**
+ * @param {string} userId
+ * @param {string} jobId
+ */
+export async function markJobCanceledDownloading(userId, jobId) {
+  const result = await getPool().query(
+    `UPDATE jobs SET
+       status = 'canceled',
+       canceled_at = now(),
+       cancel_mode = 'cooperative',
+       completed_at = now(),
+       claimed_at = NULL,
+       claimed_by = NULL,
+       updated_at = now()
+     WHERE job_id = $1 AND user_id = $2 AND status = 'downloading'
+     RETURNING *`,
+    [jobId, userId]
+  );
+  if (result.rowCount === 0) return null;
+  return rowToRecord(result.rows[0]);
+}
+
+/**
+ * @param {string} userId
+ * @param {string} jobId
+ */
+export async function requestCancelDownloadingJob(userId, jobId) {
+  const result = await getPool().query(
+    `UPDATE jobs SET
+       cancel_requested_at = now(),
+       updated_at = now()
+     WHERE job_id = $1 AND user_id = $2 AND status = 'downloading'
+     RETURNING *`,
+    [jobId, userId]
+  );
+  if (result.rowCount === 0) return null;
+  return rowToRecord(result.rows[0]);
+}
+
+/**
+ * @param {string} jobId
+ */
+export async function failDownloadingJob(jobId, errorCode, errorMessage) {
+  await getPool().query(
+    `UPDATE jobs SET
+       status = 'failed',
+       error_code = $2,
+       error_message = $3,
+       retryable = true,
+       completed_at = now(),
+       claimed_at = NULL,
+       claimed_by = NULL,
+       updated_at = now()
+     WHERE job_id = $1 AND status = 'downloading'`,
+    [jobId, errorCode, errorMessage]
+  );
+}
+
+/**
  * @param {string} jobId
  */
 export async function getJobById(jobId) {
@@ -552,7 +689,7 @@ export async function jobExistsInDb(jobId) {
 export async function countActiveJobsForUser(userId) {
   const result = await getPool().query(
     `SELECT COUNT(*)::int AS count FROM jobs
-     WHERE user_id = $1 AND status IN ('queued', 'running', 'canceling')`,
+     WHERE user_id = $1 AND status IN ('downloading', 'queued', 'running', 'canceling')`,
     [userId]
   );
   return result.rows[0]?.count ?? 0;

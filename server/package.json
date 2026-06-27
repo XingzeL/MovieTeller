@@ -14,6 +14,8 @@
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:backfill": "node scripts/jobs-backfill.mjs",
     "test:db": "node --test --test-force-exit test/phase2-lite.db.test.js test/billing.reservation.test.js test/billing.mock-purchase.test.js test/m7.db.test.js",
+    "test:integration:bilibili": "RUN_BILIBILI_DOWNLOAD_INTEGRATION=1 node --test test/bilibili.download.integration.test.js",
+    "test:integration:youtube": "RUN_YOUTUBE_DOWNLOAD_INTEGRATION=1 node --test test/youtube.download.integration.test.js",
     "smoke": "node ../scripts/jobs-api-smoke.mjs --mode=api",
     "smoke:create": "node ../scripts/jobs-api-smoke.mjs --mode=create",
     "smoke:cancel": "node ../scripts/jobs-api-smoke.mjs --mode=cancel --timeout-sec=180",

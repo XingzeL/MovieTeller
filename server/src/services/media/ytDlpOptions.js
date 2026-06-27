@@ -1,3 +1,7 @@
+import path from "node:path";
+
+import { getRepoRoot } from "../../config/index.js";
+
 /**
  * @param {string} url
  */
@@ -11,27 +15,41 @@ function isBilibiliUrl(url) {
 }
 
 /**
+ * @param {string} cookiesPath
+ */
+export function resolveYtDlpCookiesPath(cookiesPath) {
+  const trimmed = String(cookiesPath || "").trim();
+  if (!trimmed) return "";
+  if (path.isAbsolute(trimmed)) return trimmed;
+  return path.join(getRepoRoot(), trimmed);
+}
+
+/**
  * Extra yt-dlp CLI flags from config / environment (cookies, site tweaks).
+ * Prefer `YT_DLP_COOKIES` file over `--cookies-from-browser` (avoids macOS keychain prompts).
  * @param {{ yt_dlp_cookies_from_browser?: string | null, yt_dlp_cookies?: string | null, yt_dlp_impersonate?: string | null }} [config]
  * @param {string} [url]
  * @returns {string[]}
  */
 export function buildYtDlpExtraArgs(config = {}, url = "") {
   const args = [];
-  const fromBrowser =
-    (process.env.YT_DLP_COOKIES_FROM_BROWSER &&
-      String(process.env.YT_DLP_COOKIES_FROM_BROWSER).trim()) ||
-    (config.yt_dlp_cookies_from_browser &&
-      String(config.yt_dlp_cookies_from_browser).trim());
-  if (fromBrowser) {
-    args.push("--cookies-from-browser", fromBrowser);
-  }
 
-  const cookiesFile =
+  const cookiesFile = resolveYtDlpCookiesPath(
     (process.env.YT_DLP_COOKIES && String(process.env.YT_DLP_COOKIES).trim()) ||
-    (config.yt_dlp_cookies && String(config.yt_dlp_cookies).trim());
+      (config.yt_dlp_cookies && String(config.yt_dlp_cookies).trim()) ||
+      ""
+  );
   if (cookiesFile) {
     args.push("--cookies", cookiesFile);
+  } else {
+    const fromBrowser =
+      (process.env.YT_DLP_COOKIES_FROM_BROWSER &&
+        String(process.env.YT_DLP_COOKIES_FROM_BROWSER).trim()) ||
+      (config.yt_dlp_cookies_from_browser &&
+        String(config.yt_dlp_cookies_from_browser).trim());
+    if (fromBrowser) {
+      args.push("--cookies-from-browser", fromBrowser);
+    }
   }
 
   const impersonate =
@@ -57,8 +75,8 @@ export function summarizeYtDlpFailure(message) {
     return "请检查链接是否有效、视频是否公开，或改用本地上传。";
   }
 
-  if (/Sign in to confirm you.?re not a bot|not a bot/i.test(detail)) {
-    return "YouTube 触发了机器人验证。请在服务器 .env 中设置 YT_DLP_COOKIES_FROM_BROWSER=chrome（或导出 cookies.txt），或改用本地上传。";
+  if (/Sign in to confirm you.?re not a bot|Sign in to confirm you’re not a bot|not a bot/i.test(detail)) {
+    return "YouTube 触发了机器人验证。请导出 youtube.com 的 cookies.txt，在 .env 设置 YT_DLP_COOKIES=secrets/yt-dlp-cookies.txt（或绝对路径），或改用本地上传。详见 docs/reference/local-development.md";
   }
   if (/Private video|This video is private/i.test(detail)) {
     return "该视频为私密或需登录观看，无法下载。";
@@ -71,9 +89,9 @@ export function summarizeYtDlpFailure(message) {
   }
   if (/HTTP Error 412|Precondition Failed/i.test(detail)) {
     if (/BiliBili|bilibili/i.test(detail)) {
-      return "B站反爬拦截（HTTP 412）。请用浏览器打开 bilibili.com 后，用扩展导出 cookies.txt，在 .env 设置 YT_DLP_COOKIES=路径；或改用本地上传。详见 docs/reference/local-development.md";
+      return "B站反爬拦截（HTTP 412）。请用浏览器打开 bilibili.com 后导出 cookies.txt，在 .env 设置 YT_DLP_COOKIES=secrets/yt-dlp-cookies.txt；或改用本地上传。详见 docs/reference/local-development.md";
     }
-    return "站点拒绝了下载（HTTP 412）。请配置 YT_DLP_COOKIES 或 YT_DLP_COOKIES_FROM_BROWSER，或改用本地上传。";
+    return "站点拒绝了下载（HTTP 412）。请在 .env 设置 YT_DLP_COOKIES=secrets/yt-dlp-cookies.txt，或改用本地上传。";
   }
   if (/timed out/i.test(detail)) {
     return "下载超时，请稍后重试或换用更短视频。";

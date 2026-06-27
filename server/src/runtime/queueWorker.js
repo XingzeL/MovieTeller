@@ -28,6 +28,7 @@ import {
 } from "../services/jobs/jobQueue.js";
 import { ensureCancelFlagForDbJob } from "../services/jobs/dbJobSync.js";
 import { getWorkerId } from "../services/jobs/workerId.js";
+import { tickRemoteDownloadsOnce } from "../services/jobs/remoteDownloadWorker.js";
 import { reconcileOrphanRunningJobs } from "./startupRecovery.js";
 import { scanAllJobsForSystem } from "../services/jobs/scanAllJobsForSystem.js";
 
@@ -273,6 +274,7 @@ async function tickOnceFromFilesystem(opts = {}) {
  * @param {{ jobsRoot?: string }} [opts]
  */
 export async function tickOnce(opts = {}) {
+  await tickRemoteDownloadsOnce(opts);
   if (isDbEnabled()) {
     return tickOnceFromDatabase(opts);
   }

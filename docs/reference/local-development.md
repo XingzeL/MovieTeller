@@ -9,10 +9,10 @@
 | 有 | 尚无 |
 |----|------|
 | 单机本地：上传、队列、后台 Python、进度/日志、取消、产物下载 | S3 / presigned / 多 Worker 竞争（Full Phase 2） |
-| **视频 URL 导入**（`POST /api/jobs` JSON + yt-dlp 同步下载） | 元数据优先配额（先 `--dump-json` 再下载） |
-| Cookie 会话 + 每用户 Job ACL；可选 Clerk Bearer（见 [auth-plan.md](../planning/auth-plan.md)） | 自动 retry（仅手动 retry） |
-| 文件态 Job：`artifacts/jobs/{jobId}/` | combined 无 DB 时重启把 queued/running 标 `failed` |
+| **视频 URL 导入**（`POST /api/videos/parse` + `POST /api/jobs` JSON，后台 `downloading` → 队列） | 自动 retry（仅手动 retry） |
+| Cookie 会话 + 每用户 Job ACL；可选 Clerk Bearer（见 [auth-plan.md](../planning/auth-plan.md)） | combined 无 DB 时重启把 queued/running 标 `failed` |
 | **Phase 2 Lite**：Postgres 控制面 + `dev:api` + `dev:worker`（见下） | — |
+| 文件态 Job：`artifacts/jobs/{jobId}/` | — |
 | M4b 强制取消（deadline 后进程组 SIGTERM/SIGKILL） | Windows 进程组 kill 未验收 |
 | 列表 `limit` 最大 **1000**；**3 天** retention 删除整 Job 目录 | UI 仅展示「最近 8 条」（已取消，见 [job-lifecycle.md](job-lifecycle.md)） |
 | 视频下载一次 + 410；学习卡长期可访问 | 润色/字幕上下文无 UI 开关（默认开启） |
@@ -57,28 +57,42 @@ source .venv/bin/activate
 
 python -m pip install -U pip
 python -m pip install videocaptioner pytest yt-dlp
+```
 
-### YouTube / B站 链接（Cookies，常见）
+### YouTube / B站 链接（Cookies）
 
 **B站**（如 `BV1Yx411578x`）在多数环境下会返回 **HTTP 412**，这是 B 站反爬，不是 MovieTeller 的 bug。参见 [yt-dlp #14830](https://github.com/yt-dlp/yt-dlp/issues/14830)。
 
-推荐配置（仓库根 `.env`，改后重启 Node server）：
+**YouTube** 常见错误为 `Sign in to confirm you're not a bot`，同样需要有效 cookies。
+
+**推荐：导出 cookies 文件**（避免 macOS 每次 `--cookies-from-browser chrome` 弹钥匙串授权）。步骤见 [secrets/README.md](../../secrets/README.md)。
+
+在仓库根 `.env` 配置（改后重启 Node server）：
 
 ```bash
-# 使用 .venv 内 yt-dlp（建议 pip install -U yt-dlp curl_cffi）
 YT_DLP_PATH=/path/to/MovieTeller/.venv/bin/yt-dlp
 YT_DLP_IMPERSONATE=chrome
-
-# B站通常需要 cookies：浏览器安装「Get cookies.txt LOCALLY」等扩展，
-# 打开 bilibili.com 后导出 Netscape cookies.txt，然后：
-YT_DLP_COOKIES=/path/to/bilibili_cookies.txt
+YT_DLP_COOKIES=secrets/yt-dlp-cookies.txt
 ```
 
-**YouTube** 常见错误为 `Sign in to confirm you're not a bot`，同样需 `YT_DLP_COOKIES` 或 `YT_DLP_COOKIES_FROM_BROWSER=chrome`。
+路径可为相对仓库根的 `secrets/yt-dlp-cookies.txt`，或绝对路径。只设置 `YT_DLP_COOKIES` 或 `YT_DLP_COOKIES_FROM_BROWSER` 其一即可；**优先用文件**。
 
 仍失败时查看 server 日志 `[downloadRemoteVideo] failed:`，或先用「本地上传」。
 
-# 按依赖顺序 editable 安装（与 server  spawn 包列表一致）
+**集成测试**（会读取当前 shell / `.env` 中的 `YT_DLP_COOKIES`）：
+
+```bash
+cd server
+# 先在 .env 或终端 export YT_DLP_COOKIES=secrets/yt-dlp-cookies.txt
+RUN_BILIBILI_DOWNLOAD_INTEGRATION=1 npm run test:integration:bilibili
+RUN_YOUTUBE_DOWNLOAD_INTEGRATION=1 npm run test:integration:youtube
+```
+
+无 cookies 时 B 站会 HTTP 412；YouTube 会 bot 验证失败。
+
+继续安装 Python 包：
+
+```bash
 for pkg in movieteller_config movieteller_logging pipeline_types media_utils model_gateway \
   subtitle_extraction subtitle_analysis frame_source narration narration_polish narration_speech \
   narration_video pipeline_transcript rerank video_render subtitle_context video_frame_pool \

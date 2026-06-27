@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video_ingest"
+version = "0.1.0"
+description = "Remote video parse/download for MovieTeller (yt-dlp + platform routers)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["yt-dlp>=2026.1.0", "requests>=2.31.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
