@@ -10,6 +10,7 @@ from frame_source import FrameSourceOptions
 from movieteller_config.schema import settings_from_dict
 
 from movie_pipeline import (
+    ArtifactPaths,
     NarrationPipelineConfig,
     PolicyContext,
     ResolvedExecutionConfig,
@@ -24,6 +25,7 @@ from movie_pipeline import (
 )
 from movie_pipeline.payload_schema import validate_workflow_artifacts_dict
 from movie_pipeline.runtime_context import RunContext
+from movie_pipeline.workflow_stages import stage_video_package
 from subtitle_analysis import analyze_srt_text
 
 # One subtitle cue with a single qualifying narration gap before it.
@@ -961,6 +963,48 @@ def test_render_video_from_narration_payload_can_render_video():
             video_renderer=fake_renderer,
         )
     assert rendered["renderedVideo"]["outputPath"] == "demo.narrated.mp4"
+
+
+def test_stage_video_package_skips_render_when_no_narrated_segments(tmp_path):
+    video = tmp_path / "demo.mp4"
+    video.write_bytes(b"fake")
+    settings = make_settings(narration_tts_enabled=True)
+    paths = ArtifactPaths.resolve(
+        output_root=tmp_path,
+        source_video=video,
+        enable_speech=True,
+        enable_embed_video=True,
+    )
+    execution = ResolvedExecutionConfig(
+        pipeline=NarrationPipelineConfig(
+            video_options=settings.narration_video_options(),
+        ),
+        enable_speech=True,
+        enable_embed_video=True,
+    )
+    payload = {
+        "videoDurationSec": 10.0,
+        "subtitleSpans": [],
+        "rawGaps": [],
+        "narrationCandidates": [],
+        "narratedSegments": [],
+        "speechOutputDir": str(tmp_path / "speech"),
+        "subtitleContextIndexDir": None,
+    }
+
+    def fail_renderer(*args, **kwargs):
+        raise AssertionError("renderer should not run without narrated segments")
+
+    out = stage_video_package(
+        paths=paths,
+        execution=execution,
+        pipeline_settings=settings,
+        payload=payload,
+        video_renderer=fail_renderer,
+    )
+
+    assert out is payload
+    assert "renderedVideo" not in out
 
 
 def test_resolve_workflow_config_applies_tier_defaults_without_product_request():

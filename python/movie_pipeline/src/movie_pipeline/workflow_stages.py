@@ -258,6 +258,10 @@ def stage_video_package(
         video_policy = VideoPackagePolicy.resolve(
             enable_embed_video=execution.enable_embed_video,
         )
+        narrated_segments = payload.get("narratedSegments")
+        if execution.enable_embed_video and isinstance(narrated_segments, list) and not narrated_segments:
+            stage_log.skipped("no_segments")
+            return payload
         if execution.enable_embed_video and not payload_speech_complete(payload):
             stage_log.skipped("incomplete_tts")
             return payload
