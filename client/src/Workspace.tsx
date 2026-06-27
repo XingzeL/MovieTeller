@@ -75,7 +75,7 @@ export function Workspace() {
             </button>
           </div>
           <p className="mt-2 text-sm font-medium text-[#4a5568]">
-            上传本地 MP4，或粘贴 YouTube / B站 等视频链接，生成解说声道与学习素材
+            上传本地 MP4，或粘贴 B站等公开视频链接，生成解说声道与学习素材
           </p>
         </header>
 

@@ -7,6 +7,8 @@ type UploadFormProps = {
   onFileChange: (file: File | null) => void
   videoUrl: string
   onVideoUrlChange: (url: string) => void
+  onParseUrl?: () => void
+  urlParsing?: boolean
   /** 提交生成中等场景下禁用上传与输入 */
   disabled?: boolean
 }
@@ -18,6 +20,8 @@ export function UploadForm({
   onFileChange,
   videoUrl,
   onVideoUrlChange,
+  onParseUrl,
+  urlParsing = false,
   disabled = false,
 }: UploadFormProps) {
   return (
@@ -28,6 +32,8 @@ export function UploadForm({
       onFileChange={onFileChange}
       videoUrl={videoUrl}
       onVideoUrlChange={onVideoUrlChange}
+      onParseUrl={onParseUrl}
+      urlParsing={urlParsing}
       disabled={disabled}
     />
   )

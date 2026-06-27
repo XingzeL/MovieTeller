@@ -32,6 +32,10 @@ export function validateVideoUrl(raw: string): string | null {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return '仅支持 http 或 https 链接'
   }
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, '')
+  if (host === 'youtu.be' || host === 'youtube.com' || host.endsWith('.youtube.com')) {
+    return '暂不支持 YouTube 链接，请改用本地 MP4 上传。'
+  }
   return null
 }
 

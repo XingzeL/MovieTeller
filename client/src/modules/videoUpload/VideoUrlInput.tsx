@@ -5,12 +5,20 @@ import { validateVideoUrl, videoUrlHostname } from './utils'
 export type VideoUrlInputProps = {
   videoUrl: string
   onVideoUrlChange: (url: string) => void
+  onParseUrl?: () => void
+  urlParsing?: boolean
   disabled?: boolean
 }
 
-const PLATFORM_HINTS = ['YouTube', 'Bilibili', 'Twitter / X', 'Vimeo']
+const PLATFORM_HINTS = ['Bilibili', 'Douyin', 'TikTok', 'Vimeo']
 
-export function VideoUrlInput({ videoUrl, onVideoUrlChange, disabled = false }: VideoUrlInputProps) {
+export function VideoUrlInput({
+  videoUrl,
+  onVideoUrlChange,
+  onParseUrl,
+  urlParsing = false,
+  disabled = false,
+}: VideoUrlInputProps) {
   const inputId = useId()
   const [hint, setHint] = useState<string | null>(null)
   const hostname = useMemo(() => videoUrlHostname(videoUrl), [videoUrl])
@@ -60,7 +68,7 @@ export function VideoUrlInput({ videoUrl, onVideoUrlChange, disabled = false }: 
           </div>
           <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">粘贴公开视频链接</p>
           <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-            服务器将自动下载视频。YouTube / B站 可能需在服务器配置 Cookies。
+            暂不支持 YouTube；请粘贴其他公开链接，或改用本地 MP4 上传。
           </p>
         </div>
 
@@ -72,7 +80,7 @@ export function VideoUrlInput({ videoUrl, onVideoUrlChange, disabled = false }: 
           type="url"
           inputMode="url"
           autoComplete="off"
-          placeholder="https://www.youtube.com/watch?v=..."
+          placeholder="https://www.bilibili.com/video/..."
           value={videoUrl}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
@@ -90,6 +98,17 @@ export function VideoUrlInput({ videoUrl, onVideoUrlChange, disabled = false }: 
             </span>
           ))}
         </div>
+
+        {onParseUrl && (
+          <button
+            type="button"
+            disabled={disabled || urlParsing || !isValid}
+            onClick={onParseUrl}
+            className="mt-4 w-full rounded-xl border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-800 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
+          >
+            {urlParsing ? '解析中…' : '解析链接'}
+          </button>
+        )}
       </div>
 
       {hint && <p className="text-sm text-amber-700 dark:text-amber-300">{hint}</p>}

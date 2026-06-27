@@ -1,10 +1,11 @@
 import { Component } from 'react'
 
 import { apiFetch, ensureDevSession } from './api/apiClient'
+import { parseVideoUrl, type ParsedVideo } from './api/parseVideo'
 import { JobPanel } from './components/JobPanel'
 import { UploadForm } from './components/UploadForm'
 import type { VideoSourceMode } from './modules/videoUpload'
-import { validateVideoUrl } from './modules/videoUpload'
+import { VideoParsePreview, validateVideoUrl } from './modules/videoUpload'
 import type { CreateJobResponse, QuotaClipReason } from './types/job'
 import { buildQuotaClipNotice } from './utils/quotaClipMessages'
 import { formatVideoDownloadError } from './utils/videoDownloadErrors'
@@ -56,6 +57,9 @@ function uploadErrorMessage(input: {
   if (input.code === 'video_probe_failed') {
     return '无法读取视频时长。请确认视频文件可正常播放后再上传。'
   }
+  if (input.code === 'video_parse_failed') {
+    return '无法解析该视频链接。请确认链接为公开可访问，或改用本地上传。'
+  }
   if (input.code === 'video_download_failed') {
     const hint = formatVideoDownloadError(input.error)
     return `无法从该链接下载视频。${hint}`
@@ -73,6 +77,9 @@ type UploadPageState = {
   sourceMode: VideoSourceMode
   file: File | null
   videoUrl: string
+  parsedVideo: ParsedVideo | null
+  urlParsing: boolean
+  parseError: string | null
   jobId: string | null
   enableSpeech: boolean
   cefrLevel: string
@@ -89,6 +96,9 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
     sourceMode: 'file',
     file: null,
     videoUrl: '',
+    parsedVideo: null,
+    urlParsing: false,
+    parseError: null,
     jobId: this.props.jobId ?? null,
     enableSpeech: true,
     cefrLevel: 'B1',
@@ -112,7 +122,50 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
     if (this.state.sourceMode === 'file') {
       return this.state.file !== null
     }
-    return validateVideoUrl(this.state.videoUrl) === null
+    return (
+      validateVideoUrl(this.state.videoUrl) === null &&
+      this.state.parsedVideo != null &&
+      Boolean(
+        this.state.parsedVideo.title?.trim() ||
+          this.state.parsedVideo.id?.trim() ||
+          this.state.parsedVideo.platform?.trim()
+      )
+    )
+  }
+
+  private get submitDisabledReason(): string | null {
+    if (this.state.sourceMode !== 'url' || this.submitEnabled) return null
+    if (validateVideoUrl(this.state.videoUrl) !== null) {
+      return '请输入有效的视频链接（暂不支持 YouTube）'
+    }
+    if (this.state.urlParsing) return '正在解析视频信息…'
+    if (!this.state.parsedVideo) {
+      return '请先点击「解析链接」，确认视频信息后再提交'
+    }
+    return null
+  }
+
+  private handleParseUrl = async () => {
+    const { videoUrl, urlParsing, loading } = this.state
+    if (urlParsing || loading) return
+    const urlErr = validateVideoUrl(videoUrl)
+    if (urlErr) {
+      this.setState({ parseError: urlErr, parsedVideo: null })
+      return
+    }
+    this.setState({ urlParsing: true, parseError: null, parsedVideo: null, error: null })
+    try {
+      await ensureDevSession()
+      const parsed = await parseVideoUrl(
+        (input, init) => apiFetch(input, init),
+        videoUrl.trim()
+      )
+      this.setState({ parsedVideo: parsed, urlParsing: false })
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : '解析失败，请稍后重试或改用本地上传。'
+      this.setState({ parseError: message, urlParsing: false, parsedVideo: null })
+    }
   }
 
   private buildJobOptions() {
@@ -221,6 +274,9 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
       sourceMode,
       file,
       videoUrl,
+      parsedVideo,
+      urlParsing,
+      parseError,
       jobId,
       loading,
       error,
@@ -231,9 +287,10 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
       clipNotice,
     } = this.state
     const submitEnabled = this.submitEnabled
+    const submitDisabledReason = this.submitDisabledReason
     const loadingLabel =
       sourceMode === 'url' && loading
-        ? '正在下载视频…'
+        ? '正在创建任务…'
         : loading
           ? '提交中…'
           : sourceMode === 'url'
@@ -253,13 +310,39 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
         <div className="rounded-2xl border border-white/80 bg-white/90 p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] backdrop-blur-sm">
           <UploadForm
             sourceMode={sourceMode}
-            onSourceModeChange={(mode) => this.setState({ sourceMode: mode, error: null })}
+            onSourceModeChange={(mode) =>
+              this.setState({
+                sourceMode: mode,
+                error: null,
+                parsedVideo: null,
+                parseError: null,
+              })
+            }
             file={file}
             onFileChange={(f) => this.setState({ file: f })}
             videoUrl={videoUrl}
-            onVideoUrlChange={(url) => this.setState({ videoUrl: url })}
+            onVideoUrlChange={(url) =>
+              this.setState({ videoUrl: url, parsedVideo: null, parseError: null })
+            }
+            onParseUrl={this.handleParseUrl}
+            urlParsing={urlParsing}
             disabled={loading || Boolean(jobId)}
           />
+
+          {sourceMode === 'url' && (
+            <div className="mt-4 space-y-3">
+              <VideoParsePreview
+                parsed={parsedVideo}
+                parsing={urlParsing}
+                parseError={parseError}
+              />
+              {!parsedVideo && !urlParsing && !parseError && validateVideoUrl(videoUrl) === null && (
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  请先点击「解析链接」确认视频信息；任务创建后将在后台下载，可在任务列表查看进度。
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="my-6 grid gap-3 sm:grid-cols-2">
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
@@ -327,6 +410,11 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
             >
               {loadingLabel}
             </button>
+            {!submitEnabled && submitDisabledReason && !jobId && (
+              <p className="text-sm text-amber-700 dark:text-amber-300 sm:flex-1 sm:self-center">
+                {submitDisabledReason}
+              </p>
+            )}
           </div>
 
           {error && (
@@ -337,7 +425,7 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
 
           {loading && sourceMode === 'url' && (
             <p className="mt-4 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-200">
-              正在从链接下载视频到服务器，请稍候（长视频可能需要几分钟）…
+              正在创建任务…视频将在后台下载，请稍后在任务列表查看「下载中」状态。
             </p>
           )}
 
@@ -350,6 +438,8 @@ export default class UploadPage extends Component<UploadPageProps, UploadPageSta
                   jobId: null,
                   file: null,
                   videoUrl: '',
+                  parsedVideo: null,
+                  parseError: null,
                   sourceMode: 'file',
                   error: null,
                   clipNotice: null,

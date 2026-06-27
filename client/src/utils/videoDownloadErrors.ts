@@ -7,8 +7,8 @@ export function formatVideoDownloadError(serverError?: string | null): string {
     return '请检查链接是否有效、视频是否公开，或改用本地上传。'
   }
 
-  if (/Sign in to confirm you.?re not a bot|not a bot/i.test(detail)) {
-    return 'YouTube 触发了机器人验证。需在服务器配置 YT_DLP_COOKIES_FROM_BROWSER=chrome，或改用本地上传。'
+  if (/Sign in to confirm you.?re not a bot|Sign in to confirm you’re not a bot|not a bot/i.test(detail)) {
+    return 'YouTube 触发了机器人验证。请导出 cookies.txt 并在服务器设置 YT_DLP_COOKIES=secrets/yt-dlp-cookies.txt，或改用本地上传。'
   }
   if (/Private video|This video is private/i.test(detail)) {
     return '该视频为私密或需登录观看，无法下载。'

@@ -24,6 +24,8 @@ function statusLabel(status: JobStatus) {
       return '已完成'
     case 'running':
       return '生成中'
+    case 'downloading':
+      return '下载中'
     case 'canceling':
       return '取消中'
     case 'queued':
@@ -44,7 +46,7 @@ function StatusBadge({ status }: { status: JobStatus }) {
     )
   }
 
-  if (status === 'running' || status === 'queued' || status === 'canceling') {
+  if (status === 'running' || status === 'queued' || status === 'canceling' || status === 'downloading') {
     return (
       <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
         {statusLabel(status)}

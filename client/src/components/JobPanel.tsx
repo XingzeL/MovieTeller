@@ -226,7 +226,11 @@ export function JobPanel({ jobId, onClear }: Props) {
           <span>
             状态：
             <span className="font-medium">
-              {job.status === 'canceling' ? '取消中' : job.status}
+              {job.status === 'canceling'
+                ? '取消中'
+                : job.status === 'downloading'
+                  ? '下载中'
+                  : job.status}
             </span>
             {cancelRequested && job.status !== 'canceled' && job.status !== 'canceling'
               ? ' · 取消已请求'

@@ -1,4 +1,5 @@
 export type JobStatus =
+  | 'downloading'
   | 'queued'
   | 'running'
   | 'canceling'

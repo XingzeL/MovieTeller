@@ -1,5 +1,6 @@
 export { VideoUpload, type VideoUploadProps } from './VideoUpload'
 export { VideoUrlInput, type VideoUrlInputProps } from './VideoUrlInput'
 export { VideoSourceTabs, type VideoSourceMode, type VideoSourceTabsProps } from './VideoSourceTabs'
+export { VideoParsePreview, type VideoParsePreviewProps } from './VideoParsePreview'
 export { VIDEO_ACCEPT, MAX_VIDEO_BYTES } from './constants'
 export { formatBytes, validateMp4File, validateVideoUrl, videoUrlHostname } from './utils'

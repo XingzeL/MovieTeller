@@ -10,12 +10,14 @@ export type VideoSourceTabsProps = {
   onFileChange: (file: File | null) => void
   videoUrl: string
   onVideoUrlChange: (url: string) => void
+  onParseUrl?: () => void
+  urlParsing?: boolean
   disabled?: boolean
 }
 
 const TABS: { id: VideoSourceMode; label: string; hint: string }[] = [
   { id: 'file', label: '本地上传', hint: 'MP4 文件' },
-  { id: 'url', label: '视频链接', hint: 'YouTube / B站等' },
+  { id: 'url', label: '视频链接', hint: '公开链接；部分平台需 cookies' },
 ]
 
 export function VideoSourceTabs({
@@ -25,6 +27,8 @@ export function VideoSourceTabs({
   onFileChange,
   videoUrl,
   onVideoUrlChange,
+  onParseUrl,
+  urlParsing = false,
   disabled = false,
 }: VideoSourceTabsProps) {
   const switchMode = (next: VideoSourceMode) => {
@@ -42,7 +46,7 @@ export function VideoSourceTabs({
       <div>
         <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">添加视频</h2>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          上传本地 MP4，或粘贴公开视频链接由服务器自动下载
+          上传本地 MP4，或粘贴公开视频链接（解析后创建任务，下载在后台进行）
         </p>
       </div>
 
@@ -87,6 +91,8 @@ export function VideoSourceTabs({
           <VideoUrlInput
             videoUrl={videoUrl}
             onVideoUrlChange={onVideoUrlChange}
+            onParseUrl={onParseUrl}
+            urlParsing={urlParsing}
             disabled={disabled}
           />
         )}
