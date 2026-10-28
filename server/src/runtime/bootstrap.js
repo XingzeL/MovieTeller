@@ -1,3 +1,4 @@
+import { loadConfig } from "../config/index.js";
 import { getRunMode } from "./runMode.js";
 import { startCombinedRuntime } from "./combined.js";
 import { startApiServer } from "./apiServer.js";
@@ -13,6 +14,7 @@ export { startCombinedRuntime as startApiRuntime } from "./combined.js";
  * @param {{ port?: number, runScheduler?: boolean, pollMs?: number }} [opts]
  */
 export async function startBootstrapRuntime(opts = {}) {
+  loadConfig();
   assertDatabaseConfigured();
   if (isDbEnabled()) {
     await ensureDatabaseReady();
